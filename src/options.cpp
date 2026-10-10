@@ -16,7 +16,6 @@ const KeyActionInfo KEY_ACTIONS[KEY_ACTION_COUNT] = {
     {"key.sneak", "Sneak", GLFW_KEY_LEFT_SHIFT},
     {"key.inventory", "Inventory", GLFW_KEY_E},
     {"key.drop", "Drop", GLFW_KEY_Q},
-    {"key.craft", "Craft Planks", GLFW_KEY_F},
     {"key.creative", "Creative Cheat", GLFW_KEY_C},
 };
 

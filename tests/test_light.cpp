@@ -5,6 +5,7 @@
 
 #include "rng.h"
 #include "sky.h"
+#include "items.h"
 #include "torch.h"
 #include "world.h"
 
@@ -201,4 +202,16 @@ TEST_CASE("the cloud map has clouds and gaps and repeats without a seam") {
     CHECK(cover < 0.6);
     CHECK(cloud_at(-1, 5) == cloud_at(CLOUD_MAP - 1, 5));
     CHECK(cloud_at(3, CLOUD_MAP + 7) == cloud_at(3, 7));
+}
+
+TEST_CASE("torches and glowstone from M2 saves load as the new blocks, and torches still craft") {
+    CHECK(current_item_id(OLD_TORCH_ITEM) == TORCH);
+    CHECK(current_item_id(OLD_GLOWSTONE_ITEM) == GLOWSTONE);
+    CHECK(current_item_id(REDSTONE_TORCH) == REDSTONE_TORCH);
+    CHECK_FALSE(valid_item(OLD_TORCH_ITEM));
+    CHECK(valid_item(TORCH));
+    CHECK_FALSE(valid_item(TORCH_WALL_EAST));  // only the floor torch is an item
+    CHECK(item_name(TORCH) == "Torch");
+    CHECK_FALSE(looks_like_block(TORCH));  // a flat icon
+    CHECK(looks_like_block(GLOWSTONE));
 }

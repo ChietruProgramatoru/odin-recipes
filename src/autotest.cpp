@@ -10,6 +10,7 @@
 
 #include "app.h"
 #include "game.h"
+#include "inventory_screen.h"
 #include "menu.h"
 
 namespace {
@@ -130,7 +131,7 @@ void AutoTest::play(App& app, Game& g) {
         cow_ = nullptr;
         bool any_beef = g.inventory.count(BEEF) > 0;
         for (auto& d : g.drops)
-            if (d->item == BEEF) {
+            if (d->stack.item == BEEF) {
                 any_beef = true;
                 d->body.x = p.x;
                 d->body.y = p.y + 0.5;
@@ -170,6 +171,7 @@ void AutoTest::play(App& app, Game& g) {
         }
         g.pitch = 10;
     }
+    if (f == 344) crafting(app, g);
     if (f == 360) {
         hp_before_fall_ = g.vitals.health;
         p.y += 12;
@@ -262,6 +264,91 @@ void AutoTest::play(App& app, Game& g) {
     }
 }
 
+void AutoTest::crafting(App& app, Game& g) {
+    using Kind = InventoryScreen::Kind;
+    auto inv_slot = [](int i) { return Slot{Slot::Inv, i}; };
+    auto grid = [](int i) { return Slot{Slot::Grid, i}; };
+    const Slot result{Slot::Result, 0};
+
+    // The inventory: logs into planks (shift-click crafts them all), planks into a crafting table.
+    g.inventory.selected = 0;
+    g.inventory.slots[30] = Stack{LOG, 3};
+    g.inventory.slots[31] = Stack{IRON_CHESTPLATE, 1};
+    g.open_gui(Kind::Inventory);
+    check("E opens the inventory", g.gui && g.gui->kind == Kind::Inventory);
+    if (!g.gui) return;
+    CraftingMenu& inv = *g.gui->crafting;
+    int planks_before = g.inventory.count(PLANKS);
+    inv.click(inv_slot(30), 0, false);  // pick up the logs
+    inv.click(grid(0), 0, false);       // put them in the grid
+    check("logs in the grid make planks", inv.result == Stack{PLANKS, 4});
+    inv.click(result, 0, true);
+    check("shift-clicking the result crafts all the planks (" + std::to_string(g.inventory.count(PLANKS) - planks_before) + ")",
+          g.inventory.count(PLANKS) - planks_before == 12 && !inv.grid[0]);
+    inv.click(inv_slot(31), 0, false);
+    inv.click(Slot{Slot::Armor, 1}, 0, false);
+    check("the chestplate goes in its armor slot", g.inventory.armor[1] == Stack{IRON_CHESTPLATE, 1});
+    int planks_slot = g.inventory.find(PLANKS);
+    inv.click(inv_slot(planks_slot), 0, false);
+    for (int i = 0; i < 4; ++i) inv.click(grid(i), 1, false);  // right click: one plank in each cell
+    check("2x2 planks make a crafting table", inv.result == Stack{CRAFTING_TABLE, 1});
+    inv.click(inv_slot(planks_slot), 0, false);  // put the rest back
+    shot(app, "10_inventory.png");
+    inv.click(result, 0, false);
+    check("the crafting table is on the mouse", inv.cursor == Stack{CRAFTING_TABLE, 1});
+    inv.click(inv_slot(0), 0, false);
+    // Something left in the grid goes back into the inventory when the screen closes.
+    inv.click(inv_slot(planks_slot), 1, false);  // half the planks
+    inv.click(grid(3), 0, false);
+    int planks_total = g.inventory.count(PLANKS) + (inv.grid[3] ? inv.grid[3]->count : 0);
+    g.close_gui();
+    check("closing the inventory puts grid items back", !g.gui && g.inventory.count(PLANKS) == planks_total);
+
+    // Place the crafting table in front of the player and right-click it.
+    g.yaw = 0;
+    g.pitch = 0;
+    glm::vec3 e = g.eye();
+    glm::ivec3 table{static_cast<int>(std::floor(e.x)), static_cast<int>(std::floor(e.y)), static_cast<int>(std::floor(e.z)) + 2};
+    g.renderer->rebuild(g.world.set_block(table.x, table.y, table.z, AIR));
+    g.renderer->rebuild(g.world.set_block(table.x, table.y, table.z - 1, AIR));
+    g.renderer->rebuild(g.world.set_block(table.x, table.y, table.z, CRAFTING_TABLE));
+    g.update_target();
+    g.use_item();
+    check("right-clicking a crafting table opens its 3x3 grid", g.gui && g.gui->kind == Kind::CraftingTable);
+    if (!g.gui) return;
+    CraftingMenu& table_menu = *g.gui->crafting;
+    g.inventory.slots[32] = Stack{STICK, 2};
+    planks_slot = g.inventory.find(PLANKS);
+    table_menu.click(inv_slot(planks_slot), 0, false);
+    for (int i = 0; i < 3; ++i) table_menu.click(grid(i), 1, false);
+    table_menu.click(inv_slot(planks_slot), 0, false);
+    table_menu.click(inv_slot(32), 0, false);
+    table_menu.click(grid(4), 1, false);
+    table_menu.click(grid(7), 1, false);
+    check("planks and sticks make a wooden pickaxe", table_menu.result == Stack{WOOD_PICKAXE, 1});
+    shot(app, "11_crafting_table.png");
+    table_menu.click(result, 0, false);
+    table_menu.click(inv_slot(1), 0, false);
+    check("the pickaxe is in the hotbar", g.inventory.slots[1] == Stack{WOOD_PICKAXE, 1});
+    g.close_gui();
+    g.renderer->rebuild(g.world.set_block(table.x, table.y, table.z, AIR));
+
+    // The creative item picker.
+    g.creative = true;
+    g.open_gui(Kind::Creative);
+    check("E in creative opens the item picker", g.gui && g.gui->kind == Kind::Creative);
+    if (g.gui) {
+        const auto& items = all_items();
+        int tnt = static_cast<int>(std::find(items.begin(), items.end(), TNT) - items.begin());
+        g.gui->creative->click_item(tnt, 0, false);
+        g.gui->creative->click_hotbar(8, 0, false);
+        check("picking TNT puts a stack in the creative hotbar", g.creative_inventory.slots[8] == Stack{TNT, 64});
+        shot(app, "12_creative_items.png");
+        g.close_gui();
+    }
+    g.creative = false;
+}
+
 void AutoTest::reload(App& app) {
     const long f = app.frame - phase_start_;
     if (phase_ == 2 && f == 2) app.open(select_world_screen(app));
@@ -285,7 +372,7 @@ void AutoTest::reload(App& app) {
         check("player position, health, hunger and inventory are restored",
               std::abs(now.pos.x - saved_player_.pos.x) < 1e-6 && std::abs(now.pos.z - saved_player_.pos.z) < 1e-6 &&
                   now.health == saved_player_.health && now.hunger == saved_player_.hunger &&
-                  now.inventory.slots == saved_player_.inventory.slots && now.creative == saved_player_.creative);
+                  now.inventory == saved_player_.inventory && now.creative == saved_player_.creative);
         check("cows near the player are back (" + std::to_string(g.cows.size()) + " of " + std::to_string(saved_cows_) + ")",
               !g.cows.empty());
         shot(app, "9_reloaded.png");

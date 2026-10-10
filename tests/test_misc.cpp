@@ -2,6 +2,7 @@
 #include <doctest/doctest.h>
 
 #include "font.h"
+#include "icons.h"
 #include "mobs.h"
 #include "png.h"
 #include "textures.h"
@@ -52,7 +53,7 @@ TEST_CASE("item drops fall and settle") {
     World w(5);
     Rng rng(4);
     int y = w.surface_y(8, 8);
-    ItemDrop drop(w, BEEF, 8.5, y + 2, 8.5, rng);
+    ItemDrop drop(w, Stack{BEEF, 1}, 8.5, y + 2, 8.5, rng);
     for (int i = 0; i < 300; ++i) drop.tick(1.0 / 60);
     CHECK(drop.body.on_ground);
 }
@@ -67,8 +68,15 @@ TEST_CASE("models exist for cows and every item") {
 
 TEST_CASE("every tile gets a 16x16 texture and the atlas has room for them") {
     auto tiles = make_tiles();
-    CHECK(tiles.size() == TILE_COUNT);
-    CHECK(TILE_COUNT <= ATLAS_COLS * ATLAS_ROWS);
+    for (int i = 0; i < TILE_COUNT; ++i) CHECK(tiles.count(i));
+    CHECK(TILE_COUNT <= ITEM_TILE_BASE);  // world tiles stay below the item tiles
+    CHECK(tiles.rbegin()->first < ATLAS_COLS * ATLAS_ROWS);
+    // Every item's icon tiles exist.
+    for (ItemId item : all_items()) {
+        const ItemIcon& icon = item_info(item)->icon;
+        CHECK(tiles.count(icon.top));
+        if (icon.shape != ItemIcon::Flat) CHECK((tiles.count(icon.left) && tiles.count(icon.right)));
+    }
     for (const auto& [i, img] : tiles) {
         CHECK(img.width == TILE);
         CHECK(img.height == TILE);

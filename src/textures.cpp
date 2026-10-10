@@ -7,6 +7,7 @@
 #include <vector>
 
 #include "blocks.h"
+#include "icons.h"
 #include "rng.h"
 
 namespace {
@@ -203,18 +204,6 @@ Image cow_hide(Rng& rng) {
     return img;
 }
 
-// Glowstone: bright yellow crystals with darker amber cracks between them.
-Image glowstone(Rng& rng) {
-    Image img(TILE, TILE);
-    for (int y = 0; y < TILE; ++y)
-        for (int x = 0; x < TILE; ++x) {
-            double r = rng.random();
-            Rgb c = r < 0.18 ? Rgb{150, 100, 45} : r < 0.55 ? Rgb{215, 170, 90} : Rgb{252, 222, 140};
-            img.at(x, y) = shade(c, rng.uniform(0.92, 1.08));
-        }
-    return img;
-}
-
 // Torch: a stick in the two middle columns with a flame on top, see-through around it.
 // Only columns 7-8, rows 6-15 are drawn (see add_torch in world.cpp).
 Image torch(Rng& rng) {
@@ -322,7 +311,7 @@ std::map<int, Image> make_tiles(int seed) {
     const std::map<int, std::function<Image(Rng&)>> generators = {
         {T_GRASS_TOP, grass_top}, {T_GRASS_SIDE, grass_side}, {T_DIRT, dirt}, {T_STONE, stone},
         {T_COBBLE, cobble}, {T_SAND, sand}, {T_LOG_SIDE, log_side}, {T_LOG_TOP, log_top},
-        {T_LEAVES, leaves}, {T_PLANKS, planks}, {T_GLOWSTONE, glowstone}, {T_TORCH, torch}, {T_BEDROCK, bedrock}, {T_WATER, water}, {T_BRICK, brick},
+        {T_LEAVES, leaves}, {T_PLANKS, planks}, {T_TORCH, torch}, {T_BEDROCK, bedrock}, {T_WATER, water}, {T_BRICK, brick},
         {T_COW_HIDE, cow_hide}, {T_WHITE, solid({255, 255, 255}, 0)}, {T_HOOF, solid({70, 48, 35})},
         {T_COW_HEAD, solid({85, 60, 45})}, {T_SNOUT, solid({225, 165, 160})}, {T_BLACK, solid({16, 16, 16}, 0)},
         {T_HORN, solid({235, 230, 215})}, {T_LEAVES_FAST, leaves_fast},
@@ -338,6 +327,7 @@ std::map<int, Image> make_tiles(int seed) {
         Rng rng(static_cast<uint64_t>(seed) * 100 + index);
         tiles[index] = gen(rng);
     }
+    tiles.merge(make_item_tiles());
     return tiles;
 }
 

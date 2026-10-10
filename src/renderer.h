@@ -106,6 +106,9 @@ public:
     void set_outline(std::optional<glm::ivec3> block) { outline_ = block; }
     // Clears the screen to the fog colour and draws the sky, the world and the clouds.
     void draw(int width, int height, glm::vec3 eye, glm::vec3 forward, const SkyState& sky);
+    // Draw models on their own into part of the window (like the player in the inventory screen),
+    // seen through `view_proj`, without fog. Leaves the viewport on that part of the window.
+    void draw_models(const std::vector<ModelPart>& parts, int x, int y, int width, int height, const glm::mat4& view_proj);
 
 private:
     void draw_sky(const glm::mat4& proj_rot, const SkyState& sky, float far_dist);

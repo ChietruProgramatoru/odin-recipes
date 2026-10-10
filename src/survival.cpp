@@ -2,22 +2,29 @@
 
 #include <algorithm>
 
-int Inventory::add(ItemId item, int count) {
+bool stackable(const Stack& a, const Stack& b) {
+    return a.item == b.item && a.damage == b.damage && max_stack(a.item) > 1;
+}
+
+int Inventory::add(ItemId item, int count) { return add(Stack{item, count}); }
+
+int Inventory::add(Stack stack) {
+    const int limit = max_stack(stack.item);
     for (auto& slot : slots)
-        if (slot && slot->item == item && slot->count < STACK) {
-            int moved = std::min(count, STACK - slot->count);
+        if (slot && stackable(*slot, stack) && slot->count < limit) {
+            int moved = std::min(stack.count, limit - slot->count);
             slot->count += moved;
-            count -= moved;
-            if (!count) return 0;
+            stack.count -= moved;
+            if (!stack.count) return 0;
         }
     for (auto& slot : slots)
         if (!slot) {
-            int moved = std::min(count, STACK);
-            slot = Stack{item, moved};
-            count -= moved;
-            if (!count) return 0;
+            int moved = std::min(stack.count, limit);
+            slot = Stack{stack.item, moved, stack.damage};
+            stack.count -= moved;
+            if (!stack.count) return 0;
         }
-    return count;
+    return stack.count;
 }
 
 int Inventory::count(ItemId item) const {
@@ -52,18 +59,6 @@ std::optional<ItemId> Inventory::take_selected() {
     ItemId item = slot->item;
     if (--slot->count == 0) slot.reset();
     return item;
-}
-
-bool Inventory::craft_planks() {
-    if (count(LOG) < 1) return false;
-    remove(LOG, 1);
-    int left = add(PLANKS, 4);
-    if (left) {  // no room: undo
-        remove(PLANKS, 4 - left);
-        add(LOG, 1);
-        return false;
-    }
-    return true;
 }
 
 int Inventory::find(ItemId item) const {

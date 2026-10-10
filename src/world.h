@@ -52,6 +52,8 @@ struct EntityRecord {
     int health = 0;  // cows
     int item = 0;    // dropped items
     float age = 0;   // dropped items, seconds
+    int count = 1;   // dropped items: how many
+    int damage = 0;  // dropped items: wear of a tool
     bool operator==(const EntityRecord&) const = default;
 };
 

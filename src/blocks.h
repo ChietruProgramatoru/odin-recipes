@@ -10,6 +10,7 @@ using ItemId = int;
 
 enum Block : BlockId {
     AIR, GRASS, DIRT, STONE, COBBLE, SAND, LOG, LEAVES, PLANKS, BEDROCK, WATER, BRICK,
+    CRAFTING_TABLE, CHEST, FURNACE,
     GLOWSTONE, TORCH,
     // Torches on a wall, named by the side of the torch's cell the wall is on. They drop and
     // show as TORCH; placing a torch on a wall picks one of these.
@@ -28,8 +29,8 @@ enum Tile : int {
     T_COW_HIDE, T_WHITE, T_HOOF, T_COW_HEAD, T_SNOUT, T_BLACK, T_HORN, T_APPLE, T_BEEF,
     // Solid leaves for Fast graphics, then the player model.
     T_LEAVES_FAST, T_SKIN, T_HAIR, T_SHIRT, T_PANTS, T_SHOE, T_EYE,
-    // Light sources.
-    T_GLOWSTONE, T_TORCH,
+    // The torch in the world (its inventory icon is in icons.h).
+    T_TORCH,
     TILE_COUNT
 };
 
@@ -45,21 +46,15 @@ struct FoodInfo {
     float saturation;
 };
 
-// Info for a real block (GRASS..BRICK); nullptr for AIR and anything else.
+// Info for a real block (GRASS and up); nullptr for AIR and anything else.
 const BlockInfo* block_info(ItemId id);
-const FoodInfo* food_info(ItemId id);
-std::string item_name(ItemId id);
 
 bool is_solid(BlockId id);  // can't walk through
-bool is_block(ItemId id);   // placeable block (not food)
+bool is_block(ItemId id);   // placeable block
 bool is_opaque(BlockId id); // hides the faces behind it
 bool is_torch(BlockId id);  // floor or wall torch (drawn as a thin stick, not a cube)
 // Light (0-15): how much a block dims light passing into it, and how much it gives off.
 int light_opacity(BlockId id);
 int light_emission(BlockId id);
-int icon_tile(ItemId id);   // tile used to draw an item in the hotbar and as a dropped item
 
-// Every item that has a model or icon (all blocks, then the foods).
-const std::vector<ItemId>& all_items();
-// Items shown in the creative hotbar.
-const std::vector<ItemId>& creative_items();
+// Item names, icons, stack sizes and the rest are in items.h.

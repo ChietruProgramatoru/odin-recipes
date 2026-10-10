@@ -10,6 +10,7 @@
 #include <glm/vec3.hpp>
 
 #include "hud.h"
+#include "inventory_screen.h"
 #include "mobs.h"
 #include "options.h"
 #include "physics.h"
@@ -56,6 +57,8 @@ public:
     std::unique_ptr<Hud> hud;
 
     Inventory inventory, creative_inventory;
+    // The inventory, a crafting table or the creative item picker, while one is open.
+    std::unique_ptr<InventoryScreen> gui;
     Vitals vitals;
     bool creative = false, flying = false, sneaking = false;
 
@@ -91,6 +94,10 @@ public:
     void break_block(glm::ivec3 pos, BlockId block);
     void use_item();
     void drop_selected();
+    void open_gui(InventoryScreen::Kind kind);
+    void close_gui();
+    // Throw a stack forwards from the player's eyes, like Q does.
+    void throw_stack(const Stack& stack);
     void respawn();
     void set_paused(bool p);
     // Video settings or render distance changed.
@@ -123,12 +130,16 @@ private:
     void update_drops(double dt);
     void set_mouse_captured(bool captured);
     bool key_down(int key) const;
-    bool action_down(KeyAction action) const { return key_down(options.keys[action]); }
+    bool action_down(KeyAction action) const { return !gui && key_down(options.keys[action]); }
     bool sprint_allowed() const { return !sneaking && !flying && (creative || vitals.can_sprint()); }
     bool mouse_down(int button) const { return mouse_buttons_.count(button) > 0; }
     std::string debug_text();
     std::string help_text() const;
+    // The mouse in framebuffer pixels from the top left, for the inventory screens.
+    void gui_mouse(double& x, double& y) const;
+    void draw_player_preview(int x, int y, int w, int h, float look_x, float look_y);
 
+    Painter& painter_;
     bool scripted_;
     std::set<int> mouse_buttons_;
     double last_space_ = -1.0;

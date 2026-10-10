@@ -3,9 +3,8 @@
 #include <array>
 #include <optional>
 
-#include "blocks.h"
+#include "items.h"
 
-constexpr int STACK = 64;
 constexpr int MAX_HEALTH = 20;  // 10 hearts
 constexpr int MAX_HUNGER = 20;  // 10 drumsticks
 
@@ -25,25 +24,33 @@ constexpr double STARVE_INTERVAL = 4.0;  // seconds per half-heart lost when sta
 struct Stack {
     ItemId item;
     int count;
+    int damage = 0;  // uses worn off a tool or armor piece
     bool operator==(const Stack&) const = default;
 };
 
+// Can these two stacks go in one slot? Same item and wear, and the item stacks.
+bool stackable(const Stack& a, const Stack& b);
+
 class Inventory {
 public:
-    static constexpr int SIZE = 9;
+    static constexpr int HOTBAR = 9;  // slots 0-8 are the hotbar, 9-35 the storage rows (like Beta)
+    static constexpr int SIZE = 36;
+    static constexpr int ARMOR = 4;   // helmet, chestplate, leggings, boots
     std::array<std::optional<Stack>, SIZE> slots{};
+    std::array<std::optional<Stack>, ARMOR> armor{};
     int selected = 0;
 
-    // Add items, returns how many did not fit.
+    // Add items: first onto stacks of the same item, then into empty slots, hotbar first.
+    // Returns how many did not fit.
     int add(ItemId item, int count = 1);
+    int add(Stack stack);
     int count(ItemId item) const;
     bool remove(ItemId item, int count = 1);
     std::optional<ItemId> selected_item() const;
     std::optional<ItemId> take_selected();
-    // 1 log -> 4 planks.
-    bool craft_planks();
     // Index of the first slot holding `item`, or -1.
     int find(ItemId item) const;
+    bool operator==(const Inventory&) const = default;
 };
 
 class Vitals {
