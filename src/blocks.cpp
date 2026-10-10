@@ -20,6 +20,12 @@ const BlockInfo BLOCKS[BLOCK_COUNT] = {
     {"Crafting Table", {IT_CRAFT_TOP, IT_CRAFT_FRONT, T_PLANKS}, 1.8f, CRAFTING_TABLE},
     {"Chest", {IT_CHEST_TOP, IT_CHEST_FRONT, IT_CHEST_TOP}, 1.8f, CHEST},
     {"Furnace", {IT_FURNACE_TOP, IT_FURNACE_FRONT, IT_FURNACE_TOP}, 2.4f, FURNACE},
+    {"Glowstone", {IT_GLOWSTONE, IT_GLOWSTONE, IT_GLOWSTONE}, 0.45f, GLOWSTONE},
+    {"Torch", {T_TORCH, T_TORCH, T_TORCH}, 0.0f, TORCH},
+    {"Torch", {T_TORCH, T_TORCH, T_TORCH}, 0.0f, TORCH},
+    {"Torch", {T_TORCH, T_TORCH, T_TORCH}, 0.0f, TORCH},
+    {"Torch", {T_TORCH, T_TORCH, T_TORCH}, 0.0f, TORCH},
+    {"Torch", {T_TORCH, T_TORCH, T_TORCH}, 0.0f, TORCH},
 };
 
 }  // namespace
@@ -29,6 +35,21 @@ const BlockInfo* block_info(ItemId id) {
     return &BLOCKS[id];
 }
 
-bool is_solid(BlockId id) { return id != AIR && id != WATER; }
-bool is_opaque(BlockId id) { return id != AIR && id != WATER; }
+bool is_torch(BlockId id) { return id >= TORCH && id <= TORCH_WALL_SOUTH; }
+bool is_solid(BlockId id) { return id != AIR && id != WATER && !is_torch(id); }
+bool is_opaque(BlockId id) { return id != AIR && id != WATER && !is_torch(id); }
 bool is_block(ItemId id) { return block_info(id) != nullptr; }
+
+// Beta's values: leaves dim light by 1, water by 3, solid blocks stop it.
+int light_opacity(BlockId id) {
+    if (id == AIR || is_torch(id)) return 0;
+    if (id == LEAVES) return 1;
+    if (id == WATER) return 3;
+    return 15;
+}
+
+int light_emission(BlockId id) {
+    if (id == GLOWSTONE) return 15;
+    if (is_torch(id)) return 14;
+    return 0;
+}

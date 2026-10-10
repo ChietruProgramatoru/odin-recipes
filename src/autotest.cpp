@@ -197,10 +197,53 @@ void AutoTest::play(App& app, Game& g) {
     }
     if (f == 620) {
         shot(app, "5_third_person.png");
-        g.third_person = false;
+        g.third_person = false;  // the model leaves the scene in the next update
+    }
+    if (f == 622) {
         g.debug_screen = true;
         shot(app, "6_debug.png");
         g.debug_screen = false;
+        // Light: a torch and a block of glowstone on the ground a few blocks ahead.
+        int x = static_cast<int>(std::floor(p.x)), z = static_cast<int>(std::floor(p.z)) + 4;
+        torch_ = {x, g.world.surface_y(x, z), z};
+        glowstone_ = {x + 4, g.world.surface_y(x + 4, z + 2), z + 2};
+        int before = g.world.block_light(torch_.x + 2, torch_.y, torch_.z);
+        g.renderer->rebuild(g.world.set_block(torch_.x, torch_.y, torch_.z, TORCH));
+        g.renderer->rebuild(g.world.set_block(glowstone_.x, glowstone_.y, glowstone_.z, GLOWSTONE));
+        int after = g.world.block_light(torch_.x + 2, torch_.y, torch_.z);
+        check("a torch lights the ground around it (2 blocks away: " + std::to_string(before) + " -> " +
+                  std::to_string(after) + ")",
+              g.world.block_light(torch_.x, torch_.y, torch_.z) == 14 && after >= 12);
+        check("glowstone gives light 15", g.world.block_light(glowstone_.x, glowstone_.y + 1, glowstone_.z) == 14);
+        day_time_ = g.level.time;
+        g.level.time = 18000;  // midnight
+        face(g, torch_.x + 0.5, torch_.z + 0.5, 25);
+    }
+    if (f == 624) {
+        shot(app, "6_night_torch.png");
+        g.debug_screen = true;
+        shot(app, "6_night_debug.png");
+        g.debug_screen = false;
+        g.renderer->rebuild(g.world.set_block(torch_.x, torch_.y, torch_.z, AIR));
+        // A torch on the side of the glowstone falls off when the glowstone is broken.
+        glm::ivec3 wall = glowstone_ + glm::ivec3(1, 0, 0);
+        g.renderer->rebuild(g.world.set_block(wall.x, wall.y, wall.z, TORCH_WALL_WEST));
+        g.break_block(glowstone_, GLOWSTONE);
+        check("a wall torch falls off when its block is broken", g.world.get_block(wall.x, wall.y, wall.z) == AIR);
+        check("removing the torch and glowstone takes their light away",
+              g.world.block_light(torch_.x + 2, torch_.y, torch_.z) == 0);
+        g.level.time = 12500;  // sunset
+        g.yaw = -90;                 // look west, at the setting sun
+        g.pitch = -8;
+        ground_y_ = p.y;
+        p.y += 15;  // above the trees
+        g.flying = true;
+    }
+    if (f == 626) {
+        shot(app, "6_sunset.png");
+        g.level.time = day_time_;
+        p.y = ground_y_;
+        g.flying = false;
     }
     if (f == 630) {
         app.pause();

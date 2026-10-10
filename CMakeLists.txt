@@ -64,6 +64,8 @@ add_library(petrutz_core STATIC
   src/container.cpp
   src/noise.cpp
   src/world.cpp
+  src/light.cpp
+  src/sky.cpp
   src/streamer.cpp
   src/physics.cpp
   src/survival.cpp
@@ -113,6 +115,7 @@ add_executable(petrutz_tests
   tests/test_crafting.cpp
   tests/test_streamer.cpp
   tests/test_misc.cpp
-  tests/test_save.cpp)
+  tests/test_save.cpp
+  tests/test_light.cpp)
 target_link_libraries(petrutz_tests PRIVATE petrutz_core doctest_header)
 add_test(NAME logic COMMAND petrutz_tests)

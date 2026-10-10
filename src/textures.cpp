@@ -204,6 +204,19 @@ Image cow_hide(Rng& rng) {
     return img;
 }
 
+// Torch: a stick in the two middle columns with a flame on top, see-through around it.
+// Only columns 7-8, rows 6-15 are drawn (see add_torch in world.cpp).
+Image torch(Rng& rng) {
+    Image img(TILE, TILE);
+    for (int y = 8; y < TILE; ++y)
+        for (int x = 7; x <= 8; ++x) img.at(x, y) = shade({120, 88, 50}, (x == 7 ? 1.05 : 0.85) * rng.uniform(0.92, 1.08));
+    img.at(7, 6) = {255, 250, 200, 255};
+    img.at(8, 6) = {255, 220, 120, 255};
+    img.at(7, 7) = {255, 190, 60, 255};
+    img.at(8, 7) = {230, 140, 40, 255};
+    return img;
+}
+
 std::function<Image(Rng&)> solid(Rgb c, double spread = 0.04) {
     return [=](Rng& rng) { return noise_tile(rng, c, spread); };
 }
@@ -298,7 +311,7 @@ std::map<int, Image> make_tiles(int seed) {
     const std::map<int, std::function<Image(Rng&)>> generators = {
         {T_GRASS_TOP, grass_top}, {T_GRASS_SIDE, grass_side}, {T_DIRT, dirt}, {T_STONE, stone},
         {T_COBBLE, cobble}, {T_SAND, sand}, {T_LOG_SIDE, log_side}, {T_LOG_TOP, log_top},
-        {T_LEAVES, leaves}, {T_PLANKS, planks}, {T_BEDROCK, bedrock}, {T_WATER, water}, {T_BRICK, brick},
+        {T_LEAVES, leaves}, {T_PLANKS, planks}, {T_TORCH, torch}, {T_BEDROCK, bedrock}, {T_WATER, water}, {T_BRICK, brick},
         {T_COW_HIDE, cow_hide}, {T_WHITE, solid({255, 255, 255}, 0)}, {T_HOOF, solid({70, 48, 35})},
         {T_COW_HEAD, solid({85, 60, 45})}, {T_SNOUT, solid({225, 165, 160})}, {T_BLACK, solid({16, 16, 16}, 0)},
         {T_HORN, solid({235, 230, 215})}, {T_LEAVES_FAST, leaves_fast},

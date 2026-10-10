@@ -17,6 +17,7 @@
 #include "renderer.h"
 #include "rng.h"
 #include "save.h"
+#include "sky.h"
 #include "survival.h"
 #include "world.h"
 
@@ -33,7 +34,6 @@ constexpr double FLY_SPEED = 11.0;
 constexpr double JUMP_SPEED = 8.4;
 constexpr double THIRD_PERSON_DISTANCE = 4.0;
 constexpr size_t MAX_COWS = 24;
-const glm::vec4 SKY(0.62f, 0.8f, 1.0f, 1.0f);
 
 struct GameSetup {
     std::filesystem::path world_dir;  // the world's folder in saves/

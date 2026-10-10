@@ -45,7 +45,7 @@ Table build() {
     Table t;
     // Real blocks first (not water). The crafting table, chest and furnace get their own icons below.
     for (int b = GRASS; b < BLOCK_COUNT; ++b) {
-        if (b == WATER) continue;
+        if (b == WATER || is_torch(b)) continue;  // the torch is a flat icon, added below
         const BlockInfo* info = block_info(b);
         t.cube(b, info->name, info->tiles[0], info->tiles[1], info->tiles[1]);
     }
@@ -57,7 +57,6 @@ Table build() {
     for (int c = 0; c < 16; ++c)
         t.cube(WHITE_WOOL + c, std::string(c == 0 ? "" : COLOR_NAMES[c]) + (c == 0 ? "Wool" : " Wool"), IT_WOOL + c,
                IT_WOOL + c, IT_WOOL + c);
-    t.cube(GLOWSTONE, "Glowstone", IT_GLOWSTONE, IT_GLOWSTONE, IT_GLOWSTONE);
     t.cube(PUMPKIN, "Pumpkin", IT_PUMPKIN_TOP, IT_PUMPKIN_FACE, IT_PUMPKIN_SIDE);
     t.cube(JACK_O_LANTERN, "Jack 'o' Lantern", IT_PUMPKIN_TOP, IT_JACK_FACE, IT_PUMPKIN_SIDE);
     t.cube(SANDSTONE, "Sandstone", IT_SANDSTONE_TOP, IT_SANDSTONE_SIDE, IT_SANDSTONE_SIDE);
@@ -224,6 +223,12 @@ const FoodInfo* food_info(ItemId id) {
 std::string item_name(ItemId id) {
     const ItemInfo* info = item_info(id);
     return info ? info->name : "";
+}
+
+ItemId current_item_id(ItemId id) {
+    if (id == OLD_TORCH_ITEM) return TORCH;
+    if (id == OLD_GLOWSTONE_ITEM) return GLOWSTONE;
+    return id;
 }
 
 int icon_tile(ItemId id) {

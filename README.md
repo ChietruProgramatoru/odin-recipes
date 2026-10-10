@@ -29,8 +29,16 @@ It runs on Windows (the main target) and Linux.
 - **Third-person view** (F5) shows your character: an original blocky figure with a red shirt and jeans.
 
   ![Third person](screenshots/third_person.png)
-- **Debug screen** (F3) with your position, chunk, facing, sky light, seed and frame rate. F1 hides the HUD and F2 saves a screenshot.
-- All textures and the font are drawn by the code itself (no image files), with smooth ambient-occlusion lighting and distance fog.
+- **Light**: every block has a sky light and a block light level from 0 to 15, like Beta. Sky light pours straight down from the open sky and spreads sideways one level less per block, so caves, overhangs and the ground under a roof get darker. Leaves dim it by 1 and water by 3 per block. Light is worked out again around every block you place or break.
+- **Torches and glowstone** give off light (14 and 15). Torches stand on top of a block or hang on its side, and fall off when that block is broken. Craft 4 torches from coal or charcoal above a stick, or take torches and glowstone from the creative item picker.
+- **Day and night**: a day lasts 20 minutes and a new world starts in the morning. The sun rises in the east and sets in the west with an orange glow, then the moon and stars come out. The sky and fog darken and the world gets dark at night (sky light drops by 11 levels), so torches matter.
+
+  ![Sunset](screenshots/sunset.png)
+
+  ![Night with a torch](screenshots/night.png)
+- **Clouds** drift slowly over the world at height 108: 3D boxes with Fancy graphics, a flat layer with Fast graphics. They can be turned off in Video Settings.
+- **Debug screen** (F3) with your position, chunk, facing, light level (sky and block), time of day, seed and frame rate. F1 hides the HUD and F2 saves a screenshot.
+- All textures and the font are drawn by the code itself (no image files), with smooth lighting (ambient occlusion plus light levels blended across each face) and distance fog.
 
 ## Build and run on Windows
 
@@ -79,8 +87,8 @@ Deleting the `build` folder deletes these too, so copy `saves/` somewhere safe f
 
 The **Options** button on the title screen (or in the pause menu) has:
 
-- **Invert Mouse** and mouse **Sensitivity**. Music, Sound, Difficulty and Clouds will be added along with sound, monsters and clouds.
-- **Video Settings**: **Graphics** Fancy (see-through leaves) or Fast (solid leaves), **Render Distance** Far (16 chunks), Normal (8, the default), Short (4) or Tiny (2), and **Smooth Lighting** on or off.
+- **Invert Mouse** and mouse **Sensitivity**. Music, Sound and Difficulty will be added along with sound and monsters.
+- **Video Settings**: **Graphics** Fancy (see-through leaves, 3D clouds) or Fast (solid leaves, flat clouds), **Render Distance** Far (16 chunks), Normal (8, the default), Short (4) or Tiny (2), **Smooth Lighting** on or off, and **Clouds** on or off.
 - **Controls**: click a key, then press the new key for it. A key used twice turns red.
 
 Command line:
@@ -102,7 +110,7 @@ These are the defaults. Every key except the F keys, Esc, H, R and 1–9 can be 
 | Left Shift | Sneak: walk slowly without falling off edges |
 | Double-tap W (and hold) | Sprint (not possible when hunger is 3 drumsticks or less; stops when you let go, sneak or hit a wall) |
 | Left mouse (hold) | Mine a block, or hit a cow |
-| Right mouse | Place the selected block, or eat the selected food |
+| Right mouse | Place the selected block (a torch goes on the top or side of the block you point at), or eat the selected food |
 | 1–9 / mouse wheel | Choose a hotbar slot |
 | Q | Drop one of the selected item |
 | E | Open or close the inventory (the item picker in creative) |
@@ -142,7 +150,7 @@ ctest --test-dir build --output-on-failure        # logic tests (add -C Release 
 xvfb-run -a -s "-screen 0 1280x720x24" ./build/PetrutzCraft --seed 7 --autotest OUT_DIR
 ```
 
-The second command plays a scripted game and saves screenshots plus `report.txt` to `OUT_DIR`: it opens the title and options screens, creates a world from the Create New World screen, finds a cow, kills it, picks up and eats the beef, mines and places a block, crafts planks and a crafting table in the inventory screen, puts on a chestplate, crafts a pickaxe on a placed crafting table, takes a stack from the creative item picker, falls, flies, takes F5 and F3 pictures, opens the pause menu, changes a block, saves and quits to the title, and loads the world again to check that everything came back. Its world and `options.txt` go in `OUT_DIR`, so your own saves are never touched. It exits with an error if any check fails. On Windows or a Linux desktop, run it without `xvfb-run`. GitHub runs both on every push (the screenshot test on Linux only, since GitHub's Windows machines have no graphics card).
+The second command plays a scripted game and saves screenshots plus `report.txt` to `OUT_DIR`: it opens the title and options screens, creates a world from the Create New World screen, finds a cow, kills it, picks up and eats the beef, mines and places a block, crafts planks and a crafting table in the inventory screen, puts on a chestplate, crafts a pickaxe on a placed crafting table, takes a stack from the creative item picker, falls, flies, takes F5 and F3 pictures, places a torch and glowstone and checks their light, takes pictures at night and at sunset, opens the pause menu, changes a block, saves and quits to the title, and loads the world again to check that everything came back. Its world and `options.txt` go in `OUT_DIR`, so your own saves are never touched. It exits with an error if any check fails. On Windows or a Linux desktop, run it without `xvfb-run`. GitHub runs both on every push (the screenshot test on Linux only, since GitHub's Windows machines have no graphics card).
 
 ## Project layout
 
@@ -158,9 +166,11 @@ src/
   options.cpp      options.txt and the key bindings
   json.cpp         a small JSON reader and writer
   zlib.cpp         zlib compression and decompression (for saves and PNG screenshots)
-  world.cpp        chunk storage, terrain generation, meshing (with ambient occlusion), ray casting
+  world.cpp        chunk storage, terrain generation, meshing (with ambient occlusion and light), ray casting
+  light.cpp        sky light and block light: lighting new chunks and updating light after block changes
+  sky.cpp          time of day: sun position, sky, fog and cloud colours, how dark the night is, the cloud map
   streamer.cpp     background threads that generate and mesh chunks
-  renderer.cpp     OpenGL shaders and drawing chunks, cows, items and the block outline
+  renderer.cpp     OpenGL shaders and drawing the sky, sun, moon, stars, clouds, chunks, cows, items and the block outline
   hud.cpp          crosshair, hotbar, hearts, hunger, text and overlays
   physics.cpp      box-vs-voxel collision used by the player, cows and items
   survival.cpp     the inventory, health, hunger and saturation
@@ -182,10 +192,12 @@ tests/             doctest logic tests (no window needed)
 
 ## Known limits
 
-- There are no tools, furnaces, day/night cycle, caves or hostile mobs yet.
-- No sound, music, clouds or monsters yet, and no options for them until they arrive. The F3 screen shows only whether the sky is open (real light levels come in M5).
-- Tools, armor, torches, doors, beds and most other crafted things don't do anything yet; they arrive with M3, M5, M11 and the other milestones. Chests and furnaces are plain blocks for now.
+- There are no furnaces, caves or hostile mobs yet.
+- No sound, music, weather or monsters yet, and no options for them until they arrive. Rain, snow, thunderstorms and beds come in a second M5 update, after biomes (M4).
+- Tools, armor, doors, beds and most other crafted things don't do anything yet; they arrive with M3, M5, M11 and the other milestones. Chests and furnaces are plain blocks for now.
 - Ingredients like iron, coal, string and dyes can't be found in survival yet (ores come in M4, mobs in M10); the creative item picker has them.
+- Glowstone drops itself when broken (Beta drops glowstone dust, which comes with the Nether in M14). Lava, fire, furnaces and jack-o'-lanterns will give off light once they exist.
+- Light levels are not stored in the save files: they are worked out again when a chunk is loaded.
 - The menus and text use only plain ASCII letters, numbers and symbols.
 - Worlds saved by this version can't be read by the Python version (or by Minecraft).
 - The same seed makes a different world than the Python version did, because the random numbers come from a different generator. The terrain rules are the same.
