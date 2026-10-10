@@ -7,6 +7,7 @@
 #include <vector>
 
 #include "blocks.h"
+#include "icons.h"
 #include "rng.h"
 
 namespace {
@@ -313,6 +314,7 @@ std::map<int, Image> make_tiles(int seed) {
         Rng rng(static_cast<uint64_t>(seed) * 100 + index);
         tiles[index] = gen(rng);
     }
+    tiles.merge(make_item_tiles());
     return tiles;
 }
 

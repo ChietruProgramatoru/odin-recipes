@@ -75,6 +75,9 @@ public:
     void set_instances(std::vector<ModelPart> instances) { instances_ = std::move(instances); }
     void set_outline(std::optional<glm::ivec3> block) { outline_ = block; }
     void draw(int width, int height, glm::vec3 eye, glm::vec3 forward);
+    // Draw models on their own into part of the window (like the player in the inventory screen),
+    // seen through `view_proj`, without fog. Leaves the viewport on that part of the window.
+    void draw_models(const std::vector<ModelPart>& parts, int x, int y, int width, int height, const glm::mat4& view_proj);
 
 private:
     struct ChunkGpu {

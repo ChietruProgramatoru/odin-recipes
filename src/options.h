@@ -12,7 +12,7 @@
 // Rebindable controls, in the order the Controls screen lists them.
 enum KeyAction : int {
     KEY_FORWARD, KEY_LEFT, KEY_BACK, KEY_RIGHT, KEY_JUMP, KEY_SNEAK,
-    KEY_INVENTORY, KEY_DROP, KEY_CRAFT, KEY_CREATIVE,
+    KEY_INVENTORY, KEY_DROP, KEY_CREATIVE,
     KEY_ACTION_COUNT
 };
 

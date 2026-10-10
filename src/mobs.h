@@ -6,9 +6,9 @@
 
 #include <glm/mat4x4.hpp>
 
-#include "blocks.h"
 #include "physics.h"
 #include "rng.h"
+#include "survival.h"
 #include "world.h"
 
 constexpr double COW_HALF_WIDTH = 0.45;
@@ -56,8 +56,8 @@ public:
 
 class ItemDrop {
 public:
-    ItemDrop(World& world, ItemId item, double x, double y, double z, Rng& rng);
-    ItemId item;
+    ItemDrop(World& world, Stack stack, double x, double y, double z, Rng& rng);
+    Stack stack;  // a whole stack lies on the ground as one item
     Body body;
     double age = 0;
     double pickup_delay = 0.5;  // seconds before it can be picked up (longer for items you throw)
