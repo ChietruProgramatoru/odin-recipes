@@ -12,6 +12,7 @@
 #include <glm/vec2.hpp>
 
 #include "app.h"
+#include "bed.h"
 #include "game.h"
 #include "inventory_screen.h"
 #include "menu.h"
@@ -264,22 +265,176 @@ void AutoTest::play(App& app, Game& g) {
         p.y = ground_y_;
         g.flying = false;
     }
-    if (f == 630) {
+    if (f >= 627 && f < 700) weather_and_beds(app, g);
+    if (f == 700) {
         app.pause();
         check("Escape menu pauses the game", g.paused && app.screen());
         shot(app, "7_pause.png");
     }
-    if (f == 640) {
+    if (f == 710) {
         // Change something, then save and quit to the title.
         marker_ = {static_cast<int>(std::floor(p.x)) + 2, static_cast<int>(std::floor(p.y)) + 1, static_cast<int>(std::floor(p.z))};
         g.renderer->rebuild(g.world.set_block(marker_.x, marker_.y, marker_.z, BRICK));
         g.inventory.add(PLANKS, 7);
         saved_player_ = g.player_data();
+        saved_raining_ = g.weather.state.raining;
         saved_cows_ = g.cows.size();
         app.save_and_quit_to_title();
         check("Save and Quit to Title closes the world", !app.game);
         phase_ = 2;
         phase_start_ = app.frame;
+    }
+}
+
+void AutoTest::weather_and_beds(App& app, Game& g) {
+    const long f = g.frame;
+    Body& p = g.player;
+    World& w = g.world;
+    Rng rng(9);
+    auto columns = [&] {
+        glm::vec3 e = g.eye();
+        return precipitation_columns(w, e, 10, g.weather.rain_strength());
+    };
+    if (f == 627) {
+        // Rain: a storm that has been going a while (full strength), clear of thunder.
+        g.weather = Weather(WeatherState{true, false, 100000, 100000});
+        g.yaw = 30;
+        g.pitch = 5;
+    }
+    if (f == 629) {
+        auto cols = columns();
+        float dark = g.current_sky().darkness;
+        check("rain falls around the player (" + std::to_string(cols.size()) + " columns) and dims the day (darkness " +
+                  std::to_string(dark) + ")",
+              !cols.empty() && !cols[0].snow && dark > 3 && dark < 4);
+        shot(app, "m5_rain.png");
+        // A thunderstorm, with a bolt striking 14 blocks ahead.
+        g.weather = Weather(WeatherState{true, true, 100000, 100000});
+        double yr = g.yaw * PI / 180;
+        int bx = static_cast<int>(std::floor(p.x + std::sin(yr) * 14)), bz = static_cast<int>(std::floor(p.z + std::cos(yr) * 14));
+        auto top = w.rain_height(bx, bz);
+        g.bolts.emplace_back(glm::dvec3(bx + 0.5, top ? *top : p.y, bz + 0.5), rng);
+        g.lightning_flash = LIGHTNING_FLASH_TICKS;
+    }
+    if (f == 631) {
+        check("a thunderstorm is going and the bolt shows", g.weather.is_thundering() && !g.bolts.empty() && g.bolts[0].visible());
+        shot(app, "m5_thunder.png");
+        g.bolts.clear();
+        // Snow: the same storm over a cold biome.
+        auto at = find_biome(w.generator(), static_cast<int>(p.x), static_cast<int>(p.z),
+                             {Biome::TAIGA, Biome::TUNDRA, Biome::ICE_DESERT});
+        check("found a cold biome for snow", at.has_value());
+        if (at) {
+            g.weather = Weather(WeatherState{true, false, 100000, 100000});
+            p.x = at->x + 0.5;
+            p.z = at->y + 0.5;
+            p.y = w.surface_y(at->x, at->y);
+            p.vy = 0;
+            g.flying = true;
+            g.yaw = 30;
+            g.pitch = 10;
+        }
+    }
+    if (f == 634) {
+        shot(app, "m5_snow.png");
+        auto cols = columns();
+        int snow = static_cast<int>(std::count_if(cols.begin(), cols.end(), [](const PrecipColumn& c) { return c.snow; }));
+        check("snow falls in the cold biome (" + std::to_string(snow) + " of " + std::to_string(cols.size()) + " columns)",
+              snow > static_cast<int>(cols.size()) / 2);
+    }
+    if (f == 636) {
+        // A bed: find four blocks of flat open ground in a row near the start, stand at one end
+        // facing east and right-click the ground two blocks ahead.
+        g.weather.clear();
+        g.flying = false;
+        g.creative = false;
+        g.level.time = 6000 + (g.level.time / DAY_TICKS) * DAY_TICKS;  // noon
+        std::optional<glm::ivec3> spot;
+        int x0 = static_cast<int>(tour_start_.x), z0 = static_cast<int>(tour_start_.z);
+        for (int r = 0; r < 40 && !spot; ++r)
+            for (int dx = -r; dx <= r && !spot; ++dx)
+                for (int dz = -r; dz <= r && !spot; ++dz) {
+                    if (std::max(std::abs(dx), std::abs(dz)) != r) continue;
+                    int x = x0 + dx, z = z0 + dz, sy = w.surface_y(x, z);
+                    bool ok = sy > SEA_LEVEL;
+                    for (int k = -2; k <= 1 && ok; ++k)
+                        ok = w.surface_y(x + k, z) == sy && is_opaque(w.get_block(x + k, sy - 1, z)) &&
+                             w.get_block(x + k, sy, z) == AIR && w.get_block(x + k, sy + 1, z) == AIR &&
+                             w.get_block(x + k, sy + 2, z) == AIR;
+                    if (ok) spot = glm::ivec3(x, sy, z);
+                }
+        check("found flat ground for a bed", spot.has_value());
+        if (!spot) return;
+        p.x = spot->x - 1.5;
+        p.y = spot->y;
+        p.z = spot->z + 0.5;
+        p.vx = p.vy = p.vz = 0;
+        g.yaw = 90;
+        g.pitch = degrees(std::atan2(EYE_HEIGHT, 2.0));
+        g.inventory.slots[g.inventory.selected] = Stack{BED, 1};
+        g.update_target();
+        g.use_item();
+        bed_foot_ = *spot;
+        bed_head_ = *spot + glm::ivec3(1, 0, 0);
+        bed_placed_ = w.get_block(bed_foot_.x, bed_foot_.y, bed_foot_.z) == BED_FOOT_EAST &&
+                      w.get_block(bed_head_.x, bed_head_.y, bed_head_.z) == BED_HEAD_EAST;
+        check("right-clicking the ground with a bed places both halves, facing the way the player looks", bed_placed_);
+        check("placing the bed used it up", !g.inventory.slots[g.inventory.selected]);
+        g.try_sleep(bed_foot_);
+        check("you can't sleep at noon", !g.sleeping_in);
+        // Step back and look at it.
+        p.x -= 1.5;
+        p.z -= 1.5;
+        face(g, bed_head_.x, bed_head_.z + 0.5, 30);
+    }
+    if (!bed_placed_) return;
+    if (f == 638) {
+        shot(app, "m5_bed.png");
+        g.level.time += 12000;  // midnight
+        g.try_sleep(bed_foot_);
+        check("at night, right-clicking the bed lies you down in it", g.sleeping_in == bed_head_);
+        g.sleep_ticks = SLEEP_TICKS / 2;
+    }
+    if (f == 640) {
+        shot(app, "m5_sleeping.png");
+        g.sleep_ticks = SLEEP_TICKS - 1;
+        g.weather = Weather(WeatherState{true, false, 100000, 100000});
+    }
+    if (f == 645) {
+        check("after sleeping the player gets up in the morning, by the bed",
+              !g.sleeping_in && g.level.time % DAY_TICKS < 100 &&
+                  std::hypot(p.x - (bed_head_.x + 0.5), p.z - (bed_head_.z + 0.5)) < 2.5);
+        check("sleeping clears the rain and sets the spawn point", !g.weather.state.raining && g.bed_spawn == bed_head_);
+        face(g, bed_head_.x + 0.5, bed_head_.z + 0.5, 30);
+    }
+    if (f == 647) {
+        shot(app, "m5_morning.png");
+        p.x += 40;
+        g.respawn();
+        check("respawning puts you by your bed",
+              std::hypot(p.x - (bed_head_.x + 0.5), p.z - (bed_head_.z + 0.5)) < 2.5 && std::abs(p.y - bed_head_.y) < 0.01);
+        size_t drops = g.drops.size();
+        g.break_block(bed_foot_, w.get_block(bed_foot_.x, bed_foot_.y, bed_foot_.z));
+        check("breaking one half removes the whole bed and drops it",
+              w.get_block(bed_head_.x, bed_head_.y, bed_head_.z) == AIR && g.drops.size() == drops + 1 &&
+                  g.drops.back()->stack.item == BED);
+        g.respawn();
+        check("with the bed gone you respawn at the world spawn",
+              !g.bed_spawn && std::hypot(p.x - g.spawn.x, p.z - g.spawn.z) < 0.01);
+        // Lightning hurts what it hits (not in creative).
+        int before = g.vitals.health;
+        g.strike({p.x + 1, p.y, p.z});
+        check("lightning does 5 damage (" + std::to_string(before) + " -> " + std::to_string(g.vitals.health) + ")",
+              g.vitals.health == before - LIGHTNING_DAMAGE);
+        g.vitals.health = before;
+        g.bolts.clear();
+        // Keep a bed spawn and some rain for the save and reload check.
+        g.bed_spawn = bed_head_;
+        g.weather = Weather(WeatherState{true, false, 100000, 100000});
+        g.creative = true;
+        p.x = tour_start_.x;
+        p.z = tour_start_.z;
+        p.y = ground_y_;
     }
 }
 
@@ -537,6 +692,8 @@ void AutoTest::reload(App& app) {
               std::abs(now.pos.x - saved_player_.pos.x) < 1e-6 && std::abs(now.pos.z - saved_player_.pos.z) < 1e-6 &&
                   now.health == saved_player_.health && now.hunger == saved_player_.hunger &&
                   now.inventory == saved_player_.inventory && now.creative == saved_player_.creative);
+        check("the bed spawn point and the weather are restored",
+              now.bed == saved_player_.bed && now.bed && g.weather.state.raining == saved_raining_ && saved_raining_);
         check("cows near the player are back (" + std::to_string(g.cows.size()) + " of " + std::to_string(saved_cows_) + ")",
               !g.cows.empty());
         shot(app, "9_reloaded.png");

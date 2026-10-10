@@ -335,6 +335,66 @@ Image torch(Rng& rng) {
     return img;
 }
 
+
+// --- Beds ------------------------------------------------------------------------
+// Red blanket, white pillow and a wooden frame. Tops point their head end up (row 0). Sides and
+// ends only use rows 7-15 (the bed is 9/16 tall): blanket, then frame, then legs.
+
+const Rgb BLANKET{158, 28, 28};
+const Rgb PILLOW{232, 232, 232};
+const Rgb FRAME{130, 96, 56};
+
+Image bed_top(Rng& rng, bool head) {
+    Image img(TILE, TILE);
+    for (int y = 0; y < TILE; ++y)
+        for (int x = 0; x < TILE; ++x) {
+            double f = rng.uniform(0.93, 1.07);
+            bool edge = x == 0 || x == TILE - 1;
+            Rgb c = BLANKET;
+            if (head && y >= 2 && y <= 6 && x >= 2 && x <= 13) c = PILLOW;      // pillow
+            if (head && y < 2) c = FRAME;                                     // headboard
+            if (!head && y == 0) f *= 0.8;                                    // fold of the blanket
+            if (!head && y == TILE - 1) f *= 0.75;                            // foot end
+            img.at(x, y) = shade(c, edge ? f * 0.8 : f);
+        }
+    return img;
+}
+
+// The long side: `leg_left` puts the leg at the left end (the foot half seen from the +x side).
+Image bed_side(Rng& rng, bool head, bool leg_left) {
+    Image img(TILE, TILE);
+    for (int y = 7; y < TILE; ++y)
+        for (int x = 0; x < TILE; ++x) {
+            double f = rng.uniform(0.93, 1.07);
+            if (y <= 9) {
+                bool pillow = head && y == 7 && x >= 9 && x <= 13;
+                img.at(x, y) = shade(pillow ? PILLOW : BLANKET, y == 9 ? f * 0.8 : f);
+            } else if (y <= 12) {
+                img.at(x, y) = shade(FRAME, y == 12 ? f * 0.75 : f);
+            } else {
+                bool leg = leg_left ? x <= 2 : x >= TILE - 3;
+                if (leg) img.at(x, y) = shade(FRAME, f * 0.7);
+            }
+        }
+    return img;
+}
+
+// The foot end (blanket over the frame) or the head end (headboard), with a leg at each corner.
+Image bed_end(Rng& rng, bool head) {
+    Image img(TILE, TILE);
+    for (int y = 7; y < TILE; ++y)
+        for (int x = 0; x < TILE; ++x) {
+            double f = rng.uniform(0.93, 1.07);
+            if (y <= 12) {
+                bool blanket = !head && y <= 9;
+                img.at(x, y) = shade(blanket ? BLANKET : FRAME, y == 12 || y == 9 ? f * 0.8 : f);
+            } else if (x <= 2 || x >= TILE - 3) {
+                img.at(x, y) = shade(FRAME, f * 0.7);
+            }
+        }
+    return img;
+}
+
 std::function<Image(Rng&)> solid(Rgb c, double spread = 0.04) {
     return [=](Rng& rng) { return noise_tile(rng, c, spread); };
 }
@@ -450,6 +510,12 @@ std::map<int, Image> make_tiles(int seed) {
         {T_LEAVES_ICON, coloured(leaves, foliage_color(ICON_TEMPERATURE, ICON_RAINFALL))},
         {T_BIRCH_LEAVES_ICON, coloured(leaves, BIRCH_COLOR)},
         {T_SPRUCE_LEAVES_ICON, coloured([](Rng& rng) { return spruce_leaves(rng, true); }, SPRUCE_COLOR)},
+        {T_BED_TOP_FOOT, [](Rng& rng) { return bed_top(rng, false); }},
+        {T_BED_TOP_HEAD, [](Rng& rng) { return bed_top(rng, true); }},
+        {T_BED_SIDE_FOOT, [](Rng& rng) { return bed_side(rng, false, true); }},
+        {T_BED_SIDE_HEAD, [](Rng& rng) { return bed_side(rng, true, false); }},
+        {T_BED_END_FOOT, [](Rng& rng) { return bed_end(rng, false); }},
+        {T_BED_END_HEAD, [](Rng& rng) { return bed_end(rng, true); }},
     };
     std::map<int, Image> tiles;
     for (const auto& [index, gen] : generators) {
@@ -475,4 +541,27 @@ std::map<std::string, Image> make_hud_icons() {
         {"heart_full", heart_full}, {"heart_half", halve(heart_full, heart_empty)}, {"heart_empty", heart_empty},
         {"food_full", food_full}, {"food_half", halve(food_full, food_empty)}, {"food_empty", food_empty},
     };
+}
+
+Image make_rain_image() {
+    // Thin streaks scattered so that the picture repeats up and down and sideways without a seam.
+    // One picture covers a column 1 block wide and 4 blocks tall (64 pixels a block, like Beta).
+    Image img(64, 256);
+    Rng rng(4242);
+    for (int i = 0; i < 48; ++i) {
+        int x = rng.below(64), y = rng.below(256), len = rng.randint(14, 30);
+        for (int k = 0; k < len; ++k) img.at(x, (y + k) % 256) = {205, 220, 255, static_cast<uint8_t>(60 + 120 * k / len)};
+    }
+    return img;
+}
+
+Image make_snow_image() {
+    // Flakes of 2x2 pixels, on a picture 1 block wide and 2 blocks tall.
+    Image img(64, 128);
+    Rng rng(4343);
+    for (int i = 0; i < 40; ++i) {
+        int x = rng.below(64), y = rng.below(128);
+        for (int k = 0; k < 4; ++k) img.at((x + (k & 1)) % 64, (y + (k >> 1)) % 128) = {255, 255, 255, 230};
+    }
+    return img;
 }

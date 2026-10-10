@@ -9,6 +9,7 @@
 #include <GLFW/glfw3.h>
 #include <glm/gtc/matrix_transform.hpp>
 
+#include "bed.h"
 #include "textures.h"
 #include "torch.h"
 
@@ -28,7 +29,9 @@ Game::Game(GLFWwindow* win, GLuint atlas, Painter& painter, const Options& opts,
       rng(setup.scripted ? 0 : std::random_device{}()),
       player(world, 0, 0, 0, 0.3, 1.8),
       painter_(painter),
-      scripted_(setup.scripted) {
+      scripted_(setup.scripted),
+      weather_rng_(setup.scripted ? 1 : std::random_device{}()) {
+    weather = Weather(level.weather);
     world.set_store(&saver->store());
     renderer = std::make_unique<WorldRenderer>(world, atlas, view_distance_chunks(options.view_distance));
     renderer->set_mesh_options({options.smooth_lighting, options.fancy_graphics});
@@ -92,6 +95,7 @@ void Game::restore_player(const PlayerData& p) {
     creative = p.creative;
     flying = p.flying;
     inventory = p.inventory;
+    bed_spawn = p.bed;
     if (vitals.dead()) on_death();
 }
 
@@ -107,6 +111,7 @@ PlayerData Game::player_data() const {
     p.creative = creative;
     p.flying = flying;
     p.inventory = inventory;
+    p.bed = bed_spawn;
     return p;
 }
 
@@ -212,6 +217,7 @@ bool Game::save(bool wait) {
     LevelData data = level;
     data.last_played = now_ms();
     data.spawn = spawn;
+    data.weather = weather.state;
     data.player = player_data();
     level.last_played = data.last_played;
     saver->save(std::move(data), std::move(copies));
@@ -222,6 +228,11 @@ bool Game::save(bool wait) {
 // --- camera ------------------------------------------------------------------------------
 
 glm::vec3 Game::eye() const {
+    if (sleeping_in) {
+        // Lying with the head on the pillow.
+        glm::vec3 d(FACING_DIRS[sleep_dir]);
+        return glm::vec3(*sleeping_in) + glm::vec3(0.5f, 0.75f, 0.5f) + d * 0.25f;
+    }
     float h = EYE_HEIGHT - (sneaking ? SNEAK_EYE_DROP : 0.0f);
     return {static_cast<float>(player.x), static_cast<float>(player.y + h), static_cast<float>(player.z)};
 }
@@ -305,7 +316,7 @@ void Game::on_key(int key, int action, int mods) {
         if (key == GLFW_KEY_R) respawn();
         return;
     }
-    if (paused) return;
+    if (paused || sleeping_in) return;  // asleep: nothing to do but wait for morning
     if (gui) {
         if (key == options.keys[KEY_INVENTORY]) {
             close_gui();
@@ -347,7 +358,7 @@ void Game::on_cursor(double x, double y) {
     cursor_x_ = x;
     cursor_y_ = y;
     have_cursor_ = true;
-    if (paused || vitals.dead() || scripted_ || gui) return;
+    if (paused || vitals.dead() || scripted_ || gui || sleeping_in) return;
     double k = options.degrees_per_pixel();
     yaw -= dx * k;
     pitch = std::clamp(pitch + dy * k * (options.invert_mouse ? -1 : 1), -89.9, 89.9);  // screen y grows downwards
@@ -358,7 +369,7 @@ void Game::on_mouse_button(int button, int action) {
         mouse_buttons_.erase(button);
         return;
     }
-    if (vitals.dead() || paused) return;
+    if (vitals.dead() || paused || sleeping_in) return;
     if (gui) {
         if (button != GLFW_MOUSE_BUTTON_LEFT && button != GLFW_MOUSE_BUTTON_RIGHT) return;
         int w, h;
@@ -400,8 +411,8 @@ void Game::update(double dt) {
     const bool dead = vitals.dead();
 
     if (!paused && !dead) {
-        move(dt);
-        if (gui) {
+        if (!sleeping_in) move(dt);
+        if (gui || sleeping_in) {
             target.reset();
         } else {
             update_target();
@@ -411,7 +422,10 @@ void Game::update(double dt) {
         use_cooldown -= dt;
         break_cooldown -= dt;
         attack_cooldown -= dt;
-        if (!creative && vitals.tick(dt)) hud->flash_damage();
+        if (!creative && vitals.tick(dt)) {
+            hud->flash_damage();
+            if (sleeping_in) wake_up(false);
+        }
     } else {
         target.reset();
         hud->set_mining(std::nullopt);
@@ -421,8 +435,12 @@ void Game::update(double dt) {
         update_cows(dt);
         update_drops(dt);
         ticks_ += dt * 20;
-        level.time += static_cast<int64_t>(ticks_);
-        ticks_ -= std::floor(ticks_);
+        const int whole = static_cast<int>(ticks_);
+        ticks_ -= whole;
+        for (int i = 0; i < whole; ++i) {
+            ++level.time;
+            tick_world();
+        }
         autosave_timer += dt;
         if (autosave_timer >= AUTOSAVE_INTERVAL) save(false);
     }
@@ -468,14 +486,14 @@ std::string Game::help_text() const {
 }
 
 std::string Game::debug_text() {
-    char buf[512];
+    char buf[640];
     int bx = ifloor(player.x), by = ifloor(player.y), bz = ifloor(player.z);
     // Beta's facing number: 0 south (+z), 1 west, 2 north, 3 east.
     int f = ifloor(-yaw / 90.0 + 0.5) & 3;
     static const char* FACING[4] = {"south", "west", "north", "east"};
     // Light where the player's feet are: sky light (dimmed at night) or block light, whichever is brighter.
     int sky = world.sky_light(bx, by, bz), blk = world.block_light(bx, by, bz);
-    int dimmed = std::max(0, sky - static_cast<int>(sky_darkness(celestial_angle(static_cast<double>(level.time)))));
+    int dimmed = std::max(0, sky - static_cast<int>(current_sky().darkness));
     int minutes = clock_minutes(level.time);
     std::snprintf(buf, sizeof buf,
                   "PetrutzCraft M5 (%.0f fps, %d chunk updates)\n"
@@ -485,11 +503,14 @@ std::string Game::debug_text() {
                   "Biome: %s\n"
                   "Light: %d (%d sky, %d block)\n"
                   "Time: day %lld, %02d:%02d\n"
+                  "Weather: %s (rain %.2f, thunder %.2f)\n"
                   "Seed: %lld\n"
                   "Chunks loaded: %zu   cows: %zu   items: %zu",
                   fps, renderer->jobs_in_flight(), player.x, bx, player.y, by, player.z, bz, chunk_of(bx), chunk_of(bz),
                   bx & 15, bz & 15, FACING[f], f, biome_name(world.generator().biome_at(bx, bz)), std::max(dimmed, blk),
                   sky, blk, static_cast<long long>(level.time / DAY_TICKS + 1), minutes / 60, minutes % 60,
+                  weather.is_thundering() ? "thunderstorm" : weather.is_raining() ? "rain" : "clear",
+                  weather.rain_strength(), weather.thunder_strength(),
                   static_cast<long long>(level.seed), world.chunk_count(), cows.size(), drops.size());
     return buf;
 }
@@ -497,10 +518,21 @@ std::string Game::debug_text() {
 void Game::draw(int w, int h) {
     glViewport(0, 0, w, h);
     glm::vec3 cam = camera();
-    SkyState sky = sky_state(static_cast<double>(level.time) + ticks_);
-    sky.show_clouds = options.clouds;
-    sky.fancy_clouds = options.fancy_graphics;
+    SkyState sky = current_sky();
+    // Rain and snow fall within 10 blocks of the camera with Fancy graphics, 5 with Fast (Beta).
+    std::vector<WorldRenderer::Bolt> shown;
+    for (const LightningBolt& b : bolts)
+        if (b.visible()) shown.push_back({b.pos, b.seed});
+    renderer->set_weather(precipitation_columns(world, cam, options.fancy_graphics ? 10 : 5, sky.rain), std::move(shown),
+                          (static_cast<double>(level.time % 72000) + ticks_) / 20);
     renderer->draw(w, h, cam, forward(), sky);
+    if (sleeping_in) {
+        // The screen fades to dark while falling asleep.
+        float a = std::min(1.0f, (sleep_ticks + static_cast<float>(ticks_)) / SLEEP_TICKS) * 0.85f;
+        painter_.begin(w, h);
+        painter_.rect(0, 0, static_cast<float>(w), static_cast<float>(h), 0.02f, 0.02f, 0.06f, a);
+        painter_.end();
+    }
 
     if (hud_hidden && !vitals.dead()) return;
     bool underwater = world.get_block(ifloor(cam.x), ifloor(cam.y), ifloor(cam.z)) == WATER;
@@ -679,6 +711,13 @@ void Game::break_block(glm::ivec3 pos, BlockId blk) {
             if (!creative) spawn_drop(TORCH, n.x + 0.5, n.y + 0.3, n.z + 0.5);
         }
     }
+    if (is_bed(blk)) {
+        // Both halves go, and one bed drops.
+        glm::ivec3 o = bed_other_half(pos, blk);
+        if (is_bed(world.get_block(o.x, o.y, o.z))) renderer->rebuild(world.set_block(o.x, o.y, o.z, AIR));
+        if (sleeping_in && (*sleeping_in == pos || *sleeping_in == o)) wake_up(false);
+        if (!creative) spawn_drop(BED, pos.x + 0.5, pos.y + 0.3, pos.z + 0.5);
+    }
     if (creative) return;
     vitals.exhaust(EXHAUST_BREAK);
     if (blk == LEAVES && rng.random() < 0.1) {
@@ -722,6 +761,11 @@ void Game::use_item() {
         open_gui(InventoryScreen::Kind::CraftingTable);
         return;
     }
+    if (target && !target_cow && is_bed(world.get_block(target->block.x, target->block.y, target->block.z))) {
+        mouse_buttons_.erase(GLFW_MOUSE_BUTTON_RIGHT);
+        try_sleep(target->block);
+        return;
+    }
     Inventory& inv = active_inventory();
     auto item = inv.selected_item();
     if (!item) return;
@@ -735,6 +779,20 @@ void Game::use_item() {
     }
     if (*item >= FUTURE_BLOCKS && target && !target_cow && target->before) {
         hud->show_message(item_name(*item) + " can't be placed yet", 2);
+        return;
+    }
+    if (*item == BED && target && !target_cow && target->before) {
+        auto bed = bed_placement(world, target->block, *target->before - target->block, facing_from_yaw(yaw));
+        if (!bed) return;
+        for (glm::ivec3 c : {bed->foot, bed->head}) {
+            const Body& b = player;
+            if (c.x + 1 > b.x - b.half && c.x < b.x + b.half && c.z + 1 > b.z - b.half && c.z < b.z + b.half &&
+                c.y + 1 > b.y && c.y < b.y + b.height)
+                return;  // not on top of yourself
+        }
+        renderer->rebuild(world.set_block(bed->foot.x, bed->foot.y, bed->foot.z, bed_block(bed->dir, false)));
+        renderer->rebuild(world.set_block(bed->head.x, bed->head.y, bed->head.z, bed_block(bed->dir, true)));
+        if (!creative) inv.take_selected();
         return;
     }
     if (!is_block(*item) || !target || target_cow || !target->before) return;
@@ -767,13 +825,128 @@ void Game::on_death() {
 
 void Game::respawn() {
     vitals.reset();
-    player.x = spawn.x;
-    player.y = spawn.y;
-    player.z = spawn.z;
+    glm::dvec3 at = spawn;
+    if (bed_spawn) {
+        // Next to the bed last slept in, if it is still there and not walled in (Beta).
+        if (auto spot = bed_stand_spot(world, *bed_spawn)) {
+            at = glm::dvec3(spot->x + 0.5, spot->y, spot->z + 0.5);
+        } else {
+            bed_spawn.reset();
+            hud->show_message("Your home bed was missing or obstructed", 4);
+        }
+    }
+    player.x = at.x;
+    player.y = at.y;
+    player.z = at.z;
     player.vx = player.vy = player.vz = 0;
     fall_peak = player.y;
     set_paused(false);
-    hud->show_message("Respawned");
+    if (!hud->has_message()) hud->show_message("Respawned");
+}
+
+// --- weather and beds ----------------------------------------------------------------------------
+
+SkyState Game::current_sky() const {
+    const float partial = static_cast<float>(ticks_);
+    float flash = lightning_flash > 0 ? std::min(1.0f, lightning_flash - partial) : 0.0f;
+    SkyState sky = sky_state(static_cast<double>(level.time) + ticks_, weather.rain_strength(partial),
+                             weather.thunder_strength(partial), flash);
+    sky.show_clouds = options.clouds;
+    sky.fancy_clouds = options.fancy_graphics;
+    return sky;
+}
+
+void Game::tick_world() {
+    weather.tick(weather_rng_);
+    if (lightning_flash > 0) --lightning_flash;
+    for (size_t i = 0; i < bolts.size();) {
+        bool reflash = false;
+        if (!bolts[i].tick(weather_rng_, reflash)) {
+            bolts.erase(bolts.begin() + static_cast<std::ptrdiff_t>(i));
+            continue;
+        }
+        if (reflash) strike(bolts[i].pos);
+        ++i;
+    }
+    if (weather.is_thundering()) {
+        // Beta rolls for lightning in every loaded chunk within 9 chunks of the player.
+        const int pcx = chunk_of(ifloor(player.x)), pcz = chunk_of(ifloor(player.z));
+        for (int cz = pcz - 9; cz <= pcz + 9; ++cz)
+            for (int cx = pcx - 9; cx <= pcx + 9; ++cx)
+                if (world.find(cx, cz))
+                    if (auto at = roll_lightning(world, cx, cz, weather_rng_)) {
+                        bolts.emplace_back(*at, weather_rng_);
+                        strike(*at);
+                    }
+    }
+    if (sleeping_in && !vitals.dead() && ++sleep_ticks >= SLEEP_TICKS) {
+        // Asleep long enough: skip to the next morning and clear the sky, like Beta.
+        level.time = next_morning(level.time);
+        weather.clear();
+        wake_up(true);
+    }
+}
+
+void Game::strike(glm::dvec3 pos) {
+    lightning_flash = LIGHTNING_FLASH_TICKS;
+    auto near = [&](const Body& b) { return b.distance_to(pos.x, pos.y, pos.z) <= LIGHTNING_REACH + 1; };
+    if (!creative && !vitals.dead() && near(player)) hurt_player(LIGHTNING_DAMAGE);
+    for (const auto& cow : cows)
+        if (cow->alive() && near(cow->body)) cow->hurt(LIGHTNING_DAMAGE, pos.x, pos.z);
+}
+
+void Game::hurt_player(int amount) {
+    if (!vitals.damage(amount)) return;
+    hud->flash_damage();
+    if (sleeping_in) wake_up(false);
+    if (vitals.dead()) on_death();
+}
+
+void Game::try_sleep(glm::ivec3 pos) {
+    if (sleeping_in) return;
+    BlockId b = world.get_block(pos.x, pos.y, pos.z);
+    if (!is_bed(b)) return;
+    if (!bed_is_head(b)) {
+        pos = bed_other_half(pos, b);
+        b = world.get_block(pos.x, pos.y, pos.z);
+        if (!is_bed(b) || !bed_is_head(b)) return;
+    }
+    if (!can_sleep(current_sky().darkness)) {
+        hud->show_message("You can only sleep at night", 2.5f);
+        return;
+    }
+    sleeping_in = pos;
+    sleep_dir = bed_dir(b);
+    hud->show_message("", 0);
+    sleep_ticks = 0;
+    flying = false;
+    sneaking = false;
+    close_gui();
+    // Lie on the bed, looking down it towards the foot.
+    glm::dvec3 d(FACING_DIRS[sleep_dir]);
+    player.x = pos.x + 0.5;
+    player.y = pos.y + block_height(b);
+    player.z = pos.z + 0.5;
+    player.vx = player.vy = player.vz = 0;
+    yaw = std::atan2(-d.x, -d.z) * 180 / PI;
+    pitch = 0;
+    fall_peak = player.y;
+}
+
+void Game::wake_up(bool set_spawn) {
+    if (!sleeping_in) return;
+    glm::ivec3 head = *sleeping_in;
+    sleeping_in.reset();
+    sleep_ticks = 0;
+    // Stand up next to the bed, or on top of it if there's no room.
+    glm::dvec3 at(head.x + 0.5, head.y + 1, head.z + 0.5);
+    if (auto spot = bed_stand_spot(world, head)) at = glm::dvec3(spot->x + 0.5, spot->y, spot->z + 0.5);
+    player.x = at.x;
+    player.y = at.y;
+    player.z = at.z;
+    player.vx = player.vy = player.vz = 0;
+    fall_peak = player.y;
+    if (set_spawn) bed_spawn = head;
 }
 
 // --- cows and drops -------------------------------------------------------------------------------

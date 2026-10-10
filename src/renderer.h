@@ -17,6 +17,7 @@
 #include "mobs.h"
 #include "sky.h"
 #include "streamer.h"
+#include "weather.h"
 #include "world.h"
 
 class ShaderProgram {
@@ -52,7 +53,7 @@ private:
 };
 
 // Upload an image as a pixel-crisp texture (v = 1 is the top row of the image).
-GLuint upload_texture(const Image& image);
+GLuint upload_texture(const Image& image, bool repeat = false);  // repeat: GL_REPEAT instead of clamping
 
 // Vertex for the sky, sun, moon, stars and clouds: position, uv and colour.
 struct SkyVertex {
@@ -104,6 +105,17 @@ public:
 
     void set_instances(std::vector<ModelPart> instances) { instances_ = std::move(instances); }
     void set_outline(std::optional<glm::ivec3> block) { outline_ = block; }
+    // Falling rain and snow around the player, and lightning bolts (position and zigzag seed).
+    // `seconds` moves the drops down.
+    struct Bolt {
+        glm::dvec3 pos;
+        uint64_t seed;
+    };
+    void set_weather(std::vector<PrecipColumn> columns, std::vector<Bolt> bolts, double seconds) {
+        precip_ = std::move(columns);
+        bolts_ = std::move(bolts);
+        weather_seconds_ = seconds;
+    }
     // Clears the screen to the fog colour and draws the sky, the world and the clouds.
     void draw(int width, int height, glm::vec3 eye, glm::vec3 forward, const SkyState& sky);
     // Draw models on their own into part of the window (like the player in the inventory screen),
@@ -113,6 +125,7 @@ public:
 private:
     void draw_sky(const glm::mat4& proj_rot, const SkyState& sky, float far_dist);
     void draw_clouds(const glm::mat4& proj_rot, glm::vec3 eye, const SkyState& sky, float far_dist);
+    void draw_weather(const glm::mat4& proj_rot, glm::vec3 eye, const SkyState& sky);
 
     struct ChunkGpu {
         GpuMesh solid, water;
@@ -137,4 +150,10 @@ private:
         bool operator==(const CloudKey&) const = default;
     };
     std::optional<CloudKey> cloud_key_;
+
+    GLuint rain_texture_ = 0, snow_texture_ = 0;
+    SkyMesh rain_, snow_, bolt_mesh_;
+    std::vector<PrecipColumn> precip_;
+    std::vector<Bolt> bolts_;
+    double weather_seconds_ = 0;
 };

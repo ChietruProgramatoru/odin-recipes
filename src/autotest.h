@@ -34,7 +34,8 @@ private:
     void menus(App& app);       // before the world exists
     void play(App& app, Game& g);  // the first visit to the world
     void tour(App& app, Game& g);  // fly to a desert, a cold biome and into a cave
-    void crafting(App& app, Game& g);  // the inventory, a crafting table and the creative item picker
+    void crafting(App& app, Game& g);
+    void weather_and_beds(App& app, Game& g);  // rain, snow, a thunderstorm, sleeping in a bed  // the inventory, a crafting table and the creative item picker
     void reload(App& app);      // quit to the title and load the world again
 
     std::string out_;
@@ -58,4 +59,8 @@ private:
     glm::ivec3 torch_{0}, glowstone_{0};
     int64_t day_time_ = 0;
     double ground_y_ = 0;
+    // Weather and beds.
+    glm::ivec3 bed_foot_{0}, bed_head_{0};
+    bool bed_placed_ = false;
+    bool saved_raining_ = false;
 };

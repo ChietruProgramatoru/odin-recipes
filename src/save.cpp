@@ -114,7 +114,7 @@ int region_index(int cx, int cz) { return (cz & (REGION_SIZE - 1)) * REGION_SIZE
 bool PlayerData::operator==(const PlayerData& o) const {
     return pos == o.pos && yaw == o.yaw && pitch == o.pitch && health == o.health && hunger == o.hunger &&
            saturation == o.saturation && exhaustion == o.exhaustion && creative == o.creative && flying == o.flying &&
-           inventory == o.inventory;
+           inventory == o.inventory && bed == o.bed;
 }
 
 // --- level.json ------------------------------------------------------------------------
@@ -127,6 +127,11 @@ std::string level_to_json(const LevelData& level) {
     j["time"] = static_cast<long long>(level.time);
     j["lastPlayed"] = static_cast<long long>(level.last_played);
     if (level.spawn) j["spawn"] = vec3(*level.spawn);
+    // Weather, with Beta's level.dat names.
+    j["raining"] = level.weather.raining;
+    j["rainTime"] = level.weather.rain_time;
+    j["thundering"] = level.weather.thundering;
+    j["thunderTime"] = level.weather.thunder_time;
     if (level.player) {
         const PlayerData& p = *level.player;
         Json& pj = j["player"];
@@ -139,6 +144,7 @@ std::string level_to_json(const LevelData& level) {
         pj["exhaustion"] = p.exhaustion;
         pj["creative"] = p.creative;
         pj["flying"] = p.flying;
+        if (p.bed) pj["bed"] = vec3(glm::dvec3(*p.bed));
         pj["selected"] = p.inventory.selected;
         Json inv = Json::array();
         auto put = [&](int index, const std::optional<Stack>& s) {
@@ -169,6 +175,10 @@ std::optional<LevelData> level_from_json(const std::string& text) {
     level.time = static_cast<int64_t>(std::max(0.0, j.number("time", 0)));
     level.last_played = static_cast<int64_t>(j.number("lastPlayed", 0));
     level.spawn = read_vec3(j.get("spawn"));
+    level.weather.raining = j.boolean("raining", false);
+    level.weather.rain_time = static_cast<int>(std::clamp(j.number("rainTime", 0), 0.0, 1e9));
+    level.weather.thundering = j.boolean("thundering", false);
+    level.weather.thunder_time = static_cast<int>(std::clamp(j.number("thunderTime", 0), 0.0, 1e9));
     if (const Json* pj = j.get("player"); pj && pj->is_object()) {
         auto pos = read_vec3(pj->get("pos"));
         if (pos) {
@@ -182,6 +192,9 @@ std::optional<LevelData> level_from_json(const std::string& text) {
             p.exhaustion = std::clamp(pj->number("exhaustion", 0), 0.0, 4.0);
             p.creative = pj->boolean("creative", false);
             p.flying = p.creative && pj->boolean("flying", false);
+            auto bed = read_vec3(pj->get("bed"));
+            if (bed && std::abs(bed->x) < 3e7 && std::abs(bed->y) < 3e7 && std::abs(bed->z) < 3e7)
+                p.bed = glm::ivec3(std::floor(bed->x), std::floor(bed->y), std::floor(bed->z));
             p.inventory.selected = std::clamp(static_cast<int>(pj->number("selected", 0)), 0, Inventory::HOTBAR - 1);
             if (const Json* inv = pj->get("inventory"); inv && inv->is_array())
                 for (const Json& s : inv->items()) {

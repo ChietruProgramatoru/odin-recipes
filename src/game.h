@@ -18,6 +18,7 @@
 #include "rng.h"
 #include "save.h"
 #include "sky.h"
+#include "weather.h"
 #include "survival.h"
 #include "world.h"
 
@@ -69,6 +70,17 @@ public:
     bool was_on_ground = true;
     double walk_phase = 0, walk_amount = 0;  // for the third-person model
 
+    // Weather (rain, snow, thunder) and the lightning bolts showing right now.
+    Weather weather;
+    std::vector<LightningBolt> bolts;
+    int lightning_flash = 0;  // ticks left of the sky flashing white
+    // Beds: the head of the bed the player last slept in (they respawn next to it), and the bed
+    // they are lying in right now with how many ticks they have been asleep.
+    std::optional<glm::ivec3> bed_spawn;
+    std::optional<glm::ivec3> sleeping_in;
+    int sleep_ticks = 0;
+    int sleep_dir = 0;  // facing of that bed (foot to head)
+
     std::vector<std::unique_ptr<Cow>> cows;
     std::vector<std::unique_ptr<ItemDrop>> drops;
     std::optional<glm::ivec3> mining_pos;
@@ -99,6 +111,16 @@ public:
     // Throw a stack forwards from the player's eyes, like Q does.
     void throw_stack(const Stack& stack);
     void respawn();
+    // Right-clicking a bed: lie down if it is night (or a thunderstorm), else say why not.
+    void try_sleep(glm::ivec3 bed_pos);
+    // Get out of bed; morning sets the bed as the spawn point.
+    void wake_up(bool set_spawn);
+    // One game tick (20 a second) of the world: weather, lightning and sleeping.
+    void tick_world();
+    // The sky for this frame, weather included.
+    SkyState current_sky() const;
+    // Lightning strikes at a spot: hurts what is near it and flashes the sky.
+    void strike(glm::dvec3 pos);
     void set_paused(bool p);
     // Video settings or render distance changed.
     void apply_options();
@@ -147,4 +169,6 @@ private:
     bool have_cursor_ = false;
     double cursor_x_ = 0, cursor_y_ = 0;
     double ticks_ = 0;  // fraction of a game tick not yet added to level.time
+    Rng weather_rng_;   // its own random numbers, so weather doesn't change what cows do
+    void hurt_player(int amount);
 };
