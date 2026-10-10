@@ -230,7 +230,7 @@ void GpuMesh::draw(GLenum mode) const {
     glDrawElements(mode, count_, GL_UNSIGNED_INT, nullptr);
 }
 
-GLuint upload_texture(const Image& image) {
+GLuint upload_texture(const Image& image, bool repeat) {
     // OpenGL's first row is the bottom one, so upload the image upside down.
     std::vector<Rgba> flipped(image.pixels.size());
     for (int y = 0; y < image.height; ++y)
@@ -242,8 +242,9 @@ GLuint upload_texture(const Image& image) {
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, image.width, image.height, 0, GL_RGBA, GL_UNSIGNED_BYTE, flipped.data());
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    GLint wrap = repeat ? GL_REPEAT : GL_CLAMP_TO_EDGE;
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, wrap);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, wrap);
     return tex;
 }
 
@@ -317,6 +318,8 @@ WorldRenderer::WorldRenderer(World& world, GLuint atlas, int rd)
       sky_program_(SKY_VERTEX_SRC, SKY_FRAGMENT_SRC) {
     for (auto& [id, mesh] : build_models()) models_.emplace(id, GpuMesh(mesh));
     sky_texture_ = upload_texture(make_sky_image());
+    rain_texture_ = upload_texture(make_rain_image(), true);
+    snow_texture_ = upload_texture(make_snow_image(), true);
 
     // A flat ceiling 16 blocks above the camera, coloured with the sky colour and fogged towards
     // the horizon, like Beta's sky.
@@ -451,7 +454,7 @@ void WorldRenderer::draw_sky(const glm::mat4& proj_rot, const SkyState& sky, flo
         stars_.draw();
     }
     glUniform1i(textured, 1);
-    glUniform4f(tint, 1, 1, 1, 1);
+    glUniform4f(tint, 1, 1, 1, sky.sun_alpha);  // rain clouds hide the sun and moon
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, sky_texture_);
     sun_.draw();
@@ -499,6 +502,84 @@ void WorldRenderer::draw_clouds(const glm::mat4& proj_rot, glm::vec3 eye, const 
     } else {
         clouds_.draw();
     }
+}
+
+void WorldRenderer::draw_weather(const glm::mat4& proj_rot, glm::vec3 eye, const SkyState& sky) {
+    if (precip_.empty() && bolts_.empty()) return;
+    // Drawn around a camera at the origin like the sky, so positions are relative to the eyes.
+    sky_program_.use();
+    glm::mat4 model = glm::translate(glm::mat4(1.0f), -eye);
+    glUniformMatrix4fv(sky_program_.uniform("mvp"), 1, GL_FALSE, glm::value_ptr(proj_rot));
+    glUniformMatrix4fv(sky_program_.uniform("model"), 1, GL_FALSE, glm::value_ptr(model));
+    glUniform1f(sky_program_.uniform("fog_end"), 0);
+    glUniform4f(sky_program_.uniform("tint"), 1, 1, 1, 1);
+    glUniform1i(sky_program_.uniform("image"), 0);
+    glEnable(GL_DEPTH_TEST);
+    glDisable(GL_CULL_FACE);
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+    // Rain and snow: one upright quad per column, turned to face the camera, with the drops
+    // scrolling down it. Each column starts the picture at its own height so they don't line up.
+    std::vector<SkyVertex> rain, snow;
+    const float t = static_cast<float>(weather_seconds_);
+    for (const PrecipColumn& c : precip_) {
+        glm::vec2 d(c.x + 0.5f - eye.x, c.z + 0.5f - eye.z);
+        float len = glm::length(d);
+        glm::vec2 side = len > 0.01f ? glm::vec2(-d.y, d.x) / len * 0.5f : glm::vec2(0.5f, 0);
+        glm::vec3 a(c.x + 0.5f - side.x, c.bottom, c.z + 0.5f - side.y), b(c.x + 0.5f + side.x, c.bottom, c.z + 0.5f + side.y);
+        glm::vec3 a2(a.x, c.top, a.z), b2(b.x, c.top, b.z);
+        uint32_t ux = static_cast<uint32_t>(c.x), uz = static_cast<uint32_t>(c.z);
+        uint32_t h = ux * 3121u + ux * ux * 45238971u + uz * uz * 418711u + uz * 13761u;
+        float jitter = static_cast<float>(h % 97) / 97.0f;
+        float level = std::max((c.light >> 4) - sky.darkness, static_cast<float>(c.light & 15));
+        float bright = light_brightness(level);
+        glm::vec4 col(bright, bright, bright, c.alpha);
+        if (c.snow) {
+            // Snow drifts slowly, and sideways a little.
+            float v = t * 0.6f + jitter, u = std::sin(t * 0.7f + jitter * 6.28f) * 0.15f + jitter;
+            add_sky_quad(snow, a, b, b2, a2, col, {u, c.bottom / 2 + v, u + 1, c.top / 2 + v});
+        } else {
+            float v = t * 2.5f + jitter;
+            add_sky_quad(rain, a, b, b2, a2, col, {jitter, c.bottom / 4 + v, jitter + 1, c.top / 4 + v});
+        }
+    }
+    glUniform1i(sky_program_.uniform("textured"), 1);
+    glActiveTexture(GL_TEXTURE0);
+    if (!rain.empty()) {
+        rain_.set(rain);
+        glBindTexture(GL_TEXTURE_2D, rain_texture_);
+        rain_.draw();
+    }
+    if (!snow.empty()) {
+        snow_.set(snow);
+        glBindTexture(GL_TEXTURE_2D, snow_texture_);
+        snow_.draw();
+    }
+
+    // Lightning: bright see-through ribbons along the zigzag, a thin core in a wider glow,
+    // added to what is behind them like Beta's bolt.
+    if (!bolts_.empty()) {
+        std::vector<SkyVertex> tris;
+        for (const Bolt& bolt : bolts_) {
+            auto path = lightning_path(bolt.seed);
+            glm::vec3 base(bolt.pos);
+            for (float w : {0.1f, 0.25f, 0.45f}) {
+                glm::vec4 col(0.45f, 0.45f, 0.5f, 0.6f);
+                for (size_t i = 0; i + 1 < path.size(); ++i) {
+                    glm::vec3 p = base + path[i], q = base + path[i + 1];
+                    for (glm::vec3 off : {glm::vec3(w, 0, 0), glm::vec3(0, 0, w)})
+                        add_sky_quad(tris, p - off, p + off, q + off, q - off, col);
+                }
+            }
+        }
+        bolt_mesh_.set(tris);
+        glUniform1i(sky_program_.uniform("textured"), 0);
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE);
+        bolt_mesh_.draw();
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    }
+    glUniform1i(sky_program_.uniform("textured"), 0);
 }
 
 void WorldRenderer::draw(int width, int height, glm::vec3 eye, glm::vec3 forward, const SkyState& sky) {
@@ -577,6 +658,7 @@ void WorldRenderer::draw(int width, int height, glm::vec3 eye, glm::vec3 forward
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
     glDepthMask(GL_FALSE);
     for (const auto& [pos, gpu] : meshes_) gpu.water.draw();
+    draw_weather(proj_rot, eye, sky);
     glDepthMask(GL_TRUE);
 
     // Leave the state the 2D HUD expects.

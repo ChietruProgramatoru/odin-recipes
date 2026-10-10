@@ -4,6 +4,7 @@
 #include <cmath>
 #include <limits>
 
+#include "bed.h"
 #include "textures.h"
 
 namespace {
@@ -181,6 +182,23 @@ std::vector<ChunkPos> World::set_block(int x, int y, int z, BlockId block) {
     return dirty;
 }
 
+std::optional<int> World::rain_height(int x, int z) {
+    Chunk* c = find(chunk_of(x), chunk_of(z));
+    if (!c) return std::nullopt;
+    int lx = x & 15, lz = z & 15;
+    for (int y = std::min(c->max_y, HEIGHT - 1); y >= 0; --y) {
+        BlockId b = c->blocks[Chunk::index(lx, y, lz)];
+        if (is_solid(b) || is_fluid(b)) return y + 1;
+    }
+    return 0;
+}
+
+std::optional<Biome> World::biome_at(int x, int z) {
+    Chunk* c = find(chunk_of(x), chunk_of(z));
+    if (!c) return std::nullopt;
+    return c->climate.biome(((z & 15) << 4) | (x & 15));
+}
+
 int World::surface_y(int x, int z) {
     chunk(chunk_of(x), chunk_of(z));
     for (int y = HEIGHT - 1; y >= 0; --y)
@@ -192,8 +210,18 @@ bool World::box_collides(double x0, double y0, double z0, double x1, double y1, 
     for (int bx = ifloor(x0); bx <= ifloor(x1); ++bx)
         for (int by = ifloor(y0); by <= ifloor(y1); ++by)
             for (int bz = ifloor(z0); bz <= ifloor(z1); ++bz)
-                if (is_solid(get_block(bx, by, bz))) return true;
+                if (BlockId b = get_block(bx, by, bz); is_solid(b) && y0 < by + block_height(b)) return true;
     return false;
+}
+
+double World::box_top(double x0, double y0, double z0, double x1, double y1, double z1) {
+    double top = y0;
+    for (int bx = ifloor(x0); bx <= ifloor(x1); ++bx)
+        for (int by = ifloor(y0); by <= ifloor(y1); ++by)
+            for (int bz = ifloor(z0); bz <= ifloor(z1); ++bz)
+                if (BlockId b = get_block(bx, by, bz); is_solid(b) && y0 < by + block_height(b))
+                    top = std::max(top, by + static_cast<double>(block_height(b)));
+    return top;
 }
 
 bool World::box_in_water(double x0, double y0, double z0, double x1, double y1, double z1) {
@@ -340,6 +368,44 @@ void add_fire(MeshData& mesh, float wx, float wy, float wz, uint8_t light) {
     }
 }
 
+// Part of a tile: a pixel rectangle, rows counted from the top.
+std::array<float, 4> sub_uv(int tile, float px0, float py0, float px1, float py1) {
+    auto uv = tile_uv(tile);
+    float du = (uv[2] - uv[0]) / 16, dv = (uv[3] - uv[1]) / 16;
+    return {uv[0] + px0 * du, uv[3] - py1 * dv, uv[0] + px1 * du, uv[3] - py0 * dv};
+}
+
+// One half of a bed: a slab from 3/16 to 9/16 up with legs at the outer corners (the legs are
+// drawn by the see-through bottom rows of the side tiles). Built pointing south (head towards
+// +z), then turned to the bed's facing.
+void add_bed(MeshData& mesh, float wx, float wy, float wz, BlockId blk, uint8_t light) {
+    constexpr float H = 9.0f / 16, B = 3.0f / 16;
+    const bool head = bed_is_head(blk);
+    const glm::ivec3 f = FACING_DIRS[bed_dir(blk)];
+    const glm::vec3 fwd(f), right(f.z, 0, -f.x);
+    auto place = [&](glm::vec3 p) {
+        glm::vec3 c = p - glm::vec3(0.5f, 0, 0.5f);
+        return glm::vec3(wx + 0.5f, wy + p.y, wz + 0.5f) + right * c.x + fwd * c.z;
+    };
+    auto face = [&](std::array<glm::vec3, 4> pts, glm::vec3 normal, std::array<float, 4> uv) {
+        for (auto& p : pts) p = place(p);
+        glm::vec3 n = right * normal.x + fwd * normal.z + glm::vec3(0, normal.y, 0);
+        float shade = n.y > 0 ? 1.0f : n.y < 0 ? 0.5f : std::abs(n.x) > 0.5f ? 0.8f : 0.68f;
+        mesh.quad_points(pts, uv, shade, sky_of(light), block_of(light));
+    };
+    const int side = head ? T_BED_SIDE_HEAD : T_BED_SIDE_FOOT;
+    auto side_uv = sub_uv(side, 0, 7, 16, 16);
+    auto flipped = std::array<float, 4>{side_uv[2], side_uv[1], side_uv[0], side_uv[3]};
+    face({{{0, H, 0}, {1, H, 0}, {1, H, 1}, {0, H, 1}}}, {0, 1, 0}, tile_uv(head ? T_BED_TOP_HEAD : T_BED_TOP_FOOT));
+    face({{{0, B, 1}, {1, B, 1}, {1, B, 0}, {0, B, 0}}}, {0, -1, 0}, tile_uv(T_PLANKS));
+    face({{{1, 0, 0}, {1, 0, 1}, {1, H, 1}, {1, H, 0}}}, {1, 0, 0}, side_uv);
+    face({{{0, 0, 1}, {0, 0, 0}, {0, H, 0}, {0, H, 1}}}, {-1, 0, 0}, flipped);
+    if (head)
+        face({{{1, 0, 1}, {0, 0, 1}, {0, H, 1}, {1, H, 1}}}, {0, 0, 1}, sub_uv(T_BED_END_HEAD, 0, 7, 16, 16));
+    else
+        face({{{0, 0, 0}, {1, 0, 0}, {1, H, 0}, {0, H, 0}}}, {0, 0, -1}, sub_uv(T_BED_END_FOOT, 0, 7, 16, 16));
+}
+
 }  // namespace
 
 ChunkMesh build_mesh(const Padded& P, const PaddedLight& L, int cx, int cz, int max_y, MeshOptions options,
@@ -370,6 +436,10 @@ ChunkMesh build_mesh(const Padded& P, const PaddedLight& L, int cx, int cz, int 
                 }
                 if (blk == FIRE) {
                     add_fire(mesh.solid, wx, wy, wz, L[i]);
+                    continue;
+                }
+                if (is_bed(blk)) {
+                    add_bed(mesh.solid, wx, wy, wz, blk, L[i]);
                     continue;
                 }
                 if (blk == WATER) {

@@ -68,6 +68,8 @@ add_library(petrutz_core STATIC
   src/biome.cpp
   src/light.cpp
   src/sky.cpp
+  src/weather.cpp
+  src/bed.cpp
   src/streamer.cpp
   src/physics.cpp
   src/survival.cpp
@@ -121,6 +123,7 @@ add_executable(petrutz_tests
   tests/test_misc.cpp
   tests/test_save.cpp
   tests/test_light.cpp
-  tests/test_tools.cpp)
+  tests/test_tools.cpp
+  tests/test_weather.cpp)
 target_link_libraries(petrutz_tests PRIVATE petrutz_core doctest_header)
 add_test(NAME logic COMMAND petrutz_tests)

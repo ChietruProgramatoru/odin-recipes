@@ -55,15 +55,51 @@ int clock_minutes(int64_t time) {
     return static_cast<int>((t * 1440 / DAY_TICKS + 6 * 60) % 1440);
 }
 
-SkyState sky_state(double time) {
+float light_brightness(float level) {
+    float f = 1 - std::clamp(level, 0.0f, 15.0f) / 15;
+    return (1 - f) / (f * 3 + 1) * 0.95f + 0.05f;
+}
+
+float weather_darkness(float angle, float rain, float thunder) {
+    return (1 - daylight_factor(angle) * (1 - rain * 5 / 16) * (1 - thunder * 5 / 16)) * 11;
+}
+
+namespace {
+// Beta greys a colour towards its brightness times `grey`, by `amount`.
+glm::vec3 grey_out(glm::vec3 c, float grey, float amount) {
+    float g = (c.r * 0.3f + c.g * 0.59f + c.b * 0.11f) * grey;
+    return c * (1 - amount) + glm::vec3(g) * amount;
+}
+}  // namespace
+
+SkyState sky_state(double time, float rain, float thunder, float flash) {
     SkyState s;
     s.angle = celestial_angle(time);
-    s.darkness = sky_darkness(s.angle);
-    s.stars = star_brightness(s.angle);
+    s.rain = rain;
+    s.thunder = thunder;
+    s.flash = flash;
+    s.darkness = weather_darkness(s.angle, rain, thunder);
+    s.sun_alpha = 1 - rain;
+    s.stars = star_brightness(s.angle) * (1 - rain);
     s.sky = sky_color(s.angle);
     s.fog = fog_color(s.angle);
     s.clouds = cloud_color(s.angle);
     s.sunset = sunset_color(s.angle);
+    // Beta's weather colours (World.getSkyColor, getCloudColor and the renderer's fog colour).
+    if (rain > 0) {
+        s.sky = grey_out(s.sky, 0.6f, rain * 0.75f);
+        s.clouds = grey_out(s.clouds, 0.6f, rain * 0.95f);
+        s.fog *= glm::vec3(1 - rain * 0.5f, 1 - rain * 0.5f, 1 - rain * 0.4f);
+    }
+    if (thunder > 0) {
+        s.sky = grey_out(s.sky, 0.2f, thunder * 0.75f);
+        s.clouds = grey_out(s.clouds, 0.2f, thunder * 0.95f);
+        s.fog *= 1 - thunder * 0.5f;
+    }
+    if (flash > 0) {
+        float f = std::min(flash, 1.0f) * 0.45f;
+        s.sky = s.sky * (1 - f) + glm::vec3(0.8f, 0.8f, 1.0f) * f;
+    }
     // The map repeats every CLOUD_MAP cells, so the drift can wrap without a visible jump.
     s.cloud_offset = std::fmod(time / 20 * CLOUD_SPEED, static_cast<double>(CLOUD_MAP) * CLOUD_CELL);
     return s;

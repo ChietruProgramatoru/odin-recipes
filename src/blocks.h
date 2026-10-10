@@ -18,6 +18,10 @@ enum Block : BlockId {
     // World generation (M4).
     GRAVEL, CLAY_BLOCK, SANDSTONE, COAL_ORE, IRON_ORE, GOLD_ORE, DIAMOND_ORE, REDSTONE_ORE, LAPIS_ORE,
     MOSSY_COBBLE, SPAWNER, LAVA, ICE, BIRCH_LOG, SPRUCE_LOG, BIRCH_LEAVES, SPRUCE_LEAVES,
+    // Beds (M5): the foot and head halves, named by the way the head points from the foot.
+    // Placed from the BED item (see items.h); breaking either half removes both and drops one bed.
+    BED_FOOT_SOUTH, BED_FOOT_WEST, BED_FOOT_NORTH, BED_FOOT_EAST,
+    BED_HEAD_SOUTH, BED_HEAD_WEST, BED_HEAD_NORTH, BED_HEAD_EAST,
     // Tools (M3): fire lit with flint and steel. It burns out by itself; spreading comes in M6.
     FIRE,
     BLOCK_COUNT
@@ -44,6 +48,9 @@ enum Tile : int {
     // Grass and leaves tiles are grey and tinted by biome in the world (see BlockTint). These are
     // the same tiles coloured in, for hotbar icons and dropped items.
     T_GRASS_TOP_ICON, T_GRASS_ICON, T_LEAVES_ICON, T_BIRCH_LEAVES_ICON, T_SPRUCE_LEAVES_ICON,
+    // Beds: the top of each half (the head end of the picture points to the head), the long sides
+    // and the two ends. The bottom 3 rows of the side and end tiles are see-through except the legs.
+    T_BED_TOP_FOOT, T_BED_TOP_HEAD, T_BED_SIDE_FOOT, T_BED_SIDE_HEAD, T_BED_END_FOOT, T_BED_END_HEAD,
     // Fire, then armor worn on the player model: leather, chain, iron, gold, diamond.
     T_FIRE, T_ARMOR_LEATHER, T_ARMOR_CHAIN, T_ARMOR_IRON, T_ARMOR_GOLD, T_ARMOR_DIAMOND,
     TILE_COUNT
@@ -79,6 +86,9 @@ bool is_cutout(BlockId id);
 bool is_torch(BlockId id);  // floor or wall torch (drawn as a thin stick, not a cube)
 // Not a cube and nothing to bump into: torches and fire. Faces next to them are drawn.
 bool is_thin(BlockId id);
+bool is_bed(BlockId id);    // either half of a bed
+// How tall a solid block is for walking on it: 1, or 9/16 for a bed.
+float block_height(BlockId id);
 // Light (0-15): how much a block dims light passing into it, and how much it gives off.
 int light_opacity(BlockId id);
 int light_emission(BlockId id);

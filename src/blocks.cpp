@@ -44,6 +44,15 @@ const BlockInfo BLOCKS[BLOCK_COUNT] = {
     {"Spruce Log", {T_LOG_TOP, T_SPRUCE_LOG_SIDE, T_LOG_TOP}, 2.0f, SPRUCE_LOG},
     {"Birch Leaves", {T_LEAVES, T_LEAVES, T_LEAVES}, 0.2f, std::nullopt},
     {"Spruce Leaves", {T_SPRUCE_LEAVES, T_SPRUCE_LEAVES, T_SPRUCE_LEAVES}, 0.2f, std::nullopt},
+    // Beds drop nothing themselves: Game::break_block drops one bed for the pair.
+    {"Bed", {T_BED_TOP_FOOT, T_BED_SIDE_FOOT, T_PLANKS}, 0.2f, std::nullopt},
+    {"Bed", {T_BED_TOP_FOOT, T_BED_SIDE_FOOT, T_PLANKS}, 0.2f, std::nullopt},
+    {"Bed", {T_BED_TOP_FOOT, T_BED_SIDE_FOOT, T_PLANKS}, 0.2f, std::nullopt},
+    {"Bed", {T_BED_TOP_FOOT, T_BED_SIDE_FOOT, T_PLANKS}, 0.2f, std::nullopt},
+    {"Bed", {T_BED_TOP_HEAD, T_BED_SIDE_HEAD, T_PLANKS}, 0.2f, std::nullopt},
+    {"Bed", {T_BED_TOP_HEAD, T_BED_SIDE_HEAD, T_PLANKS}, 0.2f, std::nullopt},
+    {"Bed", {T_BED_TOP_HEAD, T_BED_SIDE_HEAD, T_PLANKS}, 0.2f, std::nullopt},
+    {"Bed", {T_BED_TOP_HEAD, T_BED_SIDE_HEAD, T_PLANKS}, 0.2f, std::nullopt},
     {"Fire", {T_FIRE, T_FIRE, T_FIRE}, 0.0f, std::nullopt},
 };
 
@@ -58,9 +67,13 @@ bool is_fluid(BlockId id) { return id == WATER || id == LAVA; }
 bool is_leaves(BlockId id) { return id == LEAVES || id == BIRCH_LEAVES || id == SPRUCE_LEAVES; }
 bool is_cutout(BlockId id) { return id == SPAWNER; }
 bool is_torch(BlockId id) { return id >= TORCH && id <= TORCH_WALL_SOUTH; }
+bool is_bed(BlockId id) { return id >= BED_FOOT_SOUTH && id <= BED_HEAD_EAST; }
+float block_height(BlockId id) { return is_bed(id) ? 9.0f / 16 : 1.0f; }
 bool is_thin(BlockId id) { return is_torch(id) || id == FIRE; }
 bool is_solid(BlockId id) { return id != AIR && !is_fluid(id) && !is_thin(id); }
-bool is_opaque(BlockId id) { return id != AIR && !is_fluid(id) && id != ICE && !is_cutout(id) && !is_thin(id); }
+bool is_opaque(BlockId id) {
+    return id != AIR && !is_fluid(id) && id != ICE && !is_cutout(id) && !is_thin(id) && !is_bed(id);
+}
 bool is_block(ItemId id) { return block_info(id) != nullptr; }
 
 BlockTint block_tint(BlockId id) {
@@ -75,7 +88,7 @@ BlockTint block_tint(BlockId id) {
 
 // Beta's values: leaves dim light by 1, water and ice by 3, solid blocks stop it.
 int light_opacity(BlockId id) {
-    if (id == AIR || is_thin(id) || id == SPAWNER) return 0;
+    if (id == AIR || is_thin(id) || is_bed(id) || id == SPAWNER) return 0;
     if (is_leaves(id)) return 1;
     if (id == WATER || id == ICE) return 3;
     return 15;

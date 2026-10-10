@@ -215,8 +215,14 @@ public:
     bool is_solid_at(int x, int y, int z) { return is_solid(get_block(x, y, z)); }
     // Y of the first free block above the highest solid one in a column.
     int surface_y(int x, int z);
+    // Where rain and snow stop falling in a column: above the highest solid block or liquid.
+    // Nothing if the chunk isn't loaded (doesn't generate it).
+    std::optional<int> rain_height(int x, int z);
+    std::optional<Biome> biome_at(int x, int z);  // same, for the biome
 
     bool box_collides(double x0, double y0, double z0, double x1, double y1, double z1);
+    // The highest top of the solid blocks a box overlaps (for landing on beds and full blocks).
+    double box_top(double x0, double y0, double z0, double x1, double y1, double z1);
     bool box_in_water(double x0, double y0, double z0, double x1, double y1, double z1);
 
     // Voxel DDA ray cast. Air, water and lava don't stop the ray.

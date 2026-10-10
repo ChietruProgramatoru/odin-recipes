@@ -10,7 +10,7 @@ It runs on Windows (the main target) and Linux.
 ## Features
 
 - **Title screen and worlds**: Beta-style gray buttons on a dark dirt background, all drawn by the code. Singleplayer lists your worlds (newest first) and lets you create, rename and delete them. A new world takes a name and an optional seed: a number is used as is, any other text is turned into a number, and a blank seed picks a random one.
-- **Saving**: worlds are saved every 60 seconds, when you open the pause menu and when you quit. Blocks you changed, where you stand, health, hunger, your whole inventory and armor, cows and dropped items all come back when you load the world.
+- **Saving**: worlds are saved every 60 seconds, when you open the pause menu and when you quit. Blocks you changed, where you stand, health, hunger, your whole inventory and armor, your bed, the weather, cows and dropped items all come back when you load the world.
 - **Endless Beta-style terrain** from 3D Perlin noise: rolling hills, steep cliffs with overhangs, the odd floating island, oceans with sand and gravel beaches. The world is 128 blocks tall with the sea at height 64. Chunks are generated (or loaded from the save) and meshed on background threads as you walk, so the game doesn't stutter.
 - **Biomes** picked from temperature and rainfall like Beta: Rainforest, Swamp, Seasonal Forest, Forest, Savanna, Shrubland, Taiga, Desert, Plains, Ice Desert and Tundra. Grass and leaves change colour with the climate, deserts are sand with sandstone underneath, and water freezes over in Taiga, Tundra and Ice Desert. F3 shows the biome you are in.
 
@@ -60,8 +60,18 @@ It runs on Windows (the main target) and Linux.
   ![Sunset](screenshots/sunset.png)
 
   ![Night with a torch](screenshots/night.png)
+- **Weather** like Beta: rain comes and goes on random timers (it rains for 10 to 20 minutes, then stays dry for 10 to 150), and fades in and out over 5 seconds. Rain greys and darkens the sky and hides the sun, moon and stars. Cold biomes (Taiga, Tundra, Ice Desert) get snow instead, and deserts stay dry. Rain and snow stop at roofs and leaves, so you can shelter under them. Thunderstorms darken the sky further, and lightning strikes rained-on ground, flashing the sky and doing 2.5 hearts of damage to anything within 3 blocks.
+
+  ![Rain](screenshots/rain.png)
+
+  ![Snow in the taiga](screenshots/snow.png)
+
+  ![A thunderstorm](screenshots/thunder.png)
+- **Beds**: craft one from 3 wool over 3 planks and right-click the top of a block to place it (the head points the way you face). Right-click the bed at night, or in a thunderstorm, to lie down; after 5 seconds the night is skipped, the morning is clear and the bed becomes your spawn point. If the bed is broken or walled in, you respawn at the world spawn instead ("Your home bed was missing or obstructed"). Breaking either half removes the whole bed and drops it.
+
+  ![A bed](screenshots/bed.png)
 - **Clouds** drift slowly over the world at height 108: 3D boxes with Fancy graphics, a flat layer with Fast graphics. They can be turned off in Video Settings.
-- **Debug screen** (F3) with your position, chunk, facing, biome, light level (sky and block), time of day, seed and frame rate. F1 hides the HUD and F2 saves a screenshot.
+- **Debug screen** (F3) with your position, chunk, facing, biome, light level (sky and block), time of day, weather, seed and frame rate. F1 hides the HUD and F2 saves a screenshot.
 - All textures and the font are drawn by the code itself (no image files), with smooth lighting (ambient occlusion plus light levels blended across each face) and distance fog.
 
 ## Build and run on Windows
@@ -134,7 +144,8 @@ These are the defaults. Every key except the F keys, Esc, H, R and 1–9 can be 
 | Left Shift | Sneak: walk slowly without falling off edges |
 | Double-tap W (and hold) | Sprint (not possible when hunger is 3 drumsticks or less; stops when you let go, sneak or hit a wall) |
 | Left mouse (hold) | Mine a block, or hit a cow (with the selected tool or weapon) |
-| Right mouse | Place the selected block (a torch goes on the top or side of the block you point at), eat the selected food, shoot the bow, light a fire with flint and steel, or fill, pour and drink from a bucket |
+| Right mouse | Place the selected block (a torch goes on the top or side of the block you point at, a bed on top), eat the selected food, shoot the bow, light a fire with flint and steel, or fill, pour and drink from a bucket |
+| Right mouse on a bed | Sleep (at night or in a thunderstorm) |
 | 1–9 / mouse wheel | Choose a hotbar slot |
 | Q | Drop one of the selected item |
 | E | Open or close the inventory (the item picker in creative) |
@@ -147,7 +158,7 @@ These are the defaults. Every key except the F keys, Esc, H, R and 1–9 can be 
 | F5 | Third-person view |
 | H | Show or hide the help text |
 | Esc | Pause menu (Back to Game, Options, Save and Quit to Title). The world is saved when it opens |
-| R | Respawn after dying |
+| R | Respawn after dying (next to your bed, if you have slept in one) |
 
 In the inventory and crafting table screens (Beta's mouse rules):
 
@@ -175,7 +186,7 @@ ctest --test-dir build --output-on-failure        # logic tests (add -C Release 
 xvfb-run -a -s "-screen 0 1280x720x24" ./build/PetrutzCraft --seed 7 --autotest OUT_DIR
 ```
 
-The second command plays a scripted game and saves screenshots plus `report.txt` to `OUT_DIR`: it opens the title and options screens, creates a world from the Create New World screen, finds a cow, kills it, picks up and eats the beef, mines and places a block, crafts planks and a crafting table in the inventory screen, puts on a chestplate, crafts a pickaxe on a placed crafting table, takes a stack from the creative item picker, falls, mines stone by hand and with a pickaxe, takes a hit in full armor, shoots arrows into a wall, lights a fire, pours and scoops up water, flies, visits a desert, hills, a taiga and a torch-lit cave (checking for sandstone, spruces, frozen water and every ore), takes F5 (in armor) and F3 pictures, places a torch and glowstone and checks their light, takes pictures at night and at sunset, opens the pause menu, changes a block, saves and quits to the title, and loads the world again to check that everything came back. Its world and `options.txt` go in `OUT_DIR`, so your own saves are never touched. It exits with an error if any check fails. On Windows or a Linux desktop, run it without `xvfb-run`. GitHub runs both on every push (the screenshot test on Linux only, since GitHub's Windows machines have no graphics card).
+The second command plays a scripted game and saves screenshots plus `report.txt` to `OUT_DIR`: it opens the title and options screens, creates a world from the Create New World screen, finds a cow, kills it, picks up and eats the beef, mines and places a block, crafts planks and a crafting table in the inventory screen, puts on a chestplate, crafts a pickaxe on a placed crafting table, takes a stack from the creative item picker, falls, mines stone by hand and with a pickaxe, takes a hit in full armor, shoots arrows into a wall, lights a fire, pours and scoops up water, flies, visits a desert, hills, a taiga and a torch-lit cave (checking for sandstone, spruces, frozen water and every ore), takes F5 (in armor) and F3 pictures, places a torch and glowstone and checks their light, takes pictures at night and at sunset, makes it rain, snow and thunder (checking that lightning hurts), places a bed, sleeps through the night in it and respawns by it, opens the pause menu, changes a block, saves and quits to the title, and loads the world again to check that everything came back. Its world and `options.txt` go in `OUT_DIR`, so your own saves are never touched. It exits with an error if any check fails. On Windows or a Linux desktop, run it without `xvfb-run`. GitHub runs both on every push (the screenshot test on Linux only, since GitHub's Windows machines have no graphics card).
 
 ## Project layout
 
@@ -196,8 +207,10 @@ src/
   biome.cpp        biomes from temperature and rainfall, grass and leaf colours
   light.cpp        sky light and block light: lighting new chunks and updating light after block changes
   sky.cpp          time of day: sun position, sky, fog and cloud colours, how dark the night is, the cloud map
+  weather.cpp      rain and thunder timers, where rain and snow fall, lightning, when you can sleep
+  bed.cpp          placing beds and finding a free spot next to one
   streamer.cpp     background threads that generate and mesh chunks
-  renderer.cpp     OpenGL shaders and drawing the sky, sun, moon, stars, clouds, chunks, cows, items and the block outline
+  renderer.cpp     OpenGL shaders and drawing the sky, sun, moon, stars, clouds, rain, snow, lightning, chunks, cows, items and the block outline
   hud.cpp          crosshair, hotbar, hearts, hunger, text and overlays
   physics.cpp      box-vs-voxel collision used by the player, cows and items
   survival.cpp     the inventory, health, hunger and saturation
@@ -227,8 +240,10 @@ tests/             doctest logic tests (no window needed)
 - Lava and water stand still and lava doesn't burn you yet (M6). Lava, water and ice are see-through for the crosshair, and ice drops nothing (like Beta).
 - No tall grass, flowers, mushrooms, sugar cane, cacti, pumpkins or snow layers yet: they need non-cube shapes and come in M11.
 - Worlds saved before world generation changed keep the chunks you visited, so there is a visible cliff where the old terrain meets the new.
-- No sound, music, weather or monsters yet, and no options for them until they arrive. Rain, snow, thunderstorms and beds come in a second M5 update.
-- Doors, beds and most other crafted things don't do anything yet; they arrive with M5, M11 and the other milestones. Chests and furnaces are plain blocks for now.
+- No sound, music or monsters yet, and no options for them until they arrive. So there's no thunder to hear, and sleeping is never stopped by monsters nearby.
+- Lightning doesn't start fires and rain doesn't put them out yet (M6). Snow doesn't pile up on the ground yet (snow layers come in M6).
+- Wool only comes from the creative item picker until sheep arrive (M10), so that's where beds start.
+- Doors and most other crafted things don't do anything yet; they arrive with M11 and the other milestones. Chests and furnaces are plain blocks for now.
 - Iron and gold need smelting (M7), and string, feathers and the like come from mobs (M10); until then the creative item picker has them.
 - Glowstone drops itself when broken (Beta drops glowstone dust, which comes with the Nether in M14). Furnaces and jack-o'-lanterns will give off light once they exist; lava and fire already do.
 - Light levels are not stored in the save files: they are worked out again when a chunk is loaded.

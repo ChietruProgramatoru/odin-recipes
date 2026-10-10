@@ -37,6 +37,7 @@ private:
     void tour(App& app, Game& g);  // fly to a desert, a cold biome and into a cave
     void crafting(App& app, Game& g);  // the inventory, a crafting table and the creative item picker
     void tools(App& app, Game& g);     // pickaxe rules, armor, the bow, flint and steel, buckets
+    void weather_and_beds(App& app, Game& g);  // rain, snow, a thunderstorm, sleeping in a bed
     void reload(App& app);      // quit to the title and load the world again
 
     std::string out_;
@@ -64,4 +65,8 @@ private:
     glm::ivec3 range_{0};
     int arrows_before_ = 0;
     std::vector<std::pair<glm::ivec3, BlockId>> range_blocks_;
+    // Weather and beds.
+    glm::ivec3 bed_foot_{0}, bed_head_{0};
+    bool bed_placed_ = false;
+    bool saved_raining_ = false;
 };

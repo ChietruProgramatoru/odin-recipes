@@ -56,6 +56,7 @@ constexpr GLenum GL_TEXTURE_MIN_FILTER = 0x2801;
 constexpr GLenum GL_TEXTURE_WRAP_S = 0x2802;
 constexpr GLenum GL_TEXTURE_WRAP_T = 0x2803;
 constexpr GLenum GL_CLAMP_TO_EDGE = 0x812F;
+constexpr GLenum GL_REPEAT = 0x2901;
 constexpr GLenum GL_BACK = 0x0405;
 constexpr GLenum GL_TEXTURE0 = 0x84C0;
 constexpr GLenum GL_ARRAY_BUFFER = 0x8892;
