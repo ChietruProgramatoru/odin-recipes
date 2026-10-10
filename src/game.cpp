@@ -759,7 +759,10 @@ void Game::update_target() {
             best_d = *d;
         }
     }
-    if ((best || best_monster) && target && target->distance < best_d) best = nullptr, best_monster = nullptr;
+    // A block in front hides the mob, except plants: you can hit a cow standing in tall grass.
+    if ((best || best_monster) && target && target->distance < best_d &&
+        !is_plant(world.get_block(target->block.x, target->block.y, target->block.z)))
+        best = nullptr, best_monster = nullptr;
     target_cow = best;
     target_monster = best_monster;
 }
