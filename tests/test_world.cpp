@@ -89,7 +89,8 @@ TEST_CASE("a falling body lands exactly on the ground") {
 
 TEST_CASE("a body walking into a wall stops at it") {
     World w(5);
-    int y = w.surface_y(8, 8);
+    const int y = HEIGHT - 20;  // on a platform in the air, away from the hills
+    for (int x = 6; x <= 12; ++x) w.set_block(x, y - 1, 8, STONE);
     for (int dy = 0; dy < 3; ++dy) w.set_block(10, y + dy, 8, STONE);
     Body b(w, 8.5, y + 0.01, 8.5, 0.3, 1.8);
     auto hit = b.move(3.0, 0, 0);

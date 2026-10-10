@@ -8,7 +8,7 @@
 
 constexpr int TILE = 16;
 constexpr int ATLAS_COLS = 8;
-constexpr int ATLAS_ROWS = 4;
+constexpr int ATLAS_ROWS = 8;
 
 // UV rectangle (u0, v0, u1, v1) of an atlas tile. The atlas is uploaded so v = 1 is its top row.
 std::array<float, 4> tile_uv(int index);

@@ -10,13 +10,13 @@
 
 #include <glm/vec3.hpp>
 
+#include "biome.h"
 #include "blocks.h"
 #include "noise.h"
 
 constexpr int CHUNK = 16;
 constexpr int HEIGHT = 128;
 constexpr int SEA_LEVEL = 64;
-constexpr int SNOWLESS_PEAK = 88;  // above this height the surface is bare stone
 
 // --- Padded chunk layout used while meshing ------------------------------------
 // An 18 x (HEIGHT + 2) x 18 copy of a chunk plus a one-block border from its neighbours,
@@ -62,6 +62,7 @@ struct Chunk {
     bool dirty = true;
     bool saved_entities = false;        // the last save of this chunk had entities in it
     std::vector<EntityRecord> entities;  // waiting to be spawned when the chunk is shown
+    Climate climate;  // not saved: always recomputed from the seed
 
     Chunk(int x, int z) : cx(x), cz(z) {}
     static int index(int x, int y, int z) { return (y << 8) | (z << 4) | x; }
@@ -76,18 +77,29 @@ public:
     virtual std::unique_ptr<Chunk> load(int cx, int cz) = 0;
 };
 
-// Pure function of the seed, so worker threads can share one generator.
+// Beta-style world generation (see worldgen.cpp). Pure function of the seed, so worker threads
+// can share one generator.
 class TerrainGenerator {
 public:
     explicit TerrainGenerator(uint64_t seed);
-    int height(int wx, int wz) const;
-    bool is_tree(int wx, int wz) const;
     std::unique_ptr<Chunk> generate(int cx, int cz) const;
     uint64_t seed() const { return seed_; }
 
+    // Temperature and rainfall of a column, each in [0, 1].
+    void climate_at(int wx, int wz, double& temperature, double& rainfall) const;
+    Biome biome_at(int wx, int wz) const;
+    Climate climate(int cx, int cz) const;
+    // Terrain density before caves: solid where it is above 0.
+    double density(int wx, int y, int wz) const;
+
 private:
+    struct Column;
+    Column column(int wx, int wz) const;
+    double density(const Column& c, int wx, int y, int wz) const;
+
     uint64_t seed_;
-    Perlin2D continent_, hills_, mountains_;
+    Perlin2D continent_, roughness_, mountains_, temperature_, rainfall_, climate_detail_, surface_, beach_, trees_;
+    Perlin3D detail_;
 };
 
 // Deterministic hash of a column to [0, 1).
@@ -99,11 +111,13 @@ struct RayHit {
     float distance;
 };
 
-// Vertex for chunk meshes, cows and dropped items.
+// Vertex for chunk meshes, cows and dropped items. The tint colours atlas pixels marked as
+// tintable (grey grass and leaves); everything else ignores it.
 struct Vertex {
     float x, y, z;
     float shade;
     float u, v;
+    float r = 1, g = 1, b = 1;
 };
 
 struct MeshData {
@@ -113,7 +127,7 @@ struct MeshData {
     bool empty() const { return vertices.empty(); }
     // Quad from a unit-cube face (corners BL, BR, TR, TL) at block (x, y, z), height scaled by h.
     void quad(float x, float y, float z, const std::array<glm::ivec3, 4>& corners, float h,
-              const std::array<float, 4>& uv, const std::array<float, 4>& shades);
+              const std::array<float, 4>& uv, const std::array<float, 4>& shades, Rgb8 tint = {255, 255, 255});
     // Quad from four absolute corner points (BL, BR, TR, TL) with one shade.
     void quad_points(const std::array<glm::vec3, 4>& pts, const std::array<float, 4>& uv, float shade);
 };
@@ -139,8 +153,10 @@ struct MeshOptions {
     bool operator==(const MeshOptions&) const = default;
 };
 
-// Mesh a padded chunk copy. Thread-safe: touches nothing but its arguments.
-ChunkMesh build_mesh(const Padded& padded, int cx, int cz, int max_y, MeshOptions options = {});
+// Mesh a padded chunk copy. Thread-safe: touches nothing but its arguments. The climate colours
+// grass and leaves (missing: the hotbar icon colours).
+ChunkMesh build_mesh(const Padded& padded, int cx, int cz, int max_y, MeshOptions options = {},
+                     const Climate* climate = nullptr);
 
 // All chunks, keyed by chunk position. Only the main thread touches it; worker threads get
 // generated chunks handed over with insert() and mesh from padded copies.
@@ -171,7 +187,7 @@ public:
     bool box_collides(double x0, double y0, double z0, double x1, double y1, double z1);
     bool box_in_water(double x0, double y0, double z0, double x1, double y1, double z1);
 
-    // Voxel DDA ray cast. Water and air don't stop the ray.
+    // Voxel DDA ray cast. Air, water and lava don't stop the ray.
     std::optional<RayHit> raycast(glm::vec3 origin, glm::vec3 direction, float max_dist);
 
     // Copy a chunk plus a one-block border from its 8 neighbours (loading or generating any that are missing).

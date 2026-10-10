@@ -19,7 +19,7 @@ namespace fs = std::filesystem;
 
 namespace {
 
-bool valid_item(int id) { return is_block(id) || food_info(id); }
+bool valid_item(int id) { return !item_name(id).empty(); }
 
 // --- Little-endian byte writing and reading -------------------------------------------
 

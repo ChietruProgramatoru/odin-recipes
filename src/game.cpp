@@ -409,11 +409,12 @@ std::string Game::debug_text() {
                   "x: %.3f (block %d)\ny: %.3f (feet, block %d)\nz: %.3f (block %d)\n"
                   "Chunk: %d %d (at %d %d in it)\n"
                   "Facing: %s (f: %d)\n"
+                  "Biome: %s\n"
                   "Sky light: %d\n"
                   "Seed: %lld\n"
                   "Chunks loaded: %zu   cows: %zu   items: %zu",
                   fps, renderer->jobs_in_flight(), player.x, bx, player.y, by, player.z, bz, chunk_of(bx), chunk_of(bz),
-                  bx & 15, bz & 15, FACING[f], f, sky, static_cast<long long>(level.seed), world.chunk_count(),
+                  bx & 15, bz & 15, FACING[f], f, biome_name(world.generator().biome_at(bx, bz)), sky, static_cast<long long>(level.seed), world.chunk_count(),
                   cows.size(), drops.size());
     return buf;
 }
@@ -572,9 +573,14 @@ void Game::break_block(glm::ivec3 pos, BlockId blk) {
     renderer->rebuild(world.set_block(pos.x, pos.y, pos.z, AIR));
     if (creative) return;
     vitals.exhaust(EXHAUST_BREAK);
-    std::optional<ItemId> drop = block_info(blk) ? block_info(blk)->drop : std::nullopt;
-    if (blk == LEAVES && rng.random() < 0.1) drop = APPLE;
-    if (drop) spawn_drop(*drop, pos.x + 0.5, pos.y + 0.3, pos.z + 0.5);
+    if (blk == LEAVES && rng.random() < 0.1) {
+        spawn_drop(APPLE, pos.x + 0.5, pos.y + 0.3, pos.z + 0.5);
+        return;
+    }
+    const BlockInfo* info = block_info(blk);
+    if (!info || !info->drop) return;
+    int count = rng.randint(info->drop_min, info->drop_max);
+    for (int i = 0; i < count; ++i) spawn_drop(*info->drop, pos.x + 0.5, pos.y + 0.3, pos.z + 0.5);
 }
 
 void Game::spawn_drop(ItemId item, double x, double y, double z) {
@@ -616,7 +622,7 @@ void Game::use_item() {
             c.y + 1 > b->y && c.y < b->y + b->height)
             return;  // don't build inside someone
     BlockId here = world.get_block(c.x, c.y, c.z);
-    if (here != AIR && here != WATER) return;
+    if (here != AIR && !is_fluid(here)) return;
     renderer->rebuild(world.set_block(c.x, c.y, c.z, static_cast<BlockId>(*item)));
     if (!creative) inv.take_selected();
 }
