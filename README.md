@@ -109,7 +109,6 @@ src/
   gl.cpp           loads the OpenGL functions the game uses
   autotest.cpp     the scripted smoke test
 tests/             doctest logic tests (no window needed)
-python-legacy/     the original Python version, kept until the C++ version replaces it
 ```
 
 ## Known limits
