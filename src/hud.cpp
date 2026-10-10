@@ -62,9 +62,14 @@ void Hud::draw(int width, int height, const HudState& st) {
             p_.icon(hp >= 2 ? "heart_full" : hp == 1 ? "heart_half" : "heart_empty", x0 + i * size * 1.05f, row_y, size);
             int fd = st.vitals->hunger - i * 2;
             p_.icon(fd >= 2 ? "food_full" : fd == 1 ? "food_half" : "food_empty", x0 + slot * 9 - (i + 1) * size * 1.05f, row_y, size);
+            // Armor, above the hearts.
+            int ar = st.armor - i * 2;
+            if (st.armor > 0)
+                p_.icon(ar >= 2 ? "armor_full" : ar == 1 ? "armor_half" : "armor_empty", x0 + i * size * 1.05f,
+                        row_y + size * 1.15f, size);
         }
 
-    if (item_name_timer_ > 0) p_.text(item_name_, w / 2, row_y + size + 16, font_scale(14), 0.5f, 0);
+    if (item_name_timer_ > 0) p_.text(item_name_, w / 2, row_y + size * (st.armor > 0 && !st.creative ? 2.15f : 1.0f) + 16, font_scale(14), 0.5f, 0);
     if (message_timer_ > 0) p_.text(message_, w / 2, h * 0.68f, font_scale(18), 0.5f, 0);
     p_.text(st.info, 10, h - 10, font_scale(12), 0, 1);
     if (show_help) p_.text(st.help, 10, h - 16 - text_lines(st.info) * 10 * font_scale(12), font_scale(11), 0, 1);

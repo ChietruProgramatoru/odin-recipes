@@ -335,6 +335,35 @@ Image torch(Rng& rng) {
     return img;
 }
 
+// Fire: tongues of flame rising from the bottom, yellow at the base and red at the tips,
+// see-through between them.
+Image fire(Rng& rng) {
+    Image img(TILE, TILE);
+    for (int x = 0; x < TILE; ++x) {
+        int height = static_cast<int>(rng.uniform(6, 15) * (1.0 - std::abs(x - 7.5) / 20.0));
+        for (int k = 0; k < height; ++k) {
+            int y = TILE - 1 - k;
+            double t = static_cast<double>(k) / height;  // 0 at the base, 1 at the tip
+            Rgb c = t < 0.35 ? Rgb{255, 230, 90} : t < 0.7 ? Rgb{250, 150, 30} : Rgb{215, 60, 20};
+            img.at(x, y) = shade(c, rng.uniform(0.9, 1.1));
+        }
+    }
+    return img;
+}
+
+// Armor worn on the player: a plain colour with a darker rim, chain mail with see-through links.
+std::function<Image(Rng&)> armor_tile(Rgb c, bool chain = false) {
+    return [=](Rng& rng) {
+        Image img(TILE, TILE);
+        for (int y = 0; y < TILE; ++y)
+            for (int x = 0; x < TILE; ++x) {
+                if (chain && (x + y) % 3 == 0) continue;
+                bool rim = x == 0 || y == 0 || x == TILE - 1 || y == TILE - 1;
+                img.at(x, y) = shade(c, (rim ? 0.7 : 1.0) * rng.uniform(0.92, 1.08));
+            }
+        return img;
+    };
+}
 
 // --- Beds ------------------------------------------------------------------------
 // Red blanket, white pillow and a wooden frame. Tops point their head end up (row 0). Sides and
@@ -432,6 +461,16 @@ const std::vector<const char*> HEART = {
     "...krk...",
     "....k....",
 };
+const std::vector<const char*> CHESTPLATE = {
+    "kkk...kkk",
+    "kwwk.kwwk",
+    "kwgkkkggk",
+    ".kgggggk.",
+    ".kgggggk.",
+    ".kgggggk.",
+    ".kgggggk.",
+    ".kkkkkkk.",
+};
 const std::vector<const char*> DRUMSTICK = {
     ".....kkkk",
     "....kbbbk",
@@ -510,6 +549,9 @@ std::map<int, Image> make_tiles(int seed) {
         {T_LEAVES_ICON, coloured(leaves, foliage_color(ICON_TEMPERATURE, ICON_RAINFALL))},
         {T_BIRCH_LEAVES_ICON, coloured(leaves, BIRCH_COLOR)},
         {T_SPRUCE_LEAVES_ICON, coloured([](Rng& rng) { return spruce_leaves(rng, true); }, SPRUCE_COLOR)},
+        {T_FIRE, fire}, {T_ARMOR_LEATHER, armor_tile({160, 101, 64})}, {T_ARMOR_CHAIN, armor_tile({150, 150, 155}, true)},
+        {T_ARMOR_IRON, armor_tile({215, 215, 215})}, {T_ARMOR_GOLD, armor_tile({245, 205, 50})},
+        {T_ARMOR_DIAMOND, armor_tile({90, 220, 210})},
         {T_BED_TOP_FOOT, [](Rng& rng) { return bed_top(rng, false); }},
         {T_BED_TOP_HEAD, [](Rng& rng) { return bed_top(rng, true); }},
         {T_BED_SIDE_FOOT, [](Rng& rng) { return bed_side(rng, false, true); }},
@@ -537,7 +579,10 @@ std::map<std::string, Image> make_hud_icons() {
     Image heart_empty = sprite(HEART, {{'k', {40, 10, 10, 255}}, {'r', {60, 30, 30, 200}}, {'w', {60, 30, 30, 200}}});
     Image food_full = sprite(DRUMSTICK, {{'k', {50, 25, 10, 255}}, {'b', {170, 100, 40, 255}}, {'w', {240, 230, 220, 255}}});
     Image food_empty = sprite(DRUMSTICK, {{'k', {50, 25, 10, 255}}, {'b', {60, 40, 30, 200}}, {'w', {60, 40, 30, 200}}});
+    Image armor_full = sprite(CHESTPLATE, {{'k', {30, 30, 30, 255}}, {'g', {200, 200, 210, 255}}, {'w', {250, 250, 255, 255}}});
+    Image armor_empty = sprite(CHESTPLATE, {{'k', {30, 30, 30, 255}}, {'g', {50, 50, 55, 200}}, {'w', {50, 50, 55, 200}}});
     return {
+        {"armor_full", armor_full}, {"armor_half", halve(armor_full, armor_empty)}, {"armor_empty", armor_empty},
         {"heart_full", heart_full}, {"heart_half", halve(heart_full, heart_empty)}, {"heart_empty", heart_empty},
         {"food_full", food_full}, {"food_half", halve(food_full, food_empty)}, {"food_empty", food_empty},
     };

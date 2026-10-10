@@ -1,10 +1,13 @@
-// Cows and dropped items: behaviour plus the box geometry used to draw them.
+// Cows, dropped items and arrows: behaviour plus the box geometry used to draw them.
 #pragma once
+#include <array>
 #include <map>
+#include <memory>
 #include <optional>
 #include <vector>
 
 #include <glm/mat4x4.hpp>
+#include <glm/vec3.hpp>
 
 #include "physics.h"
 #include "rng.h"
@@ -19,6 +22,10 @@ constexpr int COW_MAX_HEALTH = 10;
 enum Model : int {
     MODEL_COW_BODY, MODEL_COW_BODY_HURT, MODEL_COW_LEG, MODEL_COW_LEG_HURT, MODEL_COW_HEAD, MODEL_COW_HEAD_HURT,
     MODEL_PLAYER_HEAD, MODEL_PLAYER_BODY, MODEL_PLAYER_ARM, MODEL_PLAYER_LEG,
+    MODEL_ARROW,
+    // Armor on the player, one model per material (leather, chain, iron, gold, diamond) from each base.
+    MODEL_ARMOR_HELMET = 100, MODEL_ARMOR_CHEST = 105, MODEL_ARMOR_SLEEVE = 110, MODEL_ARMOR_WAIST = 115,
+    MODEL_ARMOR_LEG = 120, MODEL_ARMOR_BOOT = 125,
     ITEM_MODEL_BASE = 1000
 };
 
@@ -67,6 +74,30 @@ public:
     std::vector<ModelPart> parts() const;
 };
 
+// An arrow shot from a bow. It flies with gravity and drag, hurts the first cow it hits,
+// and sticks in the first solid block until it is picked up or a minute has passed.
+class Arrow {
+public:
+    static constexpr double SPEED = 30.0;        // blocks per second leaving the bow (Beta: 1.5 per tick)
+    static constexpr double GRAVITY = 12.0;      // Beta: 0.03 per tick per tick
+    static constexpr double STUCK_LIFETIME = 60.0;
+
+    Arrow(glm::dvec3 pos, glm::dvec3 vel) : pos(pos), vel(vel) { aim(); }
+    glm::dvec3 pos, vel;
+    double yaw = 0, pitch = 0;  // which way it points (pitch > 0 points down)
+    bool stuck = false;
+    glm::ivec3 stuck_in{0};
+    double age = 0, stuck_time = 0;
+
+    // Fly for dt seconds. Returns the cow it hit (the arrow is then used up), if any.
+    Cow* tick(double dt, World& world, const std::vector<std::unique_ptr<Cow>>& cows);
+    bool expired() const { return stuck && stuck_time > STUCK_LIFETIME; }
+    std::vector<ModelPart> parts() const;
+
+private:
+    void aim();
+};
+
 // The player as seen in third person (F5): an original blocky figure, 1.8 blocks tall.
 struct PlayerPose {
     double x = 0, y = 0, z = 0;  // feet centre
@@ -74,7 +105,11 @@ struct PlayerPose {
     double walk_phase = 0;       // advances with distance walked
     double walk_amount = 0;      // 0 standing still .. 1 walking
     bool sneaking = false;
+    // Armor worn (helmet, chestplate, leggings, boots): the material, or nothing.
+    std::array<std::optional<Material>, 4> armor{};
 };
+// The material of each armor piece in an inventory's armor slots, for the model.
+std::array<std::optional<Material>, 4> worn_armor(const Inventory& inv);
 std::vector<ModelPart> player_parts(const PlayerPose& pose);
 
 // Static meshes for cows, the player and dropped items, each in its own local frame.

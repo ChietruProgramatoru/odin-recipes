@@ -232,7 +232,7 @@ bool World::box_in_water(double x0, double y0, double z0, double x1, double y1, 
     return false;
 }
 
-std::optional<RayHit> World::raycast(glm::vec3 origin, glm::vec3 direction, float max_dist) {
+std::optional<RayHit> World::raycast(glm::vec3 origin, glm::vec3 direction, float max_dist, bool (*stops)(BlockId)) {
     const float inf = std::numeric_limits<float>::infinity();
     glm::ivec3 pos(ifloor(origin.x), ifloor(origin.y), ifloor(origin.z));
     glm::ivec3 step;
@@ -253,7 +253,7 @@ std::optional<RayHit> World::raycast(glm::vec3 origin, glm::vec3 direction, floa
     float t = 0.0f;
     while (t <= max_dist) {
         BlockId blk = get_block(pos.x, pos.y, pos.z);
-        if (blk != AIR && !is_fluid(blk)) return RayHit{pos, prev, t};
+        if (stops ? stops(blk) : blk != AIR && !is_fluid(blk)) return RayHit{pos, prev, t};
         prev = pos;
         int axis = 0;
         if (t_max[1] < t_max[axis]) axis = 1;
@@ -355,6 +355,19 @@ void add_torch(MeshData& mesh, float wx, float wy, float wz, BlockId blk, uint8_
     }
 }
 
+// Fire: two crossed sheets of flame, drawn from both sides so it shows from every angle.
+void add_fire(MeshData& mesh, float wx, float wy, float wz, uint8_t light) {
+    const auto uv = tile_uv(T_FIRE);
+    const glm::vec3 o(wx, wy, wz);
+    const glm::vec3 sheets[2][2] = {{{0.05f, 0, 0.05f}, {0.95f, 0, 0.95f}}, {{0.05f, 0, 0.95f}, {0.95f, 0, 0.05f}}};
+    for (const auto& s : sheets) {
+        glm::vec3 a = o + s[0], b = o + s[1], up(0, 1, 0);
+        // Corners in the order quad_points wants (bottom left, bottom right, top right, top left), then reversed.
+        mesh.quad_points({a, b, b + up, a + up}, uv, 1.0f, sky_of(light), block_of(light));
+        mesh.quad_points({b, a, a + up, b + up}, uv, 1.0f, sky_of(light), block_of(light));
+    }
+}
+
 // Part of a tile: a pixel rectangle, rows counted from the top.
 std::array<float, 4> sub_uv(int tile, float px0, float py0, float px1, float py1) {
     auto uv = tile_uv(tile);
@@ -421,6 +434,10 @@ ChunkMesh build_mesh(const Padded& P, const PaddedLight& L, int cx, int cz, int 
                     add_torch(mesh.solid, wx, wy, wz, blk, L[i]);
                     continue;
                 }
+                if (blk == FIRE) {
+                    add_fire(mesh.solid, wx, wy, wz, L[i]);
+                    continue;
+                }
                 if (is_bed(blk)) {
                     add_bed(mesh.solid, wx, wy, wz, blk, L[i]);
                     continue;
@@ -430,7 +447,7 @@ ChunkMesh build_mesh(const Padded& P, const PaddedLight& L, int cx, int cz, int 
                     const auto& uv = BLOCK_UVS[WATER].uv[0];
                     for (const Face& f : FACES) {
                         BlockId nb = P[i + f.offset];
-                        if (f.offset == -up || (nb != AIR && !is_torch(nb) && !is_cutout(nb))) continue;
+                        if (f.offset == -up || (nb != AIR && !is_thin(nb) && !is_cutout(nb))) continue;
                         float l = f.def->light, s = sky_of(L[i + f.offset]), b = block_of(L[i + f.offset]);
                         mesh.water.quad(wx, wy, wz, f.def->corners, h, uv, {l, l, l, l}, {s, s, s, s}, {b, b, b, b});
                     }

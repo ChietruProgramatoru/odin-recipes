@@ -10,6 +10,7 @@
 struct HudState {
     const Inventory* inventory;
     const Vitals* vitals;
+    int armor;  // the armor bar, 0-20 (shown only while armor is worn)
     bool creative;
     std::string info;   // top left: the game name, or the F3 debug lines
     std::string help;   // controls, while show_help is on

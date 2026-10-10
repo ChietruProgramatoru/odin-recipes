@@ -83,6 +83,14 @@ public:
 
     std::vector<std::unique_ptr<Cow>> cows;
     std::vector<std::unique_ptr<ItemDrop>> drops;
+    std::vector<std::unique_ptr<Arrow>> arrows;
+    // Fires lit with flint and steel, and how many seconds each has left before it burns out.
+    struct Fire {
+        glm::ivec3 pos;
+        double left;
+    };
+    std::vector<Fire> fires;
+    int armor_remainder = 0;  // fraction of a damage point armor carries to the next hit (in 25ths)
     std::optional<glm::ivec3> mining_pos;
     double mining_progress = 0;
     double attack_cooldown = 0, break_cooldown = 0, use_cooldown = 0;
@@ -105,6 +113,8 @@ public:
     void update_target();
     void break_block(glm::ivec3 pos, BlockId block);
     void use_item();
+    // Damage the player, less what their armor takes off. Returns true if it hurt.
+    bool hurt_player(int amount, bool ignore_cooldown = false);
     void drop_selected();
     void open_gui(InventoryScreen::Kind kind);
     void close_gui();
@@ -150,6 +160,15 @@ private:
     void on_death();
     void update_cows(double dt);
     void update_drops(double dt);
+    void update_arrows(double dt);
+    void update_fires(double dt);
+    void shoot_arrow();
+    bool light_fire(glm::ivec3 pos);
+    // Wear the selected hotbar item by `uses` (survival only); it breaks when worn out.
+    void wear_selected(int uses);
+    // Replace one of the selected stack with `item` (filling or emptying a bucket).
+    void swap_selected(ItemId item);
+    bool use_bucket(ItemId held);
     void set_mouse_captured(bool captured);
     bool key_down(int key) const;
     bool action_down(KeyAction action) const { return !gui && key_down(options.keys[action]); }
@@ -170,5 +189,4 @@ private:
     double cursor_x_ = 0, cursor_y_ = 0;
     double ticks_ = 0;  // fraction of a game tick not yet added to level.time
     Rng weather_rng_;   // its own random numbers, so weather doesn't change what cows do
-    void hurt_player(int amount);
 };

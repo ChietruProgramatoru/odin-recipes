@@ -16,6 +16,7 @@
 #include "game.h"
 #include "inventory_screen.h"
 #include "menu.h"
+#include "tools.h"
 
 namespace {
 constexpr double PI = 3.14159265358979323846;
@@ -120,7 +121,11 @@ void AutoTest::play(App& app, Game& g) {
             double d = dist_to(cow_);
             p.x += (cow_->body.x - p.x) * (d - 3) / d;
             p.z += (cow_->body.z - p.z) * (d - 3) / d;
-            p.y = g.world.surface_y(static_cast<int>(std::floor(p.x)), static_cast<int>(std::floor(p.z)));
+            // Stand at the cow's height (within hitting reach even on a slope): room to stand and ground underfoot.
+            p.y = std::floor(cow_->body.y);
+            int bx = static_cast<int>(std::floor(p.x)), by = static_cast<int>(p.y), bz = static_cast<int>(std::floor(p.z));
+            for (int dy = 0; dy < 2; ++dy) g.renderer->rebuild(g.world.set_block(bx, by + dy, bz, AIR));
+            if (!g.world.is_solid_at(bx, by - 1, bz)) g.renderer->rebuild(g.world.set_block(bx, by - 1, bz, DIRT));
             cow_start_x_ = cow_->body.x;
             cow_start_z_ = cow_->body.z;
         }
@@ -128,6 +133,16 @@ void AutoTest::play(App& app, Game& g) {
     if (f > 120 && f < 200 && cow_) {
         double d = dist_to(cow_);
         face(g, cow_->body.x, cow_->body.z, degrees(std::atan2(p.y + EYE_HEIGHT - (cow_->body.y + 0.8), d)));
+    }
+    if (f == 155 && cow_) {
+        // Leaves or a hill between the player and the cow would hide it: clear the line of sight.
+        glm::vec3 e = g.eye(), to(cow_->body.x, cow_->body.y + 0.8, cow_->body.z);
+        float d = glm::length(to - e);
+        glm::vec3 dir = (to - e) / d;
+        while (auto hit = g.world.raycast(e, dir, d - 0.7f)) {
+            log("cleared " + item_name(g.world.get_block(hit->block.x, hit->block.y, hit->block.z)) + " in front of the cow");
+            g.renderer->rebuild(g.world.set_block(hit->block.x, hit->block.y, hit->block.z, AIR));
+        }
     }
     if (f == 160 && cow_) {
         shot(app, "2_cow.png");
@@ -182,7 +197,7 @@ void AutoTest::play(App& app, Game& g) {
             d->body.z = p.z;
         }
     if (f == 340 && broken_) {
-        auto drop = block_info(broken_block_) ? block_info(broken_block_)->drop : std::nullopt;
+        auto drop = harvest_drop(g.inventory.selected_item().value_or(AIR), broken_block_);
         check("broken block collected into inventory", !drop || g.inventory.count(*drop) > 0);
         if (drop && g.inventory.count(*drop)) {
             g.inventory.selected = g.inventory.find(*drop);
@@ -211,6 +226,8 @@ void AutoTest::play(App& app, Game& g) {
     }
     if (f == 520) shot(app, "4_overview.png");
     if (f >= 525 && f < 600) tour(app, g);
+    if (f >= 600 && f <= 614) tools(app, g);
+    if (f == 621) g.inventory.armor = {};  // armor off again after the third-person picture, so later damage checks see full hits
     if (f == 615) {
         g.third_person = true;  // the model is added to the scene in the next update
         g.pitch = 20;
@@ -666,6 +683,132 @@ void AutoTest::crafting(App& app, Game& g) {
         g.close_gui();
     }
     g.creative = false;
+}
+
+void AutoTest::tools(App& app, Game& g) {
+    const long f = g.frame;
+    World& w = g.world;
+    Inventory& inv = g.inventory;
+    auto set = [&](int x, int y, int z, BlockId b) { g.renderer->rebuild(w.set_block(x, y, z, b)); };
+    // The range, facing +z: open air from the player to a stone wall 5 blocks ahead, a stone floor
+    // 2 below eye level. What was there before is put back afterwards.
+    auto build = [&] {
+        const glm::ivec3 o = range_;
+        for (int dx = -1; dx <= 1; ++dx)
+            for (int dz = 1; dz <= 5; ++dz)
+                for (int dy = -2; dy <= 1; ++dy) {
+                    glm::ivec3 c = o + glm::ivec3(dx, dy, dz);
+                    range_blocks_.push_back({c, w.get_block(c.x, c.y, c.z)});
+                    set(c.x, c.y, c.z, (dz == 5 || dy == -2) ? STONE : AIR);
+                }
+    };
+
+    if (f == 600) {
+        g.flying = false;
+        g.creative = false;
+        g.yaw = 0;
+        g.pitch = 0;
+        glm::vec3 e = g.eye();
+        range_ = {static_cast<int>(std::floor(e.x)), static_cast<int>(std::floor(e.y)), static_cast<int>(std::floor(e.z))};
+        build();
+
+        // Stone drops nothing by hand, and cobblestone with a pickaxe, which wears.
+        glm::ivec3 rock = range_ + glm::ivec3(0, 0, 2);
+        inv.slots[8].reset();
+        inv.selected = 8;
+        size_t drops = g.drops.size();
+        set(rock.x, rock.y, rock.z, STONE);
+        g.break_block(rock, STONE);
+        check("stone mined by hand drops nothing", g.drops.size() == drops);
+        inv.slots[8] = Stack{WOOD_PICKAXE, 1};
+        set(rock.x, rock.y, rock.z, STONE);
+        g.break_block(rock, STONE);
+        check("stone mined with a wooden pickaxe drops cobblestone",
+              g.drops.size() == drops + 1 && g.drops.back()->stack.item == COBBLE);
+        check("the pickaxe wore by one use", inv.slots[8] && inv.slots[8]->damage == 1);
+        inv.slots[8] = Stack{WOOD_PICKAXE, 1};
+        set(rock.x, rock.y, rock.z, IRON_ORE);
+        g.break_block(rock, IRON_ORE);
+        check("iron ore needs a stone pickaxe", g.drops.size() == drops + 1);
+        g.drops.pop_back();
+
+        // A full set of armor takes 80% off: 10 damage becomes 2.
+        for (int p = 0; p < 4; ++p) inv.armor[p] = Stack{armor(Material::Iron, static_cast<ArmorPiece>(p)), 1};
+        g.vitals.health = MAX_HEALTH;
+        g.vitals.hurt_timer = 0;
+        g.armor_remainder = 0;
+        check("the armor bar is full", armor_value(inv) == 20);
+        g.hurt_player(10, true);
+        check("full iron armor turns 10 damage into 2 (health " + std::to_string(g.vitals.health) + ")",
+              g.vitals.health == MAX_HEALTH - 2 && inv.armor[0]->damage == 10);
+        g.vitals.health = MAX_HEALTH;
+        // A mixed set, for the third-person picture.
+        inv.armor = {Stack{DIAMOND_HELMET, 1}, Stack{GOLD_CHESTPLATE, 1}, Stack{IRON_LEGGINGS, 1}, Stack{LEATHER_BOOTS, 1}};
+
+        // The bow fires at once and uses up an arrow.
+        inv.slots[6] = Stack{BOW, 1};
+        inv.slots[7] = Stack{ARROW, 5};
+        inv.selected = 6;
+        arrows_before_ = inv.count(ARROW);
+        g.use_item();
+        g.yaw = 6;
+        g.pitch = -4;
+        g.use_item();
+        g.yaw = 0;
+        check("the bow shot two arrows", g.arrows.size() == 2 && inv.count(ARROW) == arrows_before_ - 2);
+        check("the bow wore by two uses", inv.slots[6] && inv.slots[6]->damage == 2);
+    }
+    if (f == 612) {
+        bool stuck = !g.arrows.empty();
+        for (const auto& a : g.arrows) stuck &= a->stuck && a->stuck_in.z == range_.z + 5;
+        check("the arrows stuck in the wall", stuck);
+
+        // Flint and steel lights a fire on the floor in front of the wall.
+        inv.slots[7] = Stack{FLINT_AND_STEEL, 1};
+        inv.selected = 7;
+        glm::ivec3 floor = range_ + glm::ivec3(0, -2, 4);
+        face(g, floor.x + 0.5, floor.z + 0.5, 0);
+        glm::vec3 e = g.eye();
+        g.pitch = degrees(std::atan2(e.y - (floor.y + 1), std::hypot(floor.x + 0.5 - e.x, floor.z + 0.5 - e.z)));
+        g.update_target();
+        g.use_item();
+        check("flint and steel lights a fire", w.get_block(floor.x, floor.y + 1, floor.z) == FIRE && g.fires.size() == 1);
+        check("fire gives light 15", w.block_light(floor.x, floor.y + 1, floor.z) == 15);
+
+        // A water bucket pours water next to it; an empty bucket scoops it up again.
+        glm::ivec3 pool = range_ + glm::ivec3(1, -2, 3);
+        inv.slots[8] = Stack{WATER_BUCKET, 1};
+        inv.selected = 8;
+        face(g, pool.x + 0.5, pool.z + 0.5, 0);
+        g.pitch = degrees(std::atan2(e.y - (pool.y + 1), std::hypot(pool.x + 0.5 - e.x, pool.z + 0.5 - e.z)));
+        g.update_target();
+        g.use_item();
+        check("a water bucket pours water and leaves an empty bucket",
+              w.get_block(pool.x, pool.y + 1, pool.z) == WATER && inv.slots[8] == Stack{BUCKET, 1});
+        g.use_item();
+        check("an empty bucket scoops the water back up",
+              w.get_block(pool.x, pool.y + 1, pool.z) == AIR && inv.slots[8] == Stack{WATER_BUCKET, 1});
+
+        inv.selected = 6;  // the bow, in the hotbar picture
+        g.yaw = 0;
+        g.pitch = 12;
+        shot(app, "m3_bow_fire.png");
+        // From the side, to see the arrows sticking out of the wall.
+        g.player.x -= 1.0;
+        g.player.z += 3.2;
+        face(g, range_.x + 0.5, range_.z + 5, 10);
+        shot(app, "m3_arrows.png");
+        g.player.x += 1.0;
+        g.player.z -= 3.2;
+    }
+    if (f == 614) {
+        for (auto it = range_blocks_.rbegin(); it != range_blocks_.rend(); ++it) set(it->first.x, it->first.y, it->first.z, it->second);
+        range_blocks_.clear();
+        for (const auto& a : g.arrows) inv.add(ARROW, 1);  // picked up, as if walked over
+        g.arrows.clear();
+        g.fires.clear();
+        g.pitch = 0;
+    }
 }
 
 void AutoTest::reload(App& app) {

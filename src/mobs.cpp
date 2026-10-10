@@ -196,20 +196,104 @@ std::vector<ModelPart> ItemDrop::parts() const {
 
 // --- Player ---------------------------------------------------------------------------------
 
+std::array<std::optional<Material>, 4> worn_armor(const Inventory& inv) {
+    std::array<std::optional<Material>, 4> out{};
+    for (int p = 0; p < Inventory::ARMOR; ++p)
+        if (const auto& piece = inv.armor[p]; piece && armor_slot(piece->item) == p)
+            out[p] = static_cast<Material>((piece->item - LEATHER_HELMET) / 4);
+    return out;
+}
+
 std::vector<ModelPart> player_parts(const PlayerPose& pose) {
     glm::mat4 root = translate(pose.x, pose.y - (pose.sneaking ? 0.1 : 0), pose.z) * rot_y(pose.yaw);
     double swing = std::sin(pose.walk_phase) * pose.walk_amount * 40;
     double lean = pose.sneaking ? 25 : 0;
     glm::mat4 hips = root * translate(0, 0.675, 0);
     glm::mat4 torso = hips * rot_x(lean);
+    const glm::mat4 legs[2] = {root * translate(-0.125, 0.675, pose.sneaking ? -0.1 : 0) * rot_x(swing),
+                               root * translate(0.125, 0.675, pose.sneaking ? -0.1 : 0) * rot_x(-swing)};
+    const glm::mat4 arms[2] = {torso * translate(-0.375, 0.615, 0) * rot_x(-swing),
+                               torso * translate(0.375, 0.615, 0) * rot_x(swing)};
+    const glm::mat4 head = torso * translate(0, 0.675, 0) * rot_x(std::clamp(pose.pitch, -80.0, 80.0) - lean);
     std::vector<ModelPart> out;
-    out.push_back({MODEL_PLAYER_LEG, root * translate(-0.125, 0.675, pose.sneaking ? -0.1 : 0) * rot_x(swing)});
-    out.push_back({MODEL_PLAYER_LEG, root * translate(0.125, 0.675, pose.sneaking ? -0.1 : 0) * rot_x(-swing)});
+    for (const glm::mat4& leg : legs) out.push_back({MODEL_PLAYER_LEG, leg});
     out.push_back({MODEL_PLAYER_BODY, torso});
-    out.push_back({MODEL_PLAYER_ARM, torso * translate(-0.375, 0.615, 0) * rot_x(-swing)});
-    out.push_back({MODEL_PLAYER_ARM, torso * translate(0.375, 0.615, 0) * rot_x(swing)});
-    out.push_back({MODEL_PLAYER_HEAD, torso * translate(0, 0.675, 0) * rot_x(std::clamp(pose.pitch, -80.0, 80.0) - lean)});
+    for (const glm::mat4& arm : arms) out.push_back({MODEL_PLAYER_ARM, arm});
+    out.push_back({MODEL_PLAYER_HEAD, head});
+
+    // Armor goes over the same joints.
+    auto material = [&](int piece) { return static_cast<int>(*pose.armor[piece]); };
+    if (pose.armor[0]) out.push_back({MODEL_ARMOR_HELMET + material(0), head});
+    if (pose.armor[1]) {
+        out.push_back({MODEL_ARMOR_CHEST + material(1), torso});
+        for (const glm::mat4& arm : arms) out.push_back({MODEL_ARMOR_SLEEVE + material(1), arm});
+    }
+    if (pose.armor[2]) {
+        out.push_back({MODEL_ARMOR_WAIST + material(2), torso});
+        for (const glm::mat4& leg : legs) out.push_back({MODEL_ARMOR_LEG + material(2), leg});
+    }
+    if (pose.armor[3])
+        for (const glm::mat4& leg : legs) out.push_back({MODEL_ARMOR_BOOT + material(3), leg});
     return out;
+}
+
+// --- Arrows -----------------------------------------------------------------------------------
+
+void Arrow::aim() {
+    if (glm::length(vel) < 1e-6) return;
+    yaw = degrees(std::atan2(vel.x, vel.z));
+    pitch = degrees(std::atan2(-vel.y, std::hypot(vel.x, vel.z)));
+}
+
+Cow* Arrow::tick(double dt, World& world, const std::vector<std::unique_ptr<Cow>>& cows) {
+    age += dt;
+    if (stuck) {
+        if (is_solid(world.get_block(stuck_in.x, stuck_in.y, stuck_in.z))) {
+            stuck_time += dt;
+            return nullptr;
+        }
+        // The block it was stuck in is gone: drop out of the hole.
+        stuck = false;
+        stuck_time = 0;
+        vel = {0, -1, 0};
+    }
+    const glm::dvec3 step = vel * dt;
+    const double length = glm::length(step);
+    if (length > 1e-9) {
+        const glm::vec3 origin(pos), dir(step / length);
+        auto block = world.raycast(origin, dir, static_cast<float>(length), is_solid);
+        float nearest = block ? block->distance : static_cast<float>(length);
+        Cow* hit = nullptr;
+        for (const auto& cow : cows) {
+            if (!cow->alive()) continue;
+            auto t = cow->ray_hit(origin, dir, nearest);
+            if (t && *t <= nearest) {
+                nearest = *t;
+                hit = cow.get();
+            }
+        }
+        if (hit) return hit;
+        if (block) {
+            // The tip goes a little way into the block, and there it stays.
+            pos += glm::dvec3(dir) * (static_cast<double>(block->distance) + 0.15);
+            stuck = true;
+            stuck_in = block->block;
+            vel = {0, 0, 0};
+            return nullptr;
+        }
+        pos += step;
+    }
+    const glm::ivec3 cell(static_cast<int>(std::floor(pos.x)), static_cast<int>(std::floor(pos.y)),
+                          static_cast<int>(std::floor(pos.z)));
+    const bool in_water = world.get_block(cell.x, cell.y, cell.z) == WATER;
+    vel *= std::pow(in_water ? 0.8 : 0.99, dt * 20);  // Beta's drag per tick
+    vel.y -= GRAVITY * dt;
+    aim();
+    return nullptr;
+}
+
+std::vector<ModelPart> Arrow::parts() const {
+    return {{MODEL_ARROW, translate(pos.x, pos.y, pos.z) * rot_y(yaw) * rot_x(pitch)}};
 }
 
 // --- Models ---------------------------------------------------------------------------------
@@ -252,6 +336,27 @@ std::map<int, MeshData> build_models() {
     MeshData& leg = models[MODEL_PLAYER_LEG];
     add_box(leg, ident, {0.25f, 0.55f, 0.25f}, {0, -0.275f, 0}, T_PANTS);
     add_box(leg, ident, {0.26f, 0.125f, 0.27f}, {0, -0.6125f, 0.005f}, T_SHOE);
+
+    // Armor, a little bigger than the parts it covers. The helmet leaves the face open.
+    for (int m = 0; m < 5; ++m) {
+        const int tile = T_ARMOR_LEATHER + m;
+        MeshData& helmet = models[MODEL_ARMOR_HELMET + m];
+        add_box(helmet, ident, {0.53f, 0.12f, 0.53f}, {0, 0.43f, 0}, tile);
+        add_box(helmet, ident, {0.53f, 0.3f, 0.06f}, {0, 0.24f, -0.245f}, tile);
+        for (float side : {-1.0f, 1.0f}) add_box(helmet, ident, {0.06f, 0.3f, 0.47f}, {side * 0.26f, 0.24f, -0.03f}, tile);
+        add_box(models[MODEL_ARMOR_CHEST + m], ident, {0.56f, 0.5f, 0.31f}, {0, 0.42f, 0}, tile);
+        add_box(models[MODEL_ARMOR_SLEEVE + m], ident, {0.31f, 0.34f, 0.31f}, {0, -0.08f, 0}, tile);
+        add_box(models[MODEL_ARMOR_WAIST + m], ident, {0.54f, 0.2f, 0.29f}, {0, 0.1f, 0}, tile);
+        add_box(models[MODEL_ARMOR_LEG + m], ident, {0.29f, 0.45f, 0.29f}, {0, -0.225f, 0}, tile);
+        add_box(models[MODEL_ARMOR_BOOT + m], ident, {0.3f, 0.22f, 0.31f}, {0, -0.575f, 0.005f}, tile);
+    }
+
+    // The arrow points along +z with its tip at the origin.
+    MeshData& arrow = models[MODEL_ARROW];
+    add_box(arrow, ident, {0.04f, 0.04f, 0.55f}, {0, 0, -0.3f}, T_PLANKS);
+    add_box(arrow, ident, {0.08f, 0.08f, 0.1f}, {0, 0, -0.04f}, T_SHOE);
+    add_box(arrow, ident, {0.16f, 0.015f, 0.12f}, {0, 0, -0.5f}, T_WHITE);
+    add_box(arrow, ident, {0.015f, 0.16f, 0.12f}, {0, 0, -0.5f}, T_WHITE);
 
     for (ItemId item : all_items()) {
         glm::vec3 size = looks_like_block(item) ? glm::vec3(0.25f) : glm::vec3(0.4f, 0.4f, 0.03f);

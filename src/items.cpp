@@ -47,7 +47,7 @@ Table build() {
     // below; grass and leaves use coloured-in copies of their grey (biome-tinted) tiles.
     for (int b = GRASS; b < BLOCK_COUNT; ++b) {
         // The torch is a flat icon, added below; beds are placed from the BED item.
-        if (b == WATER || b == LAVA || is_torch(b) || is_bed(b)) continue;
+        if (b == WATER || b == LAVA || b == FIRE || is_torch(b) || is_bed(b)) continue;
         const BlockInfo* info = block_info(b);
         t.cube(b, info->name, info->tiles[0], info->tiles[1], info->tiles[1]);
     }

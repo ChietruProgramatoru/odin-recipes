@@ -37,13 +37,14 @@ void main() {
 constexpr int UI_W = 128, UI_H = 64;
 constexpr int ICON_Y = 48, ICON_W = 9, ICON_H = 8;
 constexpr int WHITE_X = 124, WHITE_Y = 0;
-const char* ICON_NAMES[6] = {"heart_full", "heart_half", "heart_empty", "food_full", "food_half", "food_empty"};
+const char* ICON_NAMES[9] = {"heart_full", "heart_half", "heart_empty", "food_full",  "food_half",
+                             "food_empty", "armor_full", "armor_half",  "armor_empty"};
 
 Image make_ui_image() {
     Image img(UI_W, UI_H);
     img.paste(make_font_image(), 0, 0);
     auto icons = make_hud_icons();
-    for (int i = 0; i < 6; ++i) img.paste(icons[ICON_NAMES[i]], i * (ICON_W + 1), ICON_Y);
+    for (int i = 0; i < 9; ++i) img.paste(icons[ICON_NAMES[i]], i * (ICON_W + 1), ICON_Y);
     for (int y = 0; y < 2; ++y)
         for (int x = 0; x < 2; ++x) img.at(WHITE_X + x, WHITE_Y + y) = {255, 255, 255, 255};
     return img;
