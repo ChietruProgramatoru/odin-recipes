@@ -168,6 +168,16 @@ public:
     void tick_world();
     // The sky for this frame, weather included.
     SkyState current_sky() const;
+    // Block ticks, random ticks and what they set off; the player breathing and burning.
+    void tick_blocks();
+    void tick_player_fire_and_air();
+    void apply_block_events(BlockEvents& events);
+    // Rain is falling on this cell (it puts fire out there).
+    bool rain_at(glm::ivec3 p);
+    // The player's eyes are under the surface of water.
+    bool head_under_water();
+    // Set the player alight for at least `ticks` (Beta adds to a fire already burning).
+    void set_player_on_fire(int ticks);
     // Lightning strikes at a spot: hurts what is near it and flashes the sky.
     void strike(glm::dvec3 pos);
     void set_paused(bool p);
@@ -204,16 +214,6 @@ private:
     void update_drops(double dt);
     void update_arrows(double dt);
     void update_falling(double dt);
-    // Block ticks, random ticks and what they set off; the player breathing and burning.
-    void tick_blocks();
-    void tick_player_fire_and_air();
-    void apply_block_events(BlockEvents& events);
-    // Rain is falling on this cell (it puts fire out there).
-    bool rain_at(glm::ivec3 p);
-    // The player's eyes are under the surface of water.
-    bool head_under_water();
-    // Set the player alight for at least `ticks` (Beta adds to a fire already burning).
-    void set_player_on_fire(int ticks);
     void shoot_arrow();
     bool light_fire(glm::ivec3 pos);
     // Wear the selected hotbar item by `uses` (survival only); it breaks when worn out.

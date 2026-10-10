@@ -1,7 +1,7 @@
 // Scripted smoke test: `PetrutzCraft --seed 7 --autotest OUT_DIR`.
 // Drives the real program for a few hundred frames: the menus, creating a world, mining, building,
 // cows, eating, fall damage, tools, armor, the bow, fire and buckets, a tour of the biomes and caves, the F3 and F5 views,
-// monsters, explosions and dying, the pause menu,
+// monsters, explosions and dying, flowing water and lava, falling sand and fire, the pause menu,
 // then saving, quitting to the
 // title and loading the world again. Saves screenshots to OUT_DIR and writes OUT_DIR/report.txt.
 // The world and options.txt go to OUT_DIR too, so the real saves are never touched.
@@ -41,6 +41,7 @@ private:
     void tools(App& app, Game& g);     // pickaxe rules, armor, the bow, flint and steel, buckets
     void weather_and_beds(App& app, Game& g);  // rain, snow, a thunderstorm, sleeping in a bed
     void monsters(App& app, Game& g);  // each monster, fighting, creepers and TNT, spawners, difficulty, dying
+    void fluids_and_fire(App& app, Game& g);  // flowing water and lava, falling sand, fire, drowning, burning
     void reload(App& app);      // quit to the title and load the world again
 
     std::string out_;
@@ -79,4 +80,7 @@ private:
     double spider_top_ = 0;
     bool skeleton_shot_ = false;
     size_t drops_before_death_ = 0;
+    // Fluids and fire: a stone platform high in the sky (x, top y, z of its middle).
+    glm::ivec3 pad_{0};
+    double current_start_x_ = 0;
 };
