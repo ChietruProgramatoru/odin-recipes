@@ -1,4 +1,4 @@
-# PyCraft
+# PetrutzCraft
 
 A small Minecraft-style survival game for the desktop, written in Python with
 [pyglet](https://pyglet.org/) (OpenGL). It runs on Python 3.10 through 3.15.
@@ -69,7 +69,7 @@ python main.py --fullscreen
 
 ```
 main.py              entry point and command-line options
-pycraft/
+petrutzcraft/
   world.py           chunk storage, terrain generation, meshing (with ambient occlusion), ray casting
   render.py          OpenGL shaders, chunk streaming, drawing cows and items
   game.py            the game window: controls, mining/building, survival rules, cows and item drops

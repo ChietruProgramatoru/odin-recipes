@@ -7,10 +7,10 @@ import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
-from pycraft.blocks import AIR, BEEF, COBBLE, DIRT, LOG, PLANKS, STONE  # noqa: E402
-from pycraft.physics import Body  # noqa: E402
-from pycraft.survival import Inventory, Vitals, fall_damage  # noqa: E402
-from pycraft.world import HEIGHT, LAYER, World  # noqa: E402
+from petrutzcraft.blocks import AIR, BEEF, COBBLE, DIRT, LOG, PLANKS, STONE  # noqa: E402
+from petrutzcraft.physics import Body  # noqa: E402
+from petrutzcraft.survival import Inventory, Vitals, fall_damage  # noqa: E402
+from petrutzcraft.world import HEIGHT, LAYER, World  # noqa: E402
 
 
 def test_padded_chunk_matches_world():
