@@ -107,6 +107,8 @@ public:
 
     void set_instances(std::vector<ModelPart> instances) { instances_ = std::move(instances); }
     void set_outline(std::optional<glm::ivec3> block) { outline_ = block; }
+    // View bobbing: applied to the camera after it is pointed (identity: none).
+    void set_view_bob(const glm::mat4& bob) { view_bob_ = bob; }
     // Falling rain and snow around the player, and lightning bolts (position and zigzag seed).
     // `seconds` moves the drops down.
     struct Bolt {
@@ -145,6 +147,7 @@ private:
     std::vector<ModelPart> instances_;
     std::optional<glm::ivec3> outline_;
     long edits_ = 0;
+    glm::mat4 view_bob_{1.0f};
     GpuMesh outline_mesh_;
 
     ShaderProgram sky_program_;

@@ -480,7 +480,11 @@ void Game::update(double dt) {
     }
 
     if (!paused) {
-        hand.update(dt);
+        // The hand follows the hotbar and sways with walking (on the ground, alive, not flying).
+        const bool walking = player.on_ground && !flying && !dead && !sleeping_in;
+        hand.bobbing = options.view_bobbing;
+        hand.update(dt, active_inventory().selected_item(), active_inventory().selected,
+                    {std::hypot(player.vx, player.vz), dead ? 0.0 : player.vy, walking});
         update_cows(dt);
         update_monsters(dt);
         update_drops(dt);
@@ -624,10 +628,11 @@ void Game::draw(int w, int h) {
         if (b.visible()) shown.push_back({b.pos, b.seed});
     renderer->set_weather(precipitation_columns(world, cam, options.fancy_graphics ? 10 : 5, sky.rain), std::move(shown),
                           (static_cast<double>(level.time % 72000) + ticks_) / 20);
+    renderer->set_view_bob(third_person ? glm::mat4(1.0f) : hand.bob());
     renderer->draw(w, h, cam, forward(), sky);
     if (!third_person && !hud_hidden && !sleeping_in && !vitals.dead()) {
         // The hand is lit by the light where the eyes are.
-        std::vector<ModelPart> held = hand.parts(active_inventory().selected_item());
+        std::vector<ModelPart> held = hand.parts();
         glm::vec3 e = eye();
         const int x = ifloor(e.x), y = ifloor(e.y), z = ifloor(e.z);
         for (ModelPart& part : held) {

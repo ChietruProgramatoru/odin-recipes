@@ -1172,18 +1172,29 @@ void AutoTest::hand(App& app, Game& g) {
         inv.slots[3] = Stack{TORCH, 10};
     }
     if (f == 1196) {
-        inv.selected = 0;
-        auto arm = g.hand.parts(inv.selected_item());
+        // Let the hand settle on the selected slot, as it does over a few frames in play.
+        auto hold = [&](int slot) {
+            inv.selected = slot;
+            g.hand.update(1.0, inv.selected_item(), slot);
+        };
+        hold(0);
+        auto arm = g.hand.parts();
         check("an empty hand shows the arm", arm.size() == 1 && arm[0].model == MODEL_PLAYER_ARM);
         shot(app, "hand_empty.png");
-        inv.selected = 1;
-        auto held = g.hand.parts(inv.selected_item());
+        hold(1);
+        auto held = g.hand.parts();
         check("the selected block is held in the hand", held.size() == 1 && held[0].model == HELD_MODEL_BASE + GRASS);
         shot(app, "hand_block.png");
-        inv.selected = 3;
+        hold(3);
         shot(app, "hand_torch.png");
+        // Switching to the sword: the torch dips out of view, then the sword comes up.
         inv.selected = 2;
-        held = g.hand.parts(inv.selected_item());
+        g.hand.update(0.1, inv.selected_item(), 2);
+        check("switching items lowers the hand", g.hand.equipped() < 0.5f);
+        shot(app, "hand_switching.png");
+        hold(2);
+        check("the new item comes back up", g.hand.equipped() == 1 && g.hand.shown() == std::optional<ItemId>(DIAMOND_SWORD));
+        held = g.hand.parts();
         shot(app, "hand_sword.png");
 
         // A left click swings the hand, even at nothing.
@@ -1191,11 +1202,11 @@ void AutoTest::hand(App& app, Game& g) {
         g.on_mouse_button(GLFW_MOUSE_BUTTON_LEFT, GLFW_PRESS);
         g.on_mouse_button(GLFW_MOUSE_BUTTON_LEFT, GLFW_RELEASE);
         check("a left click swings the hand", g.hand.swinging());
-        g.hand.update(Hand::SWING_SECONDS * 0.4);
-        auto swung = g.hand.parts(inv.selected_item());
+        g.hand.update(Hand::SWING_SECONDS * 0.4, inv.selected_item(), inv.selected);
+        auto swung = g.hand.parts();
         check("the sword moves during the swing", swung[0].transform != held[0].transform);
         shot(app, "hand_swing.png");
-        g.hand.update(Hand::SWING_SECONDS);
+        g.hand.update(Hand::SWING_SECONDS, inv.selected_item(), inv.selected);
         check("the swing ends", !g.hand.swinging() && g.hand.swing_progress() == 0);
 
         // Placing a block with a right click swings the hand; eating doesn't.
@@ -1213,7 +1224,7 @@ void AutoTest::hand(App& app, Game& g) {
         g.use_item_by_hand();
         check("placing a block with a right click swings the hand",
               g.hand.swinging() && w.get_block(spot.x, spot.y, spot.z) == GRASS);
-        g.hand.update(Hand::SWING_SECONDS);
+        g.hand.update(Hand::SWING_SECONDS, inv.selected_item(), inv.selected);
         inv.slots[1] = Stack{BREAD, 1};
         g.use_item_by_hand();
         check("eating doesn't swing the hand", !g.hand.swinging());

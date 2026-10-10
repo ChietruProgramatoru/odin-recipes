@@ -84,24 +84,60 @@ void Hand::swing() {
     if (swing_time_ < 0 || swing_time_ >= SWING_SECONDS / 2) swing_time_ = 0;
 }
 
-void Hand::update(double dt) {
-    if (swing_time_ < 0) return;
-    swing_time_ += dt;
-    if (swing_time_ >= SWING_SECONDS) swing_time_ = -1;
+void Hand::update(double dt, std::optional<ItemId> held, int slot, HandMotion motion) {
+    // In steps of at most a tick, so a long frame still dips and rises like short ones.
+    while (dt > 0) {
+        const double step = std::min(dt, 0.05);
+        tick(step, held, slot, motion);
+        dt -= step;
+    }
+}
+
+void Hand::tick(double dt, std::optional<ItemId> held, int slot, HandMotion motion) {
+    if (swing_time_ >= 0) {
+        swing_time_ += dt;
+        if (swing_time_ >= SWING_SECONDS) swing_time_ = -1;
+    }
+
+    const bool same = slot == shown_slot_ && held == shown_;
+    const double target = same ? 1.0 : 0.0, most = EQUIP_RATE * dt;
+    equipped_ += std::clamp(target - equipped_, -most, most);
+    if (equipped_ < 0.1) {
+        shown_ = held;
+        shown_slot_ = slot;
+    }
+
+    // Beta, per tick: the bob eases 40% of the way towards the speed (at most 0.1 a tick) while on
+    // the ground, and the view tips 80% of the way towards how fast the player rises or falls in the air.
+    const double ticks = dt * 20;
+    walked_ += motion.horizontal * dt * 0.6;
+    const double speed = motion.on_ground ? std::min(motion.horizontal / 20, 0.1) : 0.0;
+    bob_amount_ += (speed - bob_amount_) * (1 - std::pow(0.6, ticks));
+    const double tip = motion.on_ground ? 0.0 : std::atan(-motion.vertical / 20 * 0.2) * 15;
+    bob_pitch_ += (tip - bob_pitch_) * (1 - std::pow(0.2, ticks));
 }
 
 float Hand::swing_progress() const {
     return swing_time_ < 0 ? 0.0f : static_cast<float>(std::min(1.0, swing_time_ / SWING_SECONDS));
 }
 
-std::vector<ModelPart> Hand::parts(std::optional<ItemId> held) const {
+glm::mat4 Hand::bob() const {
+    if (!bobbing) return glm::mat4(1.0f);
+    // Beta's setupViewBobbing.
+    const float w = static_cast<float>(-walked_) * PI, a = static_cast<float>(bob_amount_);
+    return translate(std::sin(w) * a * 0.5f, -std::abs(std::cos(w) * a), 0) * rot_z(std::sin(w) * a * 3) *
+           rot_x(std::abs(std::cos(w - 0.2f) * a) * 5) * rot_x(static_cast<float>(bob_pitch_));
+}
+
+std::vector<ModelPart> Hand::parts() const {
     // Beta 1.7.3's ItemRenderer, step for step.
+    const std::optional<ItemId> held = shown_;
     const float p = swing_progress();
     const float arc = std::sin(p * PI), root = std::sin(std::sqrt(p) * PI), loop = std::sin(std::sqrt(p) * PI * 2);
     const float ease = std::sin(p * p * PI);
-    const float equipped = 1.0f;  // how far the hand is raised
+    const float equipped = this->equipped();
     if (held && valid_item(*held)) {
-        glm::mat4 m = translate(-root * 0.4f, loop * 0.2f, -arc * 0.2f) *
+        glm::mat4 m = bob() * translate(-root * 0.4f, loop * 0.2f, -arc * 0.2f) *
                       translate(0.56f, -0.52f - (1 - equipped) * 0.6f, -0.72f) * rot_y(45) * rot_y(-ease * 20) *
                       rot_z(-root * 20) * rot_x(-root * 80) * scale(0.4f);
         if (*held == FISHING_ROD) m *= rot_y(180);  // Beta holds the rod the other way round
@@ -109,7 +145,7 @@ std::vector<ModelPart> Hand::parts(std::optional<ItemId> held) const {
             m *= translate(0, -0.3f, 0) * scale(1.5f) * rot_y(50) * rot_z(335) * translate(-0.9375f, -0.0625f, 0);
         return {{HELD_MODEL_BASE + *held, m}};
     }
-    glm::mat4 m = translate(-root * 0.3f, loop * 0.4f, -arc * 0.4f) *
+    glm::mat4 m = bob() * translate(-root * 0.3f, loop * 0.4f, -arc * 0.4f) *
                   translate(0.64f, -0.6f - (1 - equipped) * 0.6f, -0.72f) * rot_y(45) * rot_y(root * 70) *
                   rot_z(-ease * 20) * translate(-1, 3.6f, 3.5f) * rot_z(120) * rot_x(200) * rot_y(-135) *
                   translate(5.6f, 0, 0);

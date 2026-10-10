@@ -593,12 +593,12 @@ void WorldRenderer::draw(int width, int height, glm::vec3 eye, glm::vec3 forward
     const float far_dist = static_cast<float>(render_distance * CHUNK);
     const float aspect = static_cast<float>(width) / std::max(1, height);
     glm::mat4 proj = glm::perspective(glm::radians(70.0f), aspect, 0.05f, far_dist + 40);
-    glm::mat4 view = glm::lookAt(eye, eye + forward, glm::vec3(0, 1, 0));
+    glm::mat4 view = view_bob_ * glm::lookAt(eye, eye + forward, glm::vec3(0, 1, 0));
     glm::mat4 mvp = proj * view;
     const glm::mat4 identity(1.0f);
     // The sky and clouds are drawn around a camera at the origin, with a far plane that reaches them.
     glm::mat4 sky_proj = glm::perspective(glm::radians(70.0f), aspect, 0.05f, std::max(far_dist * 4, 600.0f));
-    glm::mat4 proj_rot = sky_proj * glm::lookAt(glm::vec3(0), forward, glm::vec3(0, 1, 0));
+    glm::mat4 proj_rot = sky_proj * glm::mat4(glm::mat3(view_bob_)) * glm::lookAt(glm::vec3(0), forward, glm::vec3(0, 1, 0));
     draw_sky(proj_rot, sky, far_dist);
 
     program_.use();
