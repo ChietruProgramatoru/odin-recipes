@@ -1,3 +1,9 @@
+# C++ build output
+build/
+out/
+autotest-out/
+
+# Python legacy version
 __pycache__/
 .venv/
 *.pyc
