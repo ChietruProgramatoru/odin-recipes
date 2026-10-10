@@ -48,7 +48,8 @@ public:
     // Stop tracking a chunk's mesh (it was unloaded). It is queued again if it comes back in range.
     void forget(ChunkPos pos);
     // Change how chunks are meshed. Forgets every mesh, so all chunks get meshed again.
-    void set_mesh_options(MeshOptions options);
+    // Returns false if nothing changed.
+    bool set_mesh_options(MeshOptions options);
     // Block until every chunk within `radius` has a mesh waiting in take_ready().
     void finish(double px, double pz, int radius);
 

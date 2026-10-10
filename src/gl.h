@@ -35,6 +35,7 @@ constexpr GLenum GL_CCW = 0x0901;
 constexpr GLenum GL_CULL_FACE = 0x0B44;
 constexpr GLenum GL_DEPTH_TEST = 0x0B71;
 constexpr GLenum GL_BLEND = 0x0BE2;
+constexpr GLenum GL_SCISSOR_TEST = 0x0C11;
 constexpr GLenum GL_PACK_ALIGNMENT = 0x0D05;
 constexpr GLenum GL_UNPACK_ALIGNMENT = 0x0CF5;
 constexpr GLenum GL_TEXTURE_2D = 0x0DE1;
@@ -72,6 +73,9 @@ extern PFN_glClearColor pc_glClearColor;
 typedef void(GL_APIENTRY* PFN_glViewport)(GLint x, GLint y, GLsizei w, GLsizei h);
 extern PFN_glViewport pc_glViewport;
 #define glViewport pc_glViewport
+typedef void(GL_APIENTRY* PFN_glScissor)(GLint x, GLint y, GLsizei w, GLsizei h);
+extern PFN_glScissor pc_glScissor;
+#define glScissor pc_glScissor
 typedef void(GL_APIENTRY* PFN_glEnable)(GLenum cap);
 extern PFN_glEnable pc_glEnable;
 #define glEnable pc_glEnable

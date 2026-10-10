@@ -5,6 +5,7 @@
 PFN_glClear pc_glClear = nullptr;
 PFN_glClearColor pc_glClearColor = nullptr;
 PFN_glViewport pc_glViewport = nullptr;
+PFN_glScissor pc_glScissor = nullptr;
 PFN_glEnable pc_glEnable = nullptr;
 PFN_glDisable pc_glDisable = nullptr;
 PFN_glBlendFunc pc_glBlendFunc = nullptr;
@@ -66,6 +67,7 @@ bool load_gl() {
     ok &= load(pc_glClear, "glClear");
     ok &= load(pc_glClearColor, "glClearColor");
     ok &= load(pc_glViewport, "glViewport");
+    ok &= load(pc_glScissor, "glScissor");
     ok &= load(pc_glEnable, "glEnable");
     ok &= load(pc_glDisable, "glDisable");
     ok &= load(pc_glBlendFunc, "glBlendFunc");

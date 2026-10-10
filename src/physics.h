@@ -26,8 +26,11 @@ public:
     // Move with collision.
     HitAxes move(double dx, double dy, double dz);
     void apply_gravity(double dt, double gravity = GRAVITY);
+    // Shorten a step so the body keeps standing on something (sneaking at an edge).
+    void clamp_to_edges(double& dx, double& dz) const;
     double distance_to(double px, double py, double pz) const;
 
 private:
     bool move_axis(int axis, double delta);
+    bool supported(double dx, double dz) const;  // a solid block right under the feet, shifted by (dx, dz)
 };

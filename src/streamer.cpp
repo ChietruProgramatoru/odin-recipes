@@ -138,12 +138,13 @@ ReadyMesh ChunkStreamer::rebuild_now(ChunkPos pos) {
     return {pos, world_.build_mesh_now(pos.cx, pos.cz, options_)};
 }
 
-void ChunkStreamer::set_mesh_options(MeshOptions options) {
-    if (options == options_) return;
+bool ChunkStreamer::set_mesh_options(MeshOptions options) {
+    if (options == options_) return false;
     options_ = options;
     // Every mesh is out of date. Results still in flight carry old tickets and get dropped.
     meshes_.clear();
     ready_.clear();
+    return true;
 }
 
 void ChunkStreamer::forget(ChunkPos pos) {

@@ -79,9 +79,12 @@ target_link_libraries(petrutz_core PUBLIC glm_headers Threads::Threads)
 # --- The game ----------------------------------------------------------------
 add_executable(PetrutzCraft
   src/main.cpp
+  src/app.cpp
   src/gl.cpp
   src/renderer.cpp
+  src/ui.cpp
   src/hud.cpp
+  src/menu.cpp
   src/game.cpp
   src/autotest.cpp)
 target_link_libraries(PetrutzCraft PRIVATE petrutz_core glfw)

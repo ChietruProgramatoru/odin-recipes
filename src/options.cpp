@@ -167,7 +167,7 @@ Options Options::from_text(const std::string& text) {
     return o;
 }
 
-Options Options::load(const std::string& path) {
+Options Options::load(const std::filesystem::path& path) {
     std::ifstream f(path, std::ios::binary);
     if (!f) return Options();
     std::ostringstream ss;
@@ -175,7 +175,7 @@ Options Options::load(const std::string& path) {
     return from_text(ss.str());
 }
 
-bool Options::save(const std::string& path) const {
+bool Options::save(const std::filesystem::path& path) const {
     std::ofstream f(path, std::ios::binary | std::ios::trunc);
     if (!f) return false;
     f << to_text();

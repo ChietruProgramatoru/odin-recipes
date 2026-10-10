@@ -65,6 +65,8 @@ public:
     void update(double px, double pz);
     // Build everything within `radius` chunks before the first frame.
     void load_all(double px, double pz, int radius);
+    // Mesh chunks differently (video settings). Every chunk is meshed again.
+    void set_mesh_options(MeshOptions options);
     // Rebuild these chunks right now (after a block edit).
     void rebuild(const std::vector<ChunkPos>& chunks);
     size_t mesh_count() const { return meshes_.size(); }

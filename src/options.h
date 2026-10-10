@@ -1,6 +1,7 @@
 // Player settings, kept in options.txt next to the game in Beta's "name:value" format.
 #pragma once
 #include <array>
+#include <filesystem>
 #include <string>
 
 #ifndef GLFW_INCLUDE_NONE
@@ -52,6 +53,6 @@ struct Options {
     std::string to_text() const;
     // Unknown lines and bad values are ignored, so an old or hand-edited file still loads.
     static Options from_text(const std::string& text);
-    static Options load(const std::string& path);  // defaults if the file is missing
-    bool save(const std::string& path) const;
+    static Options load(const std::filesystem::path& path);  // defaults if the file is missing
+    bool save(const std::filesystem::path& path) const;
 };

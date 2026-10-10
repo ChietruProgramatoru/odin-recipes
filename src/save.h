@@ -88,6 +88,8 @@ public:
     void save(LevelData level, std::vector<std::unique_ptr<Chunk>> chunks);
     // Block until every queued save is on disk. Returns false if any of them failed.
     bool wait();
+    // A save is queued or being written.
+    bool busy();
 
 private:
     struct Job {

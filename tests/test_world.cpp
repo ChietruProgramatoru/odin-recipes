@@ -96,3 +96,76 @@ TEST_CASE("a body walking into a wall stops at it") {
     CHECK(hit.x);
     CHECK(b.x == doctest::Approx(10 - 0.3));
 }
+
+TEST_CASE("the world is 128 blocks tall with the sea at 64") {
+    CHECK(HEIGHT == 128);
+    CHECK(SEA_LEVEL == 64);
+    World w(5);
+    int lowest = HEIGHT, highest = 0;
+    for (int x = -64; x < 64; x += 4)
+        for (int z = -64; z < 64; z += 4) {
+            int h = w.surface_y(x, z);
+            lowest = std::min(lowest, h);
+            highest = std::max(highest, h);
+        }
+    CHECK(lowest > 40);           // land and sea floor sit around the new sea level
+    CHECK(highest > SEA_LEVEL);   // some dry land
+    CHECK(highest < HEIGHT - 4);  // room for trees above the highest ground
+    w.set_block(0, HEIGHT - 1, 0, STONE);  // the top layer can be built on
+    CHECK(w.get_block(0, HEIGHT - 1, 0) == STONE);
+    CHECK(w.get_block(0, HEIGHT, 0) == AIR);
+}
+
+TEST_CASE("Fast graphics draws solid leaves, Fancy draws the faces between them") {
+    World w(5);
+    int y = HEIGHT - 10;
+    for (int dx = 0; dx < 3; ++dx) w.set_block(4 + dx, y, 4, LEAVES);  // a row of 3 leaves, high in the air
+    auto leaf_quads = [&](MeshOptions o) {
+        ChunkMesh m = w.build_mesh_now(0, 0, o);
+        size_t quads = 0;
+        for (size_t i = 0; i < m.solid.vertices.size(); i += 4)
+            if (m.solid.vertices[i].y >= y - 0.01f) ++quads;
+        return quads;
+    };
+    CHECK(leaf_quads({true, false}) == 3 * 6 - 4);  // the 2 touching pairs hide 4 faces
+    CHECK(leaf_quads({true, true}) == 3 * 6);
+}
+
+TEST_CASE("smooth lighting off gives every corner of a face the same shade") {
+    World w(5);
+    ChunkMesh m = w.build_mesh_now(0, 0, {false, true});
+    bool flat = true;
+    for (size_t i = 0; i < m.solid.vertices.size(); i += 4)
+        for (int c = 1; c < 4; ++c) flat &= m.solid.vertices[i + c].shade == m.solid.vertices[i].shade;
+    CHECK(flat);
+    ChunkMesh smooth = w.build_mesh_now(0, 0, {true, true});
+    bool varied = false;
+    for (size_t i = 0; i < smooth.solid.vertices.size(); i += 4)
+        for (int c = 1; c < 4; ++c) varied |= smooth.solid.vertices[i + c].shade != smooth.solid.vertices[i].shade;
+    CHECK(varied);
+}
+
+TEST_CASE("sneaking stops at the edge of a block instead of walking off") {
+    World w(5);
+    const int y = HEIGHT - 20;
+    w.set_block(10, y, 10, STONE);  // one block in mid-air
+    Body b(w, 10.5, y + 1, 10.5, 0.3, 1.8);
+    b.on_ground = true;
+
+    double dx = 2.0, dz = 0;
+    b.clamp_to_edges(dx, dz);
+    CHECK(dx > 0);
+    CHECK(dx < 0.85);  // the body still overlaps the block: 10.5 + dx - 0.3 < 11
+    b.move(dx, 0, dz);
+    CHECK(b.x - b.half < 11);
+
+    double back_x = -3, back_z = 3;
+    b.clamp_to_edges(back_x, back_z);
+    CHECK(b.x + back_x + b.half > 10);
+    CHECK(b.z + back_z - b.half < 11);
+
+    double small_x = 0.01, small_z = 0;  // a step that stays on the block is not changed
+    Body c(w, 10.5, y + 1, 10.5, 0.3, 1.8);
+    c.clamp_to_edges(small_x, small_z);
+    CHECK(small_x == 0.01);
+}

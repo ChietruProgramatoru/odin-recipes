@@ -54,6 +54,22 @@ HitAxes Body::move(double dx, double dy, double dz) {
     return hit;
 }
 
+bool Body::supported(double dx, double dz) const {
+    return world->box_collides(x - half + dx, y - 0.5, z - half + dz, x + half - E + dx, y - 0.5, z + half - E + dz);
+}
+
+void Body::clamp_to_edges(double& dx, double& dz) const {
+    if (!supported(0, 0)) return;
+    const double step = 0.05;
+    auto shrink = [&](double& v) { v = std::abs(v) < step ? 0 : v - std::copysign(step, v); };
+    while (dx != 0 && !supported(dx, 0)) shrink(dx);
+    while (dz != 0 && !supported(0, dz)) shrink(dz);
+    while (dx != 0 && dz != 0 && !supported(dx, dz)) {
+        shrink(dx);
+        shrink(dz);
+    }
+}
+
 void Body::apply_gravity(double dt, double gravity) {
     if (in_water) {
         vy = std::max(vy - gravity * 0.25 * dt, -3.0);

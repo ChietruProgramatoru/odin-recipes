@@ -354,6 +354,11 @@ bool WorldSaver::wait() {
     return ok;
 }
 
+bool WorldSaver::busy() {
+    std::lock_guard lock(mutex_);
+    return busy_ || !jobs_.empty();
+}
+
 void WorldSaver::run() {
     for (;;) {
         Job job;
