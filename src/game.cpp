@@ -1544,6 +1544,7 @@ void Game::update_monsters(double dt) {
             arrow->from_player = false;
             arrows.push_back(std::move(arrow));
         }
+        if (act.hiss) play_sound(Sound::Fuse, {m.body.x, m.body.y + 1, m.body.z});
         if (act.explode) {
             // The creeper is gone in its own blast.
             m.exploded = true;
@@ -1569,6 +1570,12 @@ void Game::update_monsters(double dt) {
 void Game::prime_tnt(glm::ivec3 pos, int fuse_ticks) {
     if (world.get_block(pos.x, pos.y, pos.z) == TNT) renderer->rebuild(world.set_block(pos.x, pos.y, pos.z, AIR));
     tnts.push_back(std::make_unique<PrimedTnt>(world, pos.x + 0.5, pos.y, pos.z + 0.5, fuse_ticks, rng));
+    play_sound(Sound::Fuse, glm::dvec3(pos) + 0.5);
+}
+
+void Game::play_sound(Sound sound, glm::dvec3 pos, float pitch) {
+    sounds.push_back({sound, pos, pitch});
+    ++sounds_started[static_cast<int>(sound)];
 }
 
 void Game::update_tnts(double dt) {
@@ -1585,6 +1592,9 @@ void Game::update_tnts(double dt) {
 }
 
 void Game::explode(glm::dvec3 center, double power, bool from_monster) {
+    // Beta pitches each blast a little differently (picked from the frame number, so random
+    // numbers the rest of the game uses stay the same).
+    play_sound(Sound::Explosion, center, static_cast<float>(0.75 + std::fmod(frame * 0.618034, 1.0) * 0.25));
     add_puffs(puffs, center, static_cast<int>(power * 8), power * 0.6, power * 1.6, 0.5 + power * 0.15, rng);
     const double reach = power * 2;
 

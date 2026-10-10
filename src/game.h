@@ -1,5 +1,6 @@
 // One world being played: player input, mining/building, survival, cows, monsters, drawing and saving.
 #pragma once
+#include <array>
 #include <filesystem>
 #include <memory>
 #include <optional>
@@ -18,6 +19,7 @@
 #include "renderer.h"
 #include "rng.h"
 #include "save.h"
+#include "sound.h"
 #include "sky.h"
 #include "weather.h"
 #include "survival.h"
@@ -89,6 +91,11 @@ public:
     std::vector<std::unique_ptr<Arrow>> arrows;
     std::vector<std::unique_ptr<PrimedTnt>> tnts;
     std::vector<Puff> puffs;
+    // Sounds started this frame, for the app to play (then it clears them), and how many of each
+    // kind were ever started (the autotest checks these).
+    std::vector<SoundEvent> sounds;
+    std::array<int, SOUND_COUNT> sounds_started{};
+    void play_sound(Sound sound, glm::dvec3 pos, float pitch = 1.0f);
     // Mob spawners in the chunks shown so far, and ticks until each one's next try.
     struct Spawner {
         glm::ivec3 pos;

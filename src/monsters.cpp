@@ -207,6 +207,7 @@ void Monster::per_tick(World& world, const MonsterSenses& s, Rng& rng, MonsterAc
         case MobKind::Creeper: {
             const bool close = fuse <= 0 ? dist < CREEPER_IGNITE_RANGE : dist < CREEPER_DEFUSE_RANGE;
             if (targeting && close && can_see()) {
+                if (fuse == 0) out.hiss = true;
                 ++fuse;
                 want_speed_ = 0;  // stands still while it hisses
                 if (fuse >= CREEPER_FUSE_TICKS) out.explode = true;

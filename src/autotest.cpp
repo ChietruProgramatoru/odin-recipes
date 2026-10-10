@@ -614,7 +614,10 @@ void AutoTest::monsters(App& app, Game& g) {
             for (int dy = -4; dy <= 2; ++dy)
                 for (int dz = -2; dz <= 6; ++dz) blocks_before_ += w.get_block(a.x + dx, a.y + dy, a.z + dz) != AIR;
     }
-    if (f == 860) check("the creeper's fuse is burning", exists(mob_) && mob_->fuse > 0);
+    if (f == 860) {
+        check("the creeper's fuse is burning", exists(mob_) && mob_->fuse > 0);
+        check("the creeper hisses", g.sounds_started[static_cast<int>(Sound::Fuse)] == 1);
+    }
     if (f == 900 && exists(mob_)) shot(app, "m10_creeper_fuse.png");
     if (f == 940) {
         int after = 0;
@@ -624,6 +627,7 @@ void AutoTest::monsters(App& app, Game& g) {
         check("the creeper blew up (it's gone)", std::none_of(g.monsters.begin(), g.monsters.end(), [&](const auto& m) {
                   return m->kind == MobKind::Creeper && std::hypot(m->body.x - a.x, m->body.z - a.z) < 12;
               }));
+        check("the creeper's blast is heard", g.sounds_started[static_cast<int>(Sound::Explosion)] == 1);
         check("the blast destroyed blocks (" + std::to_string(blocks_before_ - after) + ")", after < blocks_before_ - 5);
         check("the blast hurt the player through diamond armor (health " + std::to_string(g.vitals.health) + ")",
               g.vitals.health < MAX_HEALTH && !g.vitals.dead());
@@ -707,6 +711,8 @@ void AutoTest::monsters(App& app, Game& g) {
     }
     if (f == 1176) {
         check("the second TNT went off too", g.tnts.empty());
+        check("lit TNT hisses and both blasts are heard", g.sounds_started[static_cast<int>(Sound::Fuse)] == 3 &&
+                                                              g.sounds_started[static_cast<int>(Sound::Explosion)] == 3);
         shot(app, "m10_tnt_crater.png");
         // A mob spawner in a dark room underground makes its monster.
         glm::ivec3 c(a.x, 20, a.z);

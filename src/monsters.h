@@ -34,6 +34,7 @@ struct MonsterActions {
     std::optional<glm::dvec3> arrow_from;  // a skeleton's arrow leaves from here...
     glm::dvec3 arrow_vel{0};               // ...at this velocity
     bool explode = false;                  // a creeper's fuse ran out
+    bool hiss = false;                     // a creeper started to hiss
 };
 
 class Monster {

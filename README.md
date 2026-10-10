@@ -43,7 +43,7 @@ It runs on Windows (the main target) and Linux.
 - **Monsters** like Beta 1.7.3, with original blocky models:
   - **Zombies** walk at you and hit for 2.5 hearts, and drop feathers.
   - **Skeletons** keep their distance and shoot arrows; they drop arrows and bones.
-  - **Creepers** walk up to you, swell and flash white for a second and a half, then explode (step back to stop them). They drop gunpowder, unless they blew up. Lightning makes a charged creeper with a blue glow and twice the blast.
+  - **Creepers** walk up to you, hiss, swell and flash white for a second and a half, then explode (step back to stop them). They drop gunpowder, unless they blew up. Lightning makes a charged creeper with a blue glow and twice the blast.
   - **Spiders** climb walls and leap at you, but leave you alone in daylight unless you hit them. They drop string. One spider in a hundred carries a skeleton (a spider jockey).
   - **Slimes** hop about deep underground (below height 16 in one chunk in ten). Big ones split into 2 to 4 smaller ones when they die; the smallest are harmless and drop slimeballs.
 - **Spawning**: monsters appear in the dark (light 7 or less) at least 24 blocks from you, up to Beta's cap. They vanish when you go more than 128 blocks away, and now and then when you stay away. Zombies and skeletons catch fire in sunlight unless they are in the shade or in water. You can't sleep with monsters close by.
@@ -51,6 +51,7 @@ It runs on Windows (the main target) and Linux.
   ![Monsters](screenshots/monsters.png)
 - **Combat**: hits knock you and monsters back, a red flash shows the hurt, and for half a second after a hit only a harder hit does anything (just the difference). Dying monsters tip over, turn red and vanish in a puff of smoke, dropping their items.
 - **Explosions**: creepers and **TNT** blast holes in the ground, hurting and throwing everything nearby (less behind walls). Stone holds out better than dirt, and water, lava and bedrock stop a blast. Breaking TNT or using flint and steel on it lights it: it flashes for 4 seconds and blows up, and a blast lights other TNT nearby. 30% of the blocks a blast destroys drop.
+- **Sound effects**: the creeper's and lit TNT's hiss and the boom of a blast, made by the code (no sound files). They fade with distance (a blast carries 64 blocks, a hiss 16) and come from the side they are on. Without speakers or an audio device the game simply runs silent. The rest of the sounds and music come in M16.
 
   ![A TNT crater](screenshots/tnt.png)
 - **Difficulty** (in Options): Peaceful (no monsters; health comes back by itself and hunger stays put), Easy (monsters do a third of their damage plus half a heart), Normal (the default) and Hard (half as much again).
@@ -99,7 +100,7 @@ You need a graphics card with OpenGL 3.3, which almost every computer from the l
 2. Install **VS Code** and, from its Extensions panel, the **C/C++** and **CMake Tools** extensions (both by Microsoft).
 3. Open this folder in VS Code (File > Open Folder).
 4. When CMake Tools asks for a kit, pick **Visual Studio Build Tools 2022 Release - amd64**. (Later you can change it with the command palette: *CMake: Select a Kit*.)
-5. In the status bar, set the build variant to **Release**, then click **Build** (or press F7). The first build downloads GLFW, GLM and doctest, which takes a minute.
+5. In the status bar, set the build variant to **Release**, then click **Build** (or press F7). The first build downloads GLFW, GLM, doctest and miniaudio, which takes a minute.
 6. Click the ▷ button in the status bar (or *CMake: Run Without Debugging*, Shift+F5) to play. The program is `build/PetrutzCraft.exe` (or `build/Release/PetrutzCraft.exe`, depending on the generator).
 
 From a terminal instead, open **Developer PowerShell for VS 2022** in this folder and run:
@@ -138,7 +139,7 @@ Deleting the `build` folder deletes these too, so copy `saves/` somewhere safe f
 
 The **Options** button on the title screen (or in the pause menu) has:
 
-- **Invert Mouse**, mouse **Sensitivity** and **Difficulty** (Peaceful, Easy, Normal or Hard). Music and Sound will be added along with sound.
+- **Invert Mouse**, mouse **Sensitivity** and **Difficulty** (Peaceful, Easy, Normal or Hard). Music and Sound volume come with the rest of the sounds (M16).
 - **Video Settings**: **Graphics** Fancy (see-through leaves, 3D clouds) or Fast (solid leaves, flat clouds), **Render Distance** Far (16 chunks), Normal (8, the default), Short (4) or Tiny (2), **Smooth Lighting** on or off, and **Clouds** on or off.
 - **Controls**: click a key, then press the new key for it. A key used twice turns red.
 
@@ -209,7 +210,7 @@ The second command plays a scripted game and saves screenshots plus `report.txt`
 ## Project layout
 
 ```
-CMakeLists.txt     build script; downloads GLFW, GLM and doctest
+CMakeLists.txt     build script; downloads GLFW, GLM, doctest and miniaudio
 src/
   main.cpp         command-line options and the window
   app.cpp          the title screen, menus and options around the game, loading and quitting worlds
@@ -241,6 +242,8 @@ src/
   mobs.cpp         cow AI and model, the player model and its armor, dropped items, arrows
   combat.cpp       Beta's rules for monsters: difficulty, being hurt, stats, drops, spawning, sunlight, spawners, explosions
   monsters.cpp     monster AI and models, lit TNT, smoke puffs
+  sound.cpp        sound effects made by the code, and how loud each ear hears them
+  audio.cpp        plays the sounds on the audio device (miniaudio)
   textures.cpp     procedurally generated pixel-art textures
   font.cpp         the 5x7 pixel font
   blocks.cpp       block definitions
@@ -255,14 +258,14 @@ tests/             doctest logic tests (no window needed)
 
 - Monsters have no pathfinding: they walk straight at you and hop up single blocks, so a wall or a ditch stops them.
 - Lit TNT isn't saved. The death screen has no score yet.
-- Creepers hiss only visually until sound arrives (M16).
+- The only sounds so far are the hiss and the blast; footsteps, hurt sounds, music and volume settings come in M16.
 - There is no obsidian yet (it comes with flowing lava in M6), so the diamond-pickaxe rule for it waits until then.
 - The fishing rod is only an item until fishing arrives in M15. The hoe can't till yet (farming is M8).
 - Flying arrows, and arrows stuck in blocks, aren't saved: they're gone when you load the world. Fires go on burning after loading.
 - Lava and water stand still and lava doesn't burn you yet (M6). Lava, water and ice are see-through for the crosshair, and ice drops nothing (like Beta).
 - No tall grass, flowers, mushrooms, sugar cane, cacti, pumpkins or snow layers yet: they need non-cube shapes and come in M11.
 - Worlds saved before world generation changed keep the chunks you visited, so there is a visible cliff where the old terrain meets the new.
-- No sound or music yet, and no options for them until they arrive. So there's no thunder or creeper hiss to hear.
+- No music, thunder or other sounds yet (M16).
 - Lightning doesn't start fires and rain doesn't put them out yet (M6). Snow doesn't pile up on the ground yet (snow layers come in M6).
 - Wool only comes from the creative item picker until sheep arrive (M10), so that's where beds start.
 - Doors and most other crafted things don't do anything yet; they arrive with M11 and the other milestones. Chests and furnaces are plain blocks for now.

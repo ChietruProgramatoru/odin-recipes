@@ -2,10 +2,12 @@
 // daylight, mob spawners, explosions and how monsters fight.
 #include <doctest/doctest.h>
 
+#include <cmath>
 #include <map>
 
 #include "combat.h"
 #include "monsters.h"
+#include "sound.h"
 #include "survival.h"
 #include "world.h"
 
@@ -282,4 +284,36 @@ TEST_CASE("Peaceful: health comes back, hunger stands still") {
     normal.hunger = 10;
     for (int i = 0; i < 245; ++i) normal.tick(0.05);
     CHECK(normal.health == 10);
+}
+
+TEST_CASE("the hiss and the boom are made by the code, and fade with distance") {
+    const auto fuse = make_sound(Sound::Fuse);
+    const auto boom = make_sound(Sound::Explosion);
+    CHECK(fuse.size() == static_cast<size_t>(SOUND_RATE * 1.5));
+    CHECK(boom.size() == static_cast<size_t>(SOUND_RATE * 2));
+    CHECK(make_sound(Sound::Fuse) == fuse);  // the same every time
+    auto loudness = [](const std::vector<float>& s, size_t from, size_t to) {
+        double sum = 0;
+        for (size_t i = from; i < to; ++i) sum += s[i] * s[i];
+        return std::sqrt(sum / static_cast<double>(to - from));
+    };
+    for (float v : boom) REQUIRE(std::abs(v) <= 1.0f);
+    CHECK(loudness(boom, 0, SOUND_RATE / 4) > 0.1);
+    CHECK(loudness(boom, SOUND_RATE * 7 / 4, SOUND_RATE * 2) < loudness(boom, 0, SOUND_RATE / 4) / 10);  // dies away
+    CHECK(loudness(fuse, SOUND_RATE / 2, SOUND_RATE) > 0.05);  // a steady hiss
+
+    const glm::dvec3 ear(0, 64, 0);
+    StereoGain here = sound_gain(Sound::Fuse, ear, 0, ear);
+    CHECK(here.left == doctest::Approx(1.0));
+    CHECK(here.right == doctest::Approx(1.0));
+    StereoGain near = sound_gain(Sound::Fuse, ear, 0, ear + glm::dvec3(0, 0, 8));
+    CHECK(near.left == doctest::Approx(0.5));
+    CHECK(sound_gain(Sound::Fuse, ear, 0, ear + glm::dvec3(0, 0, 17)).left == 0);
+    CHECK(sound_gain(Sound::Explosion, ear, 0, ear + glm::dvec3(0, 0, 40)).left > 0);  // blasts carry further
+    // Facing +z, -x is on the right; turned around, it is on the left.
+    StereoGain right = sound_gain(Sound::Fuse, ear, 0, ear + glm::dvec3(-4, 0, 0));
+    CHECK(right.right > right.left);
+    CHECK(right.left > 0);
+    StereoGain turned = sound_gain(Sound::Fuse, ear, 180, ear + glm::dvec3(-4, 0, 0));
+    CHECK(turned.left > turned.right);
 }
