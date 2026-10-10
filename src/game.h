@@ -10,6 +10,7 @@
 
 #include <glm/vec3.hpp>
 
+#include "hand.h"
 #include "farming.h"
 #include "hud.h"
 #include "inventory_screen.h"
@@ -75,6 +76,7 @@ public:
     double fall_peak;
     bool was_on_ground = true;
     double walk_phase = 0, walk_amount = 0;  // for the third-person model
+    Hand hand;  // the arm or held item in first person, and its swing
 
     // Weather (rain, snow, thunder) and the lightning bolts showing right now.
     Weather weather;
@@ -137,6 +139,8 @@ public:
     void update_target();
     void break_block(glm::ivec3 pos, BlockId block);
     void use_item();
+    // Right click: use_item(), swinging the hand if that changed a block or opened something (Beta).
+    void use_item_by_hand();
     // Left click on a cow or monster in reach.
     void try_attack();
     // Damage the player, less what their armor takes off. Returns true if it hurt.
