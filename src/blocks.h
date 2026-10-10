@@ -26,6 +26,11 @@ enum Block : BlockId {
     FIRE,
     // Monsters (M10): TNT, lit by breaking it, flint and steel or another explosion.
     TNT,
+    // Smelting (M7): FURNACE above faces south (its front towards +z); these are the other
+    // facings, then lit furnaces in all four. They all drop FURNACE. Glass comes out of a furnace.
+    FURNACE_WEST, FURNACE_NORTH, FURNACE_EAST,
+    LIT_FURNACE_SOUTH, LIT_FURNACE_WEST, LIT_FURNACE_NORTH, LIT_FURNACE_EAST,
+    GLASS,
     BLOCK_COUNT
 };
 
@@ -91,6 +96,12 @@ bool is_torch(BlockId id);  // floor or wall torch (drawn as a thin stick, not a
 // Not a cube and nothing to bump into: torches and fire. Faces next to them are drawn.
 bool is_thin(BlockId id);
 bool is_bed(BlockId id);    // either half of a bed
+// Furnaces: any facing, lit or not. The facing is Beta's (0 south, 1 west, 2 north, 3 east, see
+// FACING_DIRS in bed.h) and says which way the front points.
+bool is_furnace(BlockId id);
+bool is_lit_furnace(BlockId id);
+int furnace_dir(BlockId furnace);
+BlockId furnace_block(int dir, bool lit);
 // How tall a solid block is for walking on it: 1, or 9/16 for a bed.
 float block_height(BlockId id);
 // Light (0-15): how much a block dims light passing into it, and how much it gives off.

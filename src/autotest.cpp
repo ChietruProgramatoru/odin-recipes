@@ -209,6 +209,7 @@ void AutoTest::play(App& app, Game& g) {
         g.pitch = 10;
     }
     if (f == 344) crafting(app, g);
+    if (f >= 345 && f <= 349) furnaces(app, g);
     if (f == 360) {
         hp_before_fall_ = g.vitals.health;
         p.y += 12;
@@ -294,6 +295,10 @@ void AutoTest::play(App& app, Game& g) {
         marker_ = {static_cast<int>(std::floor(p.x)) + 2, static_cast<int>(std::floor(p.y)) + 1, static_cast<int>(std::floor(p.z))};
         g.renderer->rebuild(g.world.set_block(marker_.x, marker_.y, marker_.z, BRICK));
         g.inventory.add(PLANKS, 7);
+        // A furnace on top of it, half way through smelting sand.
+        g.renderer->rebuild(g.world.set_block(marker_.x, marker_.y + 1, marker_.z, furnace_block(1, true)));
+        Furnace& fur = g.world.furnace(marker_ + glm::ivec3(0, 1, 0));
+        fur = Furnace{Stack{SAND, 5}, Stack{COAL, 2}, Stack{GLASS, 3}, 1000, 1600, 50};
         saved_player_ = g.player_data();
         saved_raining_ = g.weather.state.raining;
         saved_cows_ = g.cows.size();
@@ -1021,6 +1026,74 @@ void AutoTest::crafting(App& app, Game& g) {
     g.creative = false;
 }
 
+void AutoTest::furnaces(App& app, Game& g) {
+    const long f = g.frame;
+    World& w = g.world;
+    auto set = [&](glm::ivec3 c, BlockId b) { g.renderer->rebuild(w.set_block(c.x, c.y, c.z, b)); };
+    if (f == 345) {
+        // Place a furnace from the hotbar two blocks ahead (against a stone block), looking south.
+        g.yaw = 0;
+        g.pitch = 0;
+        const glm::vec3 e = g.eye();
+        furnace_ = {static_cast<int>(std::floor(e.x)), static_cast<int>(std::floor(e.y)), static_cast<int>(std::floor(e.z)) + 2};
+        set(furnace_ - glm::ivec3(0, 0, 1), AIR);
+        set(furnace_, AIR);
+        set(furnace_ + glm::ivec3(0, 0, 1), STONE);
+        set(furnace_ - glm::ivec3(0, 1, 0), STONE);
+        g.inventory.slots[2] = Stack{FURNACE, 1};
+        g.inventory.selected = 2;
+        g.update_target();
+        g.use_item();
+        check("a placed furnace faces the player", w.get_block(furnace_.x, furnace_.y, furnace_.z) == furnace_block(2, false));
+        g.update_target();
+        g.use_item();
+        check("right-clicking a furnace opens its screen", g.gui && g.gui->kind == InventoryScreen::Kind::Furnace);
+        if (!g.gui) return;
+        // Iron ore in, coal as fuel, then 10 seconds of game ticks.
+        CraftingMenu& menu = *g.gui->crafting;
+        g.inventory.slots[33] = Stack{IRON_ORE, 3};
+        g.inventory.slots[34] = Stack{COAL, 1};
+        menu.click({Slot::Inv, 33}, 0, false);
+        menu.click({Slot::Furnace, FURNACE_INPUT}, 0, false);
+        menu.click({Slot::Inv, 34}, 0, false);
+        menu.click({Slot::Furnace, FURNACE_FUEL}, 0, false);
+        for (int i = 0; i < SMELT_TICKS + 60; ++i) g.tick_furnaces();
+        const Furnace* fur = w.furnace_at(furnace_);
+        check("10 seconds in a lit furnace smelts iron ore into an ingot",
+              fur && fur->output == Stack{IRON_INGOT, 1} && fur->input == Stack{IRON_ORE, 2} && !fur->fuel);
+        check("a burning furnace is lit and glows (light " +
+                  std::to_string(w.block_light(furnace_.x, furnace_.y, furnace_.z - 1)) + " in front)",
+              is_lit_furnace(w.get_block(furnace_.x, furnace_.y, furnace_.z)) &&
+                  w.block_light(furnace_.x, furnace_.y, furnace_.z - 1) == 12);
+        shot(app, "m7_furnace_screen.png");
+        menu.click({Slot::Furnace, FURNACE_OUTPUT}, 0, true);
+        check("shift-clicking the output takes the ingot", g.inventory.count(IRON_INGOT) == 1 && !fur->output);
+        g.close_gui();
+        check("the furnace keeps smelting with its screen closed", !g.gui && w.furnace_at(furnace_)->burning());
+        // Glass next to it, and night, for a picture of the glowing furnace.
+        set(furnace_ + glm::ivec3(1, 0, 0), GLASS);
+        set(furnace_ + glm::ivec3(-1, 0, 0), GLASS);
+        furnace_time_ = g.level.time;
+        g.level.time = 18000;
+        g.hud->show_message("", 0);
+        g.player.z -= 1.5;
+        g.pitch = 15;
+    }
+    if (f == 347) shot(app, "m7_lit_furnace.png");
+    if (f == 348) {
+        g.level.time = furnace_time_;
+        g.player.z += 1.5;
+        const size_t before = g.drops.size();
+        g.break_block(furnace_, w.get_block(furnace_.x, furnace_.y, furnace_.z));
+        check("breaking a furnace drops what was in it",
+              g.drops.size() > before && g.drops.back()->stack == Stack{IRON_ORE, 2} && !w.furnace_at(furnace_));
+        const size_t after = g.drops.size();
+        g.break_block(furnace_ + glm::ivec3(1, 0, 0), GLASS);
+        g.break_block(furnace_ + glm::ivec3(-1, 0, 0), GLASS);
+        check("glass drops nothing", g.drops.size() == after);
+    }
+}
+
 void AutoTest::tools(App& app, Game& g) {
     const long f = g.frame;
     World& w = g.world;
@@ -1166,6 +1239,10 @@ void AutoTest::reload(App& app) {
         Game& g = *app.game;
         check("blocks changed before quitting are still there",
               g.world.get_block(marker_.x, marker_.y, marker_.z) == BRICK);
+        const Furnace* fur = g.world.furnace_at(marker_ + glm::ivec3(0, 1, 0));
+        check("a furnace keeps what is in it and its fire through saving",
+              fur && fur->input && fur->input->item == SAND && fur->output && fur->output->item == GLASS && fur->fuel &&
+                  fur->burning() && is_lit_furnace(g.world.get_block(marker_.x, marker_.y + 1, marker_.z)));
         PlayerData now = g.player_data();
         check("player position, health, hunger and inventory are restored",
               std::abs(now.pos.x - saved_player_.pos.x) < 1e-6 && std::abs(now.pos.z - saved_player_.pos.z) < 1e-6 &&

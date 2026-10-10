@@ -5,8 +5,11 @@
 CraftingMenu::CraftingMenu(Inventory& inventory, int size)
     : inv(inventory), grid_size(size), grid(static_cast<size_t>(size * size)) {}
 
+CraftingMenu::CraftingMenu(Inventory& inventory, Furnace& f) : inv(inventory), grid_size(0), furnace(&f) {}
+
 std::optional<Stack>& CraftingMenu::at(Slot s) {
     switch (s.kind) {
+    case Slot::Furnace: return s.index == FURNACE_INPUT ? furnace->input : s.index == FURNACE_FUEL ? furnace->fuel : furnace->output;
     case Slot::Result: return result;
     case Slot::Grid: return grid[s.index];
     case Slot::Armor: return inv.armor[s.index];
@@ -17,6 +20,7 @@ std::optional<Stack>& CraftingMenu::at(Slot s) {
 
 bool CraftingMenu::accepts(Slot s, const Stack& stack) const {
     if (s.kind == Slot::Result) return false;
+    if (s.kind == Slot::Furnace) return s.index != FURNACE_OUTPUT;  // Beta's input and fuel slots take anything
     if (s.kind == Slot::Armor) return armor_slot(stack.item) == s.index;
     return true;
 }
@@ -92,7 +96,10 @@ void CraftingMenu::click(Slot s, int button, bool shift) {
             merge(moving, Inventory::HOTBAR, Inventory::SIZE, false);  // hotbar -> storage
         else if (s.kind == Slot::Inv)
             merge(moving, 0, Inventory::HOTBAR, false);  // storage -> hotbar
-        else {
+        else if (s.kind == Slot::Furnace) {
+            merge(moving, 0, Inventory::HOTBAR, true);  // furnace -> hotbar from the right, then storage from the bottom
+            if (moving.count) merge(moving, Inventory::HOTBAR, Inventory::SIZE, true);
+        } else {
             merge(moving, Inventory::HOTBAR, Inventory::SIZE, false);  // grid or armor -> storage, then hotbar
             if (moving.count) merge(moving, 0, Inventory::HOTBAR, false);
         }
@@ -127,8 +134,13 @@ void CraftingMenu::click(Slot s, int button, bool shift) {
         } else if (cursor->count <= lim) {
             std::swap(*slot, *cursor);
         }
-        if (cursor->count == 0) cursor.reset();
+    } else if (cursor && slot && s.kind == Slot::Furnace && stackable(*slot, *cursor) &&
+               cursor->count + slot->count <= max_stack(cursor->item)) {
+        // The output slot takes nothing, but its items join a matching stack on the mouse.
+        cursor->count += slot->count;
+        slot.reset();
     }
+    if (cursor && cursor->count == 0) cursor.reset();
     if (s.kind == Slot::Grid) update_result();
 }
 

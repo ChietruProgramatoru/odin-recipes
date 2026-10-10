@@ -64,6 +64,7 @@ public:
     Inventory inventory, creative_inventory;
     // The inventory, a crafting table or the creative item picker, while one is open.
     std::unique_ptr<InventoryScreen> gui;
+    std::optional<glm::ivec3> furnace_open;  // the furnace whose screen is open
     Vitals vitals;
     bool creative = false, flying = false, sneaking = false;
 
@@ -156,6 +157,12 @@ public:
     void tick_spawners();
     void drop_selected();
     void open_gui(InventoryScreen::Kind kind);
+    // Right-clicking a furnace opens its screen.
+    void open_furnace(glm::ivec3 pos);
+    // Every furnace within the render distance burns and smelts for one tick (Beta: far ones wait).
+    void tick_furnaces();
+    // A furnace block is gone: what was in it falls out.
+    void drop_furnace_contents(glm::ivec3 pos);
     void close_gui();
     // Throw a stack forwards from the player's eyes, like Q does.
     void throw_stack(const Stack& stack);
@@ -212,6 +219,7 @@ private:
     void swap_selected(ItemId item);
     bool use_bucket(ItemId held);
     void set_mouse_captured(bool captured);
+    void show_gui(std::unique_ptr<InventoryScreen> screen);
     bool key_down(int key) const;
     bool action_down(KeyAction action) const { return !gui && key_down(options.keys[action]); }
     bool sprint_allowed() const { return !sneaking && !flying && (creative || vitals.can_sprint()); }
