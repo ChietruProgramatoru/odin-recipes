@@ -31,6 +31,8 @@ enum Block : BlockId {
     FURNACE_WEST, FURNACE_NORTH, FURNACE_EAST,
     LIT_FURNACE_SOUTH, LIT_FURNACE_WEST, LIT_FURNACE_NORTH, LIT_FURNACE_EAST,
     GLASS,
+    // Fluids (M6): where flowing lava meets water. Needs a diamond pickaxe.
+    OBSIDIAN,
     BLOCK_COUNT
 };
 
@@ -62,6 +64,8 @@ enum Tile : int {
     T_FIRE, T_ARMOR_LEATHER, T_ARMOR_CHAIN, T_ARMOR_IRON, T_ARMOR_GOLD, T_ARMOR_DIAMOND,
     // Monsters (M10) and the smoke of explosions.
     T_ZOMBIE_SKIN, T_ZOMBIE_SHIRT, T_ZOMBIE_PANTS, T_BONE, T_CREEPER, T_SPIDER, T_SPIDER_EYE, T_SLIME, T_SMOKE,
+    // Fluids (M6).
+    T_OBSIDIAN,
     TILE_COUNT
 };
 
@@ -89,6 +93,11 @@ bool is_solid(BlockId id);  // can't walk through
 bool is_block(ItemId id);   // placeable block
 bool is_opaque(BlockId id); // hides the faces behind it
 bool is_fluid(BlockId id);  // water or lava: you can't target or break it
+// A fluid's data value: 0 is a source, 1-7 how far it has flowed from one, 8 and up falling
+// (Beta). How much of the cell it fills, from 1/9 to 1 (Beta's BlockFluid.getFluidHeightPercent
+// is the part that is air).
+inline float fluid_height_percent(int data) { return (data >= 8 ? 1 : data + 1) / 9.0f; }
+inline float fluid_fill(int data) { return 1.0f - fluid_height_percent(data); }
 bool is_leaves(BlockId id);
 // Drawn see-through in the solid pass (alpha-tested), so neighbouring faces stay visible.
 bool is_cutout(BlockId id);
@@ -102,6 +111,7 @@ bool is_furnace(BlockId id);
 bool is_lit_furnace(BlockId id);
 int furnace_dir(BlockId furnace);
 BlockId furnace_block(int dir, bool lit);
+bool falls(BlockId id);     // sand and gravel fall when nothing holds them up
 // How tall a solid block is for walking on it: 1, or 9/16 for a bed.
 float block_height(BlockId id);
 // Light (0-15): how much a block dims light passing into it, and how much it gives off.

@@ -81,6 +81,7 @@ add_library(petrutz_core STATIC
   src/sky.cpp
   src/weather.cpp
   src/bed.cpp
+  src/blockupdate.cpp
   src/streamer.cpp
   src/physics.cpp
   src/survival.cpp
@@ -143,6 +144,7 @@ add_executable(petrutz_tests
   tests/test_weather.cpp
   tests/test_monsters.cpp
   tests/test_furnace.cpp
-  tests/test_hand.cpp)
+  tests/test_hand.cpp
+  tests/test_blockupdate.cpp)
 target_link_libraries(petrutz_tests PRIVATE petrutz_core doctest_header)
 add_test(NAME logic COMMAND petrutz_tests)

@@ -66,6 +66,7 @@ const BlockInfo BLOCKS[BLOCK_COUNT] = {
     {"Furnace", {IT_FURNACE_TOP, IT_FURNACE_SIDE, IT_FURNACE_TOP}, 3.5f, FURNACE},
     // Glass drops nothing when broken (Beta).
     {"Glass", {IT_GLASS, IT_GLASS, IT_GLASS}, 0.3f, std::nullopt},
+    {"Obsidian", {T_OBSIDIAN, T_OBSIDIAN, T_OBSIDIAN}, 10.0f, OBSIDIAN},
 };
 
 }  // namespace
@@ -93,6 +94,7 @@ BlockId furnace_block(int dir, bool lit) {
     return dir == 0 ? static_cast<BlockId>(FURNACE) : static_cast<BlockId>(FURNACE_WEST + dir - 1);
 }
 float block_height(BlockId id) { return is_bed(id) ? 9.0f / 16 : 1.0f; }
+bool falls(BlockId id) { return id == SAND || id == GRAVEL; }
 bool is_thin(BlockId id) { return is_torch(id) || id == FIRE; }
 bool is_solid(BlockId id) { return id != AIR && !is_fluid(id) && !is_thin(id); }
 bool is_opaque(BlockId id) {

@@ -9,7 +9,7 @@ enum ToolOrder { SWORD, SHOVEL, PICKAXE, AXE, HOE };  // the order of each mater
 // Blocks each tool digs fast (Beta's lists, for the blocks this game has).
 bool pickaxe_block(BlockId b) {
     switch (b) {
-        case STONE: case COBBLE: case SANDSTONE: case MOSSY_COBBLE: case ICE:
+        case STONE: case COBBLE: case SANDSTONE: case MOSSY_COBBLE: case ICE: case OBSIDIAN:
         case COAL_ORE: case IRON_ORE: case GOLD_ORE: case DIAMOND_ORE: case LAPIS_ORE:
             return true;
         default: return false;
@@ -27,6 +27,7 @@ std::optional<int> pickaxe_needed(BlockId b) {
             return 0;
         case IRON_ORE: case LAPIS_ORE: return 1;
         case GOLD_ORE: case DIAMOND_ORE: case REDSTONE_ORE: return 2;
+        case OBSIDIAN: return 3;
         default: return std::nullopt;
     }
 }

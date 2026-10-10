@@ -257,6 +257,10 @@ std::vector<uint8_t> encode_chunk(const Chunk& c) {
         w.i32(f.burn_total);
         w.i32(f.cook);
     }
+    // Data values, two to a byte (low half first).
+    std::vector<uint8_t> packed(c.data.size() / 2);
+    for (size_t i = 0; i < packed.size(); ++i) packed[i] = (c.data[2 * i] & 15) | (c.data[2 * i + 1] << 4);
+    w.bytes(packed.data(), packed.size());
     return w.out;
 }
 
@@ -298,6 +302,9 @@ std::unique_ptr<Chunk> decode_chunk(const std::vector<uint8_t>& bytes, int cx, i
             e.kind = EntityRecord::MONSTER;
             e.size = e.mob == static_cast<int>(MobKind::Slime) ? (e.size >= 4 ? 4 : e.size >= 2 ? 2 : 1) : 1;
             c->entities.push_back(e);
+        } else if (kind == EntityRecord::FALLING && finite && falls(static_cast<BlockId>(e.item))) {
+            e.kind = EntityRecord::FALLING;
+            c->entities.push_back(e);
         } else if (kind == EntityRecord::ITEM && finite && valid_item(e.item) && e.count >= 1) {
             e.count = std::min(e.count, max_stack(e.item));
             e.damage = std::clamp(e.damage, 0, max_damage(e.item));
@@ -323,6 +330,14 @@ std::unique_ptr<Chunk> decode_chunk(const std::vector<uint8_t>& bytes, int cx, i
             f.cook = std::clamp(r.i32(), 0, SMELT_TICKS - 1);
             // Only kept where a furnace still stands.
             if (index >= 0 && index < static_cast<int>(c->blocks.size()) && is_furnace(c->blocks[index])) c->furnaces[index] = f;
+        }
+    }
+    if (version >= 5) {
+        const uint8_t* packed = r.bytes(c->data.size() / 2);
+        if (!packed) return nullptr;
+        for (size_t i = 0; i < c->data.size() / 2; ++i) {
+            c->data[2 * i] = packed[i] & 15;
+            c->data[2 * i + 1] = packed[i] >> 4;
         }
     }
     if (!r.ok()) return nullptr;

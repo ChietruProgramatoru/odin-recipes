@@ -21,5 +21,5 @@ Image make_atlas(const std::map<int, Image>& tiles);
 Image make_rain_image();
 Image make_snow_image();
 
-// HUD icons: heart_full, heart_half, heart_empty, food_full, food_half, food_empty (9x8 each).
+// HUD icons: heart_full, heart_half, heart_empty, food_full, food_half, food_empty, armor_*, bubble (9x8 each).
 std::map<std::string, Image> make_hud_icons();
