@@ -283,7 +283,8 @@ void AutoTest::play(App& app, Game& g) {
         g.flying = false;
     }
     if (f >= 627 && f < 700) weather_and_beds(app, g);
-    if (f >= 700 && f < 1200) monsters(app, g);
+    if (f >= 700 && f < 1194) monsters(app, g);
+    if (f >= 1194 && f < 1200) hand(app, g);
     if (f == 1200) {
         app.pause();
         check("Escape menu pauses the game", g.paused && app.screen());
@@ -1143,6 +1144,86 @@ void AutoTest::tools(App& app, Game& g) {
         for (const auto& a : g.arrows) inv.add(ARROW, 1);  // picked up, as if walked over
         g.arrows.clear();
         g.fires.clear();
+        g.pitch = 0;
+    }
+}
+
+void AutoTest::hand(App& app, Game& g) {
+    const long f = g.frame;
+    Inventory& inv = g.active_inventory();
+    World& w = g.world;
+    if (f == 1194) {
+        // A quiet, sunny moment: no monsters, no rain, no red flash or messages over the picture.
+        g.monsters.clear();
+        g.target_monster = nullptr;
+        hand_weather_ = g.weather;
+        g.weather = Weather(WeatherState{false, false, 100000, 100000});
+        hand_time_ = g.level.time;
+        g.level.time = 6000;
+        g.hud->update(10);
+        g.hud->show_help = false;
+        g.yaw = 30;
+        g.pitch = -10;
+        hand_slots_ = {inv.slots[0], inv.slots[1], inv.slots[2], inv.slots[3]};
+        hand_selected_ = inv.selected;
+        inv.slots[0].reset();
+        inv.slots[1] = Stack{GRASS, 10};
+        inv.slots[2] = Stack{DIAMOND_SWORD, 1};
+        inv.slots[3] = Stack{TORCH, 10};
+    }
+    if (f == 1196) {
+        inv.selected = 0;
+        auto arm = g.hand.parts(inv.selected_item());
+        check("an empty hand shows the arm", arm.size() == 1 && arm[0].model == MODEL_PLAYER_ARM);
+        shot(app, "hand_empty.png");
+        inv.selected = 1;
+        auto held = g.hand.parts(inv.selected_item());
+        check("the selected block is held in the hand", held.size() == 1 && held[0].model == HELD_MODEL_BASE + GRASS);
+        shot(app, "hand_block.png");
+        inv.selected = 3;
+        shot(app, "hand_torch.png");
+        inv.selected = 2;
+        held = g.hand.parts(inv.selected_item());
+        shot(app, "hand_sword.png");
+
+        // A left click swings the hand, even at nothing.
+        check("the hand is still before a click", !g.hand.swinging());
+        g.on_mouse_button(GLFW_MOUSE_BUTTON_LEFT, GLFW_PRESS);
+        g.on_mouse_button(GLFW_MOUSE_BUTTON_LEFT, GLFW_RELEASE);
+        check("a left click swings the hand", g.hand.swinging());
+        g.hand.update(Hand::SWING_SECONDS * 0.4);
+        auto swung = g.hand.parts(inv.selected_item());
+        check("the sword moves during the swing", swung[0].transform != held[0].transform);
+        shot(app, "hand_swing.png");
+        g.hand.update(Hand::SWING_SECONDS);
+        check("the swing ends", !g.hand.swinging() && g.hand.swing_progress() == 0);
+
+        // Placing a block with a right click swings the hand; eating doesn't.
+        const glm::ivec3 spot(static_cast<int>(std::floor(g.player.x)), static_cast<int>(std::floor(g.player.y)),
+                              static_cast<int>(std::floor(g.player.z)) + 2);
+        for (int dy = -1; dy <= 1; ++dy) hand_blocks_.push_back({spot + glm::ivec3(0, dy, 0), w.get_block(spot.x, spot.y + dy, spot.z)});
+        g.renderer->rebuild(w.set_block(spot.x, spot.y - 1, spot.z, STONE));
+        g.renderer->rebuild(w.set_block(spot.x, spot.y, spot.z, AIR));
+        g.renderer->rebuild(w.set_block(spot.x, spot.y + 1, spot.z, AIR));
+        face(g, spot.x + 0.5, spot.z + 0.5, 0);
+        glm::vec3 e = g.eye();
+        g.pitch = degrees(std::atan2(e.y - spot.y, std::hypot(spot.x + 0.5 - e.x, spot.z + 0.5 - e.z)));
+        g.update_target();
+        inv.selected = 1;
+        g.use_item_by_hand();
+        check("placing a block with a right click swings the hand",
+              g.hand.swinging() && w.get_block(spot.x, spot.y, spot.z) == GRASS);
+        g.hand.update(Hand::SWING_SECONDS);
+        inv.slots[1] = Stack{BREAD, 1};
+        g.use_item_by_hand();
+        check("eating doesn't swing the hand", !g.hand.swinging());
+
+        for (auto it = hand_blocks_.rbegin(); it != hand_blocks_.rend(); ++it)
+            g.renderer->rebuild(w.set_block(it->first.x, it->first.y, it->first.z, it->second));
+        for (int i = 0; i < 4; ++i) inv.slots[i] = hand_slots_[i];
+        inv.selected = hand_selected_;
+        g.weather = hand_weather_;
+        g.level.time = hand_time_;
         g.pitch = 0;
     }
 }

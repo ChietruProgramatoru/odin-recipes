@@ -8,6 +8,7 @@
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
 
+#include "hand.h"
 #include "rng.h"
 #include "textures.h"
 
@@ -319,6 +320,7 @@ WorldRenderer::WorldRenderer(World& world, GLuint atlas, int rd)
     : render_distance(rd), streamer_(world), atlas_(atlas), program_(VERTEX_SRC, FRAGMENT_SRC),
       sky_program_(SKY_VERTEX_SRC, SKY_FRAGMENT_SRC) {
     for (auto& [id, mesh] : build_models()) models_.emplace(id, GpuMesh(mesh));
+    for (auto& [id, mesh] : build_held_models(make_tiles())) models_.emplace(id, GpuMesh(mesh));
     sky_texture_ = upload_texture(make_sky_image());
     rain_texture_ = upload_texture(make_rain_image(), true);
     snow_texture_ = upload_texture(make_snow_image(), true);
@@ -393,6 +395,7 @@ void WorldRenderer::set_mesh_options(MeshOptions options) {
 }
 
 void WorldRenderer::rebuild(const std::vector<ChunkPos>& chunks) {
+    ++edits_;
     for (ChunkPos pos : chunks) {
         // Only chunks that are shown or about to be; others get meshed when they come into range.
         if (!meshes_.count(pos) && !streamer_.is_pending(pos)) continue;
@@ -705,4 +708,39 @@ void WorldRenderer::draw_models(const std::vector<ModelPart>& parts, int x, int 
     }
     glUniform4f(overlay, 0, 0, 0, 0);
     glDisable(GL_SCISSOR_TEST);
+}
+
+void WorldRenderer::draw_hand(const std::vector<ModelPart>& parts, int width, int height, float darkness) {
+    if (parts.empty()) return;
+    glViewport(0, 0, width, height);
+    glClear(GL_DEPTH_BUFFER_BIT);  // never hidden in a wall the player stands against
+    const float aspect = static_cast<float>(width) / std::max(1, height);
+    const glm::mat4 proj = glm::perspective(glm::radians(70.0f), aspect, 0.05f, 10.0f);
+    program_.use();
+    glUniformMatrix4fv(program_.uniform("mvp"), 1, GL_FALSE, glm::value_ptr(proj));
+    glUniform3f(program_.uniform("eye"), 0, 0, 0);
+    glUniform1f(program_.uniform("fog_start"), 1e6f);
+    glUniform1f(program_.uniform("fog_end"), 2e6f);
+    glUniform1i(program_.uniform("atlas"), 0);
+    glUniform1f(program_.uniform("alpha_cut"), 0.5f);
+    glUniform1f(program_.uniform("darkness"), darkness);
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, atlas_);
+    glEnable(GL_DEPTH_TEST);
+    glDisable(GL_CULL_FACE);  // a held sprite is seen from either side
+    glDisable(GL_BLEND);
+    GLint model = program_.uniform("model");
+    GLint model_light = program_.uniform("model_light");
+    GLint overlay = program_.uniform("overlay");
+    for (const ModelPart& part : parts) {
+        auto it = models_.find(part.model);
+        if (it == models_.end()) continue;
+        glUniformMatrix4fv(model, 1, GL_FALSE, glm::value_ptr(part.transform));
+        glUniform2f(model_light, part.sky, part.block);
+        glUniform4f(overlay, part.overlay.r, part.overlay.g, part.overlay.b, part.overlay.a);
+        it->second.draw();
+    }
+    glUniform4f(overlay, 0, 0, 0, 0);
+    glDisable(GL_DEPTH_TEST);
+    glBindVertexArray(0);
 }

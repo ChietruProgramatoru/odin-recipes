@@ -100,6 +100,8 @@ public:
     void set_mesh_options(MeshOptions options);
     // Rebuild these chunks right now (after a block edit).
     void rebuild(const std::vector<ChunkPos>& chunks);
+    // How many times blocks have been changed (rebuild() calls), so a click can tell whether it did anything.
+    long edit_count() const { return edits_; }
     size_t mesh_count() const { return meshes_.size(); }
     int jobs_in_flight() const { return streamer_.jobs_in_flight(); }
 
@@ -121,6 +123,9 @@ public:
     // Draw models on their own into part of the window (like the player in the inventory screen),
     // seen through `view_proj`, without fog. Leaves the viewport on that part of the window.
     void draw_models(const std::vector<ModelPart>& parts, int x, int y, int width, int height, const glm::mat4& view_proj);
+    // The first-person hand over the world: parts in camera space (x right, y up, looking down -z),
+    // with a depth buffer of their own, no fog, and the sky darkened by `darkness` levels like the world.
+    void draw_hand(const std::vector<ModelPart>& parts, int width, int height, float darkness);
 
 private:
     void draw_sky(const glm::mat4& proj_rot, const SkyState& sky, float far_dist);
@@ -139,6 +144,7 @@ private:
     std::map<int, GpuMesh> models_;
     std::vector<ModelPart> instances_;
     std::optional<glm::ivec3> outline_;
+    long edits_ = 0;
     GpuMesh outline_mesh_;
 
     ShaderProgram sky_program_;

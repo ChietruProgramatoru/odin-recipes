@@ -430,9 +430,10 @@ void Game::on_mouse_button(int button, int action) {
         break_cooldown = 0.0;
         update_target();
         try_attack();
+        hand.swing();  // Beta swings at anything, even thin air
     } else if (button == GLFW_MOUSE_BUTTON_RIGHT) {
         update_target();
-        use_item();
+        use_item_by_hand();
     }
 }
 
@@ -463,7 +464,8 @@ void Game::update(double dt) {
         } else {
             update_target();
             mine(dt);
-            if (mouse_down(GLFW_MOUSE_BUTTON_RIGHT) && use_cooldown <= 0) use_item();
+            if (mouse_down(GLFW_MOUSE_BUTTON_LEFT) && target && !targeting_mob()) hand.swing();  // digging
+            if (mouse_down(GLFW_MOUSE_BUTTON_RIGHT) && use_cooldown <= 0) use_item_by_hand();
         }
         use_cooldown -= dt;
         break_cooldown -= dt;
@@ -478,6 +480,7 @@ void Game::update(double dt) {
     }
 
     if (!paused) {
+        hand.update(dt);
         update_cows(dt);
         update_monsters(dt);
         update_drops(dt);
@@ -622,6 +625,17 @@ void Game::draw(int w, int h) {
     renderer->set_weather(precipitation_columns(world, cam, options.fancy_graphics ? 10 : 5, sky.rain), std::move(shown),
                           (static_cast<double>(level.time % 72000) + ticks_) / 20);
     renderer->draw(w, h, cam, forward(), sky);
+    if (!third_person && !hud_hidden && !sleeping_in && !vitals.dead()) {
+        // The hand is lit by the light where the eyes are.
+        std::vector<ModelPart> held = hand.parts(active_inventory().selected_item());
+        glm::vec3 e = eye();
+        const int x = ifloor(e.x), y = ifloor(e.y), z = ifloor(e.z);
+        for (ModelPart& part : held) {
+            part.sky = world.sky_light(x, y, z) / static_cast<float>(MAX_LIGHT);
+            part.block = world.block_light(x, y, z) / static_cast<float>(MAX_LIGHT);
+        }
+        renderer->draw_hand(held, w, h, sky.darkness);
+    }
     if (sleeping_in) {
         // The screen fades to dark while falling asleep.
         float a = std::min(1.0f, (sleep_ticks + static_cast<float>(ticks_)) / SLEEP_TICKS) * 0.85f;
@@ -881,6 +895,13 @@ void Game::throw_stack(const Stack& stack) {
     drop->body.vz = f.z * 6;
     drop->pickup_delay = 2.0;  // so it isn't picked straight back up
     drops.push_back(std::move(drop));
+}
+
+void Game::use_item_by_hand() {
+    const long edits = renderer->edit_count();
+    const bool had_gui = gui != nullptr, was_asleep = sleeping_in.has_value();
+    use_item();
+    if (renderer->edit_count() != edits || (gui && !had_gui) || (sleeping_in && !was_asleep)) hand.swing();
 }
 
 void Game::use_item() {
