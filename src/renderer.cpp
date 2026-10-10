@@ -204,6 +204,10 @@ void WorldRenderer::load_all(double px, double pz, int radius) {
     for (ReadyMesh& r : streamer_.take_ready()) upload(r);
 }
 
+void WorldRenderer::set_mesh_options(MeshOptions options) {
+    if (streamer_.set_mesh_options(options)) meshes_.clear();
+}
+
 void WorldRenderer::rebuild(const std::vector<ChunkPos>& chunks) {
     for (ChunkPos pos : chunks) {
         // Only chunks that are shown or about to be; others get meshed when they come into range.

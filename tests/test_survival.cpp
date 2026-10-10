@@ -68,3 +68,28 @@ TEST_CASE("damage cooldown blocks a second hit right away") {
     v.tick(0.6);
     CHECK(v.damage(2));
 }
+
+TEST_CASE("sprinting starts with a quick double tap of forward") {
+    SprintControl s;
+    s.forward_pressed(10.0, true);
+    CHECK_FALSE(s.active);
+    s.forward_pressed(10.2, true);
+    CHECK(s.active);
+    s.update(true, true);
+    CHECK(s.active);
+    s.update(false, true);  // let go of forward
+    CHECK_FALSE(s.active);
+
+    s.forward_pressed(20.0, true);
+    s.forward_pressed(20.5, true);  // too slow
+    CHECK_FALSE(s.active);
+
+    s.forward_pressed(30.0, false);
+    s.forward_pressed(30.1, false);  // hungry or sneaking
+    CHECK_FALSE(s.active);
+
+    s.forward_pressed(40.0, true);
+    s.forward_pressed(40.1, true);
+    s.update(true, false);  // started sneaking
+    CHECK_FALSE(s.active);
+}

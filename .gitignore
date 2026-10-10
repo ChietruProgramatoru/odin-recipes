@@ -2,3 +2,7 @@
 build/
 out/
 autotest-out/
+
+# Worlds, settings and screenshots made by running the game from the repo folder
+saves/
+options.txt

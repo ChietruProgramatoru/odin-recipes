@@ -47,6 +47,9 @@ public:
     ReadyMesh rebuild_now(ChunkPos pos);
     // Stop tracking a chunk's mesh (it was unloaded). It is queued again if it comes back in range.
     void forget(ChunkPos pos);
+    // Change how chunks are meshed. Forgets every mesh, so all chunks get meshed again.
+    // Returns false if nothing changed.
+    bool set_mesh_options(MeshOptions options);
     // Block until every chunk within `radius` has a mesh waiting in take_ready().
     void finish(double px, double pz, int radius);
 
@@ -66,6 +69,7 @@ private:
     void collect();
 
     World& world_;
+    MeshOptions options_;
     int max_in_flight_;
     int in_flight_ = 0;
     uint64_t next_ticket_ = 1;

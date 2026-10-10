@@ -4,50 +4,63 @@
 #include <cmath>
 #include <cstdio>
 #include <random>
+#include <unordered_map>
 
 #include <GLFW/glfw3.h>
 
-#include "autotest.h"
 #include "textures.h"
 
 namespace {
 constexpr double PI = 3.14159265358979323846;
 double radians(double d) { return d * PI / 180.0; }
 int ifloor(double v) { return static_cast<int>(std::floor(v)); }
+ChunkPos chunk_at(double x, double z) { return {chunk_of(ifloor(x)), chunk_of(ifloor(z))}; }
 }  // namespace
 
-Game::Game(GLFWwindow* win, uint64_t seed_, int render_distance, AutoTest* autotest)
+Game::Game(GLFWwindow* win, GLuint atlas, Painter& painter, const Options& opts, GameSetup setup)
     : window(win),
-      seed(seed_),
-      world(seed_),
-      rng(autotest ? 0 : std::random_device{}()),
+      options(opts),
+      level(std::move(setup.level)),
+      saver(std::make_unique<WorldSaver>(setup.world_dir)),
+      world(level.seed),
+      rng(setup.scripted ? 0 : std::random_device{}()),
       player(world, 0, 0, 0, 0.3, 1.8),
-      autotest_(autotest) {
-    atlas = upload_texture(make_atlas(make_tiles()));
-    renderer = std::make_unique<WorldRenderer>(world, atlas, render_distance, SKY);
-    renderer->on_chunk_shown = [this](ChunkPos pos) { maybe_spawn_cows(pos); };
-    hud = std::make_unique<Hud>(atlas);
+      scripted_(setup.scripted) {
+    world.set_store(&saver->store());
+    renderer = std::make_unique<WorldRenderer>(world, atlas, view_distance_chunks(options.view_distance), SKY);
+    renderer->set_mesh_options({options.smooth_lighting, options.fancy_graphics});
+    renderer->on_chunk_shown = [this](ChunkPos pos) { on_chunk_shown(pos); };
+    hud = std::make_unique<Hud>(painter);
 
     for (ItemId item : creative_items()) creative_inventory.add(item, 1);
 
-    spawn = find_spawn();
-    player.x = spawn.x;
-    player.y = spawn.y;
-    player.z = spawn.z;
+    spawn = level.spawn ? *level.spawn : find_spawn();
+    level.spawn = spawn;
+    const bool new_world = !level.player;
+    if (level.player) {
+        restore_player(*level.player);
+    } else {
+        player.x = spawn.x;
+        player.y = spawn.y;
+        player.z = spawn.z;
+    }
     fall_peak = player.y;
 
-    // Build the area around spawn before the first frame; the rest streams in.
+    // Build the area around the player before the first frame; the rest streams in.
     renderer->load_all(player.x, player.z, 2);
-    for (int i = 0; i < 5; ++i) spawn_cow_near(player.x, player.z, 6, 20);
-
-    set_mouse_captured(true);
-    hud->show_message("Welcome! Punch trees, find cows, survive.", 5);
+    if (new_world) {
+        for (int i = 0; i < 5; ++i) spawn_cow_near(player.x, player.z, 6, 20);
+        hud->show_message("Welcome! Punch trees, find cows, survive.", 5);
+    } else {
+        hud->show_message("Welcome back to " + level.name, 3);
+    }
+    set_mouse_captured(!vitals.dead());
 }
 
 Game::~Game() {
-    renderer.reset();
+    renderer.reset();  // stops the worker threads that read saved chunks
     hud.reset();
-    glDeleteTextures(1, &atlas);
+    if (saver) saver->wait();
 }
 
 // --- world setup -------------------------------------------------------------------------
@@ -61,6 +74,37 @@ glm::dvec3 Game::find_spawn() {
         }
     }
     return {0.5, world.surface_y(0, 0), 0.5};
+}
+
+void Game::restore_player(const PlayerData& p) {
+    player.x = p.pos.x;
+    player.y = p.pos.y;
+    player.z = p.pos.z;
+    yaw = p.yaw;
+    pitch = p.pitch;
+    vitals.health = p.health;
+    vitals.hunger = p.hunger;
+    vitals.saturation = p.saturation;
+    vitals.exhaustion = p.exhaustion;
+    creative = p.creative;
+    flying = p.flying;
+    inventory = p.inventory;
+    if (vitals.dead()) on_death();
+}
+
+PlayerData Game::player_data() const {
+    PlayerData p;
+    p.pos = {player.x, player.y, player.z};
+    p.yaw = yaw;
+    p.pitch = pitch;
+    p.health = vitals.health;
+    p.hunger = vitals.hunger;
+    p.saturation = vitals.saturation;
+    p.exhaustion = vitals.exhaustion;
+    p.creative = creative;
+    p.flying = flying;
+    p.inventory = inventory;
+    return p;
 }
 
 bool Game::spawn_cow_near(double x, double z, double rmin, double rmax) {
@@ -77,20 +121,104 @@ bool Game::spawn_cow_near(double x, double z, double rmin, double rmax) {
     return false;
 }
 
-void Game::maybe_spawn_cows(ChunkPos pos) {
+void Game::on_chunk_shown(ChunkPos pos) {
     Chunk* chunk = world.find(pos.cx, pos.cz);
-    if (!chunk || chunk->mob_spawned) return;
+    if (!chunk) return;
+    // Cows and items that were saved here, or left behind when the player walked away.
+    if (!chunk->entities.empty()) {
+        auto entities = std::move(chunk->entities);
+        chunk->entities.clear();
+        chunk->dirty = true;
+        for (const EntityRecord& e : entities) spawn_entity(e);
+    }
+    if (chunk->mob_spawned) return;
     chunk->mob_spawned = true;
+    chunk->dirty = true;
     if (cows.size() >= MAX_COWS || rng.random() > 0.12) return;
     double cx = pos.cx * CHUNK + 8, cz = pos.cz * CHUNK + 8;
     int n = rng.randint(1, 3);
     for (int i = 0; i < n; ++i) spawn_cow_near(cx, cz, 0, 6);
 }
 
+void Game::spawn_entity(const EntityRecord& e) {
+    if (e.kind == EntityRecord::COW) {
+        auto cow = std::make_unique<Cow>(world, e.x, e.y, e.z, rng);
+        cow->yaw = cow->target_yaw = e.yaw;
+        cow->health = std::clamp(e.health, 1, COW_MAX_HEALTH);
+        cows.push_back(std::move(cow));
+    } else {
+        auto drop = std::make_unique<ItemDrop>(world, e.item, e.x, e.y, e.z, rng);
+        drop->body.vx = drop->body.vy = drop->body.vz = 0;
+        drop->age = e.age;
+        drops.push_back(std::move(drop));
+    }
+}
+
+void Game::stash_entity(const EntityRecord& e) {
+    Chunk& chunk = world.chunk(chunk_of(ifloor(e.x)), chunk_of(ifloor(e.z)));
+    chunk.entities.push_back(e);
+    chunk.dirty = true;
+}
+
+namespace {
+EntityRecord cow_record(const Cow& c) {
+    EntityRecord e;
+    e.kind = EntityRecord::COW;
+    e.x = c.body.x;
+    e.y = c.body.y;
+    e.z = c.body.z;
+    e.yaw = static_cast<float>(c.yaw);
+    e.health = c.health;
+    return e;
+}
+EntityRecord drop_record(const ItemDrop& d) {
+    EntityRecord e;
+    e.kind = EntityRecord::ITEM;
+    e.x = d.body.x;
+    e.y = d.body.y;
+    e.z = d.body.z;
+    e.item = d.item;
+    e.age = static_cast<float>(d.age);
+    return e;
+}
+}  // namespace
+
+// --- saving --------------------------------------------------------------------------------
+
+bool Game::save(bool wait) {
+    // Cows and items are saved with the chunk they stand in.
+    std::unordered_map<ChunkPos, std::vector<EntityRecord>, ChunkPosHash> live;
+    for (const auto& cow : cows)
+        if (cow->alive()) live[chunk_at(cow->body.x, cow->body.z)].push_back(cow_record(*cow));
+    for (const auto& drop : drops) live[chunk_at(drop->body.x, drop->body.z)].push_back(drop_record(*drop));
+    for (const auto& [pos, list] : live) world.chunk(pos.cx, pos.cz);
+
+    std::vector<std::unique_ptr<Chunk>> copies;
+    for (Chunk* c : world.all_chunks()) {
+        auto it = live.find({c->cx, c->cz});
+        bool has_live = it != live.end();
+        if (!c->dirty && !c->saved_entities && !has_live) continue;
+        auto copy = std::make_unique<Chunk>(*c);
+        if (has_live) copy->entities.insert(copy->entities.end(), it->second.begin(), it->second.end());
+        c->dirty = false;
+        c->saved_entities = !copy->entities.empty();
+        copies.push_back(std::move(copy));
+    }
+    LevelData data = level;
+    data.last_played = now_ms();
+    data.spawn = spawn;
+    data.player = player_data();
+    level.last_played = data.last_played;
+    saver->save(std::move(data), std::move(copies));
+    autosave_timer = 0;
+    return wait ? saver->wait() : true;
+}
+
 // --- camera ------------------------------------------------------------------------------
 
 glm::vec3 Game::eye() const {
-    return {static_cast<float>(player.x), static_cast<float>(player.y + EYE_HEIGHT), static_cast<float>(player.z)};
+    float h = EYE_HEIGHT - (sneaking ? SNEAK_EYE_DROP : 0.0f);
+    return {static_cast<float>(player.x), static_cast<float>(player.y + h), static_cast<float>(player.z)};
 }
 
 glm::vec3 Game::forward() const {
@@ -99,12 +227,22 @@ glm::vec3 Game::forward() const {
             static_cast<float>(std::cos(y) * std::cos(p))};
 }
 
+glm::vec3 Game::camera() {
+    glm::vec3 e = eye();
+    if (!third_person) return e;
+    glm::vec3 back = -forward();
+    float dist = static_cast<float>(THIRD_PERSON_DISTANCE);
+    // Pull the camera in front of any wall behind the player.
+    if (auto hit = world.raycast(e, back, dist)) dist = std::max(0.2f, hit->distance - 0.25f);
+    return e + back * dist;
+}
+
 // --- input ---------------------------------------------------------------------------------
 
-bool Game::key_down(int key) const { return glfwGetKey(window, key) == GLFW_PRESS; }
+bool Game::key_down(int key) const { return key > 0 && glfwGetKey(window, key) == GLFW_PRESS; }
 
 void Game::set_mouse_captured(bool captured) {
-    if (autotest_) return;  // never grab the mouse during the scripted test
+    if (scripted_) return;  // never grab the mouse during the scripted test
     glfwSetInputMode(window, GLFW_CURSOR, captured ? GLFW_CURSOR_DISABLED : GLFW_CURSOR_NORMAL);
     if (captured && glfwRawMouseMotionSupported()) glfwSetInputMode(window, GLFW_RAW_MOUSE_MOTION, GLFW_TRUE);
     have_cursor_ = false;  // the next cursor position starts fresh, so the view doesn't jump
@@ -113,33 +251,42 @@ void Game::set_mouse_captured(bool captured) {
 void Game::set_paused(bool p) {
     paused = p;
     mouse_buttons_.clear();
-    set_mouse_captured(!p);
+    set_mouse_captured(!p && !vitals.dead());
+}
+
+void Game::apply_options() {
+    renderer->render_distance = view_distance_chunks(options.view_distance);
+    renderer->set_mesh_options({options.smooth_lighting, options.fancy_graphics});
 }
 
 void Game::on_key(int key, int action, int mods) {
     if (action != GLFW_PRESS) return;
+    if (key == GLFW_KEY_F1) hud_hidden = !hud_hidden;
+    if (key == GLFW_KEY_F3) debug_screen = !debug_screen;
+    if (key == GLFW_KEY_F5) third_person = !third_person;
     if (vitals.dead()) {
         if (key == GLFW_KEY_R) respawn();
         return;
     }
-    if (key == GLFW_KEY_ESCAPE) {
-        set_paused(!paused);
-        return;
-    }
     if (paused) return;
+    if (key == options.keys[KEY_FORWARD]) sprint_.forward_pressed(glfwGetTime(), sprint_allowed());
     if (key >= GLFW_KEY_1 && key <= GLFW_KEY_9) {
         active_inventory().selected = key - GLFW_KEY_1;
         hud->show_item_name(active_inventory().selected_item());
-    } else if (key == GLFW_KEY_C) {
+    } else if (key == options.keys[KEY_CREATIVE]) {
         creative = !creative;
         flying = false;
         hud->show_message(creative ? "Creative mode" : "Survival mode");
-    } else if (key == GLFW_KEY_F && !creative) {
+    } else if (key == options.keys[KEY_CRAFT] && !creative) {
         bool ok = inventory.craft_planks();
         hud->show_message(ok ? "Crafted 4 planks" : "Need 1 oak log (and a free slot) to craft planks", 2);
+    } else if (key == options.keys[KEY_DROP]) {
+        drop_selected();
+    } else if (key == options.keys[KEY_INVENTORY]) {
+        hud->show_message("The inventory screen isn't built yet", 2);
     } else if (key == GLFW_KEY_H) {
         hud->show_help = !hud->show_help;
-    } else if (key == GLFW_KEY_SPACE && creative) {
+    } else if (key == options.keys[KEY_JUMP] && creative) {
         double now = glfwGetTime();
         if (now - last_space_ < 0.3) {
             flying = !flying;
@@ -154,9 +301,10 @@ void Game::on_cursor(double x, double y) {
     cursor_x_ = x;
     cursor_y_ = y;
     have_cursor_ = true;
-    if (paused || vitals.dead() || autotest_) return;
-    yaw -= dx * MOUSE_SENSITIVITY;
-    pitch = std::clamp(pitch + dy * MOUSE_SENSITIVITY, -89.9, 89.9);  // screen y grows downwards
+    if (paused || vitals.dead() || scripted_) return;
+    double k = options.degrees_per_pixel();
+    yaw -= dx * k;
+    pitch = std::clamp(pitch + dy * k * (options.invert_mouse ? -1 : 1), -89.9, 89.9);  // screen y grows downwards
 }
 
 void Game::on_mouse_button(int button, int action) {
@@ -164,11 +312,7 @@ void Game::on_mouse_button(int button, int action) {
         mouse_buttons_.erase(button);
         return;
     }
-    if (vitals.dead()) return;
-    if (paused) {
-        set_paused(false);
-        return;
-    }
+    if (vitals.dead() || paused) return;
     mouse_buttons_.insert(button);
     if (button == GLFW_MOUSE_BUTTON_LEFT) {
         break_cooldown = 0.0;
@@ -187,30 +331,12 @@ void Game::on_scroll(double dy) {
     hud->show_item_name(inv.selected_item());
 }
 
-void Game::on_focus(bool focused) {
-    if (!focused && !vitals.dead() && !autotest_) set_paused(true);
-}
-
 // --- per frame -------------------------------------------------------------------------------
-
-void Game::run() {
-    double last = glfwGetTime();
-    while (!glfwWindowShouldClose(window) && !quit) {
-        glfwPollEvents();
-        double now = glfwGetTime();
-        double dt = autotest_ ? 1.0 / 60 : now - last;
-        last = now;
-        if (now > 0 && dt > 0) fps_ += (1.0 / std::max(dt, 1e-4) - fps_) * 0.05;
-        update(dt);
-        if (quit) break;
-        draw();
-        glfwSwapBuffers(window);
-    }
-}
 
 void Game::update(double dt) {
     dt = std::min(dt, 0.05);
     ++frame;
+    if (dt > 0) fps += (1.0 / std::max(dt, 1e-4) - fps) * 0.05;
     const bool dead = vitals.dead();
 
     if (!paused && !dead) {
@@ -230,6 +356,11 @@ void Game::update(double dt) {
     if (!paused) {
         update_cows(dt);
         update_drops(dt);
+        ticks_ += dt * 20;
+        level.time += static_cast<int64_t>(ticks_);
+        ticks_ -= std::floor(ticks_);
+        autosave_timer += dt;
+        if (autosave_timer >= AUTOSAVE_INTERVAL) save(false);
     }
     renderer->update(player.x, player.z);
 
@@ -242,28 +373,63 @@ void Game::update(double dt) {
     for (const auto& drop : drops)
         if (in_view(drop->body))
             for (auto& part : drop->parts()) parts.push_back(part);
+    if (third_person && !dead) {
+        PlayerPose pose{player.x, player.y, player.z, yaw, pitch, walk_phase, walk_amount, sneaking};
+        for (auto& part : player_parts(pose)) parts.push_back(part);
+    }
     renderer->set_instances(std::move(parts));
     renderer->set_outline(target && !target_cow ? std::optional<glm::ivec3>(target->block) : std::nullopt);
     hud->update(static_cast<float>(dt));
-
-    if (autotest_) (*autotest_)(*this);
 }
 
-void Game::draw() {
-    int w, h;
-    glfwGetFramebufferSize(window, &w, &h);
+std::string Game::help_text() const {
+    auto k = [&](KeyAction a) { return key_name(options.keys[a]); };
+    return k(KEY_FORWARD) + k(KEY_LEFT) + k(KEY_BACK) + k(KEY_RIGHT) + " move   " + k(KEY_JUMP) + " jump/swim   " + k(KEY_SNEAK) +
+           " sneak   double-tap " + k(KEY_FORWARD) + " sprint\n"
+           "Left mouse: mine block / hit cow (hold to mine)\n"
+           "Right mouse: place block / eat food\n"
+           "1-9 or wheel: pick slot   " + k(KEY_DROP) + ": drop   " + k(KEY_CRAFT) + ": craft 1 log -> 4 planks\n" +
+           k(KEY_CREATIVE) + ": creative cheat (double-tap " + k(KEY_JUMP) + " to fly)\n"
+           "F1 hide HUD   F2 screenshot   F3 debug   F5 third person\n"
+           "ESC: menu   H: hide this help";
+}
+
+std::string Game::debug_text() {
+    char buf[512];
+    int bx = ifloor(player.x), by = ifloor(player.y), bz = ifloor(player.z);
+    // Beta's facing number: 0 south (+z), 1 west, 2 north, 3 east.
+    int f = ifloor(-yaw / 90.0 + 0.5) & 3;
+    static const char* FACING[4] = {"south", "west", "north", "east"};
+    // Real light levels arrive with M5; until then only open sky counts.
+    int sky = 15;
+    for (int y = ifloor(eye().y); y < HEIGHT; ++y)
+        if (is_opaque(world.get_block(bx, y, bz))) sky = 0;
+    std::snprintf(buf, sizeof buf,
+                  "PetrutzCraft M1 (%.0f fps, %d chunk updates)\n"
+                  "x: %.3f (block %d)\ny: %.3f (feet, block %d)\nz: %.3f (block %d)\n"
+                  "Chunk: %d %d (at %d %d in it)\n"
+                  "Facing: %s (f: %d)\n"
+                  "Sky light: %d\n"
+                  "Seed: %lld\n"
+                  "Chunks loaded: %zu   cows: %zu   items: %zu",
+                  fps, renderer->jobs_in_flight(), player.x, bx, player.y, by, player.z, bz, chunk_of(bx), chunk_of(bz),
+                  bx & 15, bz & 15, FACING[f], f, sky, static_cast<long long>(level.seed), world.chunk_count(),
+                  cows.size(), drops.size());
+    return buf;
+}
+
+void Game::draw(int w, int h) {
     glViewport(0, 0, w, h);
     glClearColor(SKY.r, SKY.g, SKY.b, SKY.a);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-    renderer->draw(w, h, eye(), forward());
+    glm::vec3 cam = camera();
+    renderer->draw(w, h, cam, forward());
 
-    glm::vec3 e = eye();
-    bool underwater = world.get_block(ifloor(e.x), ifloor(e.y), ifloor(e.z)) == WATER;
-    char info[160];
-    const char* mode = creative ? (flying ? "Creative (flying)" : "Creative") : "Survival";
-    std::snprintf(info, sizeof info, "%s   XYZ %.1f %.1f %.1f   cows %zu   FPS %.0f", mode, player.x, player.y,
-                  player.z, cows.size(), fps_);
-    hud->draw(w, h, {&active_inventory(), &vitals, creative, info, underwater, vitals.dead(), paused});
+    if (hud_hidden && !vitals.dead()) return;
+    bool underwater = world.get_block(ifloor(cam.x), ifloor(cam.y), ifloor(cam.z)) == WATER;
+    std::string info = debug_screen ? debug_text() : "PetrutzCraft M1";
+    if (!debug_screen && creative) info += flying ? "\nCreative (flying)" : "\nCreative";
+    hud->draw(w, h, {&active_inventory(), &vitals, creative, info, help_text(), underwater, vitals.dead()});
 }
 
 void Game::move(double dt) {
@@ -271,8 +437,8 @@ void Game::move(double dt) {
     double yr = radians(yaw);
     double fx = std::sin(yr), fz = std::cos(yr);
     double rx = -std::cos(yr), rz = std::sin(yr);
-    int f = key_down(GLFW_KEY_W) - key_down(GLFW_KEY_S);
-    int s = key_down(GLFW_KEY_D) - key_down(GLFW_KEY_A);
+    int f = action_down(KEY_FORWARD) - action_down(KEY_BACK);
+    int s = action_down(KEY_RIGHT) - action_down(KEY_LEFT);
     double wx = fx * f + rx * s, wz = fz * f + rz * s;
     double length = std::hypot(wx, wz);
     if (length > 0) {
@@ -281,9 +447,11 @@ void Game::move(double dt) {
     }
     p.check_water();
 
-    bool shift = key_down(GLFW_KEY_LEFT_SHIFT) || key_down(GLFW_KEY_RIGHT_SHIFT);
-    bool sprint = shift && key_down(GLFW_KEY_W) && !flying && (creative || vitals.can_sprint());
-    double speed = flying ? FLY_SPEED : (sprint ? SPRINT_SPEED : WALK_SPEED);
+    const bool down = action_down(KEY_SNEAK);
+    sneaking = down && !flying;
+    sprint_.update(f > 0, sprint_allowed());
+    const bool sprint = sprint_.active;
+    double speed = flying ? FLY_SPEED : sneaking ? SNEAK_SPEED : sprint ? SPRINT_SPEED : WALK_SPEED;
     if (p.in_water && !flying) speed *= 0.55;
     double accel = (p.on_ground || flying) ? 14 : 5;
     double k = std::min(1.0, accel * dt);
@@ -292,10 +460,10 @@ void Game::move(double dt) {
 
     bool jumped = false;
     if (flying) {
-        p.vy = (key_down(GLFW_KEY_SPACE) - shift) * 8.0;
+        p.vy = (action_down(KEY_JUMP) - down) * 8.0;
     } else {
         p.apply_gravity(dt);
-        if (key_down(GLFW_KEY_SPACE)) {
+        if (action_down(KEY_JUMP)) {
             if (p.in_water) {
                 p.vy = std::min(p.vy + 30 * dt, 4.0);
             } else if (p.on_ground) {
@@ -306,11 +474,17 @@ void Game::move(double dt) {
     }
 
     double ox = p.x, oz = p.z;
-    p.move(p.vx * dt, p.vy * dt, p.vz * dt);
-    if (flying && p.on_ground && shift) flying = false;
+    double dx = p.vx * dt, dz = p.vz * dt;
+    // Sneaking on the ground never walks off an edge.
+    if (sneaking && p.on_ground && !jumped && !p.in_water) p.clamp_to_edges(dx, dz);
+    HitAxes hit = p.move(dx, p.vy * dt, dz);
+    if (hit.x || hit.z) sprint_.stop();  // running into a wall ends the sprint
+    if (flying && p.on_ground && down) flying = false;
 
+    double moved = std::hypot(p.x - ox, p.z - oz);
+    walk_phase += moved * 2.4;
+    walk_amount += (std::min(1.0, moved / std::max(dt, 1e-4) / WALK_SPEED) - walk_amount) * std::min(1.0, dt * 10);
     if (!creative) {
-        double moved = std::hypot(p.x - ox, p.z - oz);
         vitals.exhaust(moved * (sprint ? EXHAUST_SPRINT : EXHAUST_WALK));
         if (jumped) vitals.exhaust(sprint ? EXHAUST_SPRINT_JUMP : EXHAUST_JUMP);
     }
@@ -407,6 +581,20 @@ void Game::spawn_drop(ItemId item, double x, double y, double z) {
     drops.push_back(std::make_unique<ItemDrop>(world, item, x, y, z, rng));
 }
 
+void Game::drop_selected() {
+    Inventory& inv = active_inventory();
+    auto item = inv.selected_item();
+    if (!item) return;
+    if (!creative) inv.take_selected();
+    glm::vec3 e = eye(), f = forward();
+    auto drop = std::make_unique<ItemDrop>(world, *item, e.x, e.y - 0.3, e.z, rng);
+    drop->body.vx = f.x * 6;
+    drop->body.vy = f.y * 6 + 1.5;
+    drop->body.vz = f.z * 6;
+    drop->pickup_delay = 2.0;  // so it isn't picked straight back up
+    drops.push_back(std::move(drop));
+}
+
 void Game::use_item() {
     use_cooldown = 0.25;
     Inventory& inv = active_inventory();
@@ -446,15 +634,15 @@ void Game::respawn() {
     player.z = spawn.z;
     player.vx = player.vy = player.vz = 0;
     fall_peak = player.y;
-    paused = false;
-    set_mouse_captured(true);
+    set_paused(false);
     hud->show_message("Respawned");
 }
 
 // --- cows and drops -------------------------------------------------------------------------------
 
 void Game::update_cows(double dt) {
-    const double far_away = (renderer->render_distance + 1) * CHUNK;
+    // Past the distance where chunk meshes are dropped, so the chunk is shown (and spawns it) again on the way back.
+    const double far_away = (renderer->render_distance + 3) * CHUNK;
     for (auto it = cows.begin(); it != cows.end();) {
         Cow& cow = **it;
         // Skip cows on chunks that aren't generated yet so they don't fall through the world.
@@ -468,6 +656,8 @@ void Game::update_cows(double dt) {
             for (int i = 0; i < n; ++i) spawn_drop(BEEF, cow.body.x, cow.body.y + 0.5, cow.body.z);
             remove = true;
         } else if (std::hypot(cow.body.x - player.x, cow.body.z - player.z) > far_away) {
+            // Too far to simulate: keep it with its chunk until the player comes back.
+            if (cow.alive()) stash_entity(cow_record(cow));
             remove = true;
         }
         if (remove) {
@@ -481,14 +671,25 @@ void Game::update_cows(double dt) {
 }
 
 void Game::update_drops(double dt) {
+    // Past the distance where chunk meshes are dropped, so the chunk is shown (and spawns it) again on the way back.
+    const double far_away = (renderer->render_distance + 3) * CHUNK;
     for (auto it = drops.begin(); it != drops.end();) {
         ItemDrop& drop = **it;
-        drop.tick(dt);
         Body& b = drop.body;
+        if (!world.find(chunk_of(ifloor(b.x)), chunk_of(ifloor(b.z)))) {
+            ++it;
+            continue;
+        }
+        if (std::hypot(b.x - player.x, b.z - player.z) > far_away) {
+            stash_entity(drop_record(drop));
+            it = drops.erase(it);
+            continue;
+        }
+        drop.tick(dt);
         double dx = b.x - player.x, dz = b.z - player.z;
         double horiz = std::hypot(dx, dz);
         bool vert_ok = player.y - 1.2 < b.y && b.y < player.y + 2.2;
-        if (drop.age > 0.5 && !vitals.dead() && vert_ok && horiz < 2.5) {
+        if (drop.age > drop.pickup_delay && !vitals.dead() && vert_ok && horiz < 2.5) {
             if (horiz < 1.2 && inventory.add(drop.item, 1) == 0) {
                 it = drops.erase(it);
                 continue;

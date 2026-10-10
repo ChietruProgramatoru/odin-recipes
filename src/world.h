@@ -14,9 +14,9 @@
 #include "noise.h"
 
 constexpr int CHUNK = 16;
-constexpr int HEIGHT = 64;
-constexpr int SEA_LEVEL = 20;
-constexpr int SNOWLESS_PEAK = 44;  // above this height the surface is bare stone
+constexpr int HEIGHT = 128;
+constexpr int SEA_LEVEL = 64;
+constexpr int SNOWLESS_PEAK = 88;  // above this height the surface is bare stone
 
 // --- Padded chunk layout used while meshing ------------------------------------
 // An 18 x (HEIGHT + 2) x 18 copy of a chunk plus a one-block border from its neighbours,
@@ -40,14 +40,40 @@ struct ChunkPosHash {
 // Floor division by 16 for block -> chunk coordinates (works for negatives).
 inline int chunk_of(int block) { return block >> 4; }
 
+// A cow or dropped item stored with the chunk it is in (in a save file, or while the
+// player is too far away for it to be simulated).
+struct EntityRecord {
+    enum Kind : uint8_t { COW = 1, ITEM = 2 };
+    Kind kind = COW;
+    double x = 0, y = 0, z = 0;
+    float yaw = 0;   // cows
+    int health = 0;  // cows
+    int item = 0;    // dropped items
+    float age = 0;   // dropped items, seconds
+    bool operator==(const EntityRecord&) const = default;
+};
+
 struct Chunk {
     int cx, cz;
     std::array<BlockId, CHUNK * CHUNK * HEIGHT> blocks{};  // index (y << 8) | (z << 4) | x
     int max_y = 0;             // nothing above this height
     bool mob_spawned = false;  // cows were already rolled for this chunk
+    // Saving: true when the chunk changed since it was last saved (new chunks start dirty).
+    bool dirty = true;
+    bool saved_entities = false;        // the last save of this chunk had entities in it
+    std::vector<EntityRecord> entities;  // waiting to be spawned when the chunk is shown
 
     Chunk(int x, int z) : cx(x), cz(z) {}
     static int index(int x, int y, int z) { return (y << 8) | (z << 4) | x; }
+    void recompute_max_y();
+};
+
+// Where saved chunks come from. load() is called from worker threads.
+class ChunkStore {
+public:
+    virtual ~ChunkStore() = default;
+    // nullptr if the chunk was never saved (or can't be read).
+    virtual std::unique_ptr<Chunk> load(int cx, int cz) = 0;
 };
 
 // Pure function of the seed, so worker threads can share one generator.
@@ -106,8 +132,15 @@ struct FaceDef {
 };
 const std::array<FaceDef, 6>& face_defs();
 
+// Video settings that change how chunks are meshed.
+struct MeshOptions {
+    bool smooth_lighting = true;  // ambient occlusion at the corners of faces
+    bool fancy_leaves = true;     // see-through leaves (Fancy graphics); solid leaves when false
+    bool operator==(const MeshOptions&) const = default;
+};
+
 // Mesh a padded chunk copy. Thread-safe: touches nothing but its arguments.
-ChunkMesh build_mesh(const Padded& padded, int cx, int cz, int max_y);
+ChunkMesh build_mesh(const Padded& padded, int cx, int cz, int max_y, MeshOptions options = {});
 
 // All chunks, keyed by chunk position. Only the main thread touches it; worker threads get
 // generated chunks handed over with insert() and mesh from padded copies.
@@ -117,9 +150,14 @@ public:
 
     uint64_t seed() const { return generator_.seed(); }
     const TerrainGenerator& generator() const { return generator_; }
+    // Saved chunks are loaded from here before anything is generated.
+    void set_store(ChunkStore* store) { store_ = store; }
+    // A chunk from the store, or freshly generated. Thread-safe (doesn't touch the chunk map).
+    std::unique_ptr<Chunk> load_or_generate(int cx, int cz) const;
+    std::vector<Chunk*> all_chunks();
 
     Chunk* find(int cx, int cz);                 // nullptr if not generated yet
-    Chunk& chunk(int cx, int cz);                // generates it right away if missing
+    Chunk& chunk(int cx, int cz);                // loads or generates it right away if missing
     void insert(std::unique_ptr<Chunk> chunk);   // keeps an existing chunk if there is one
     size_t chunk_count() const { return chunks_.size(); }
 
@@ -136,13 +174,14 @@ public:
     // Voxel DDA ray cast. Water and air don't stop the ray.
     std::optional<RayHit> raycast(glm::vec3 origin, glm::vec3 direction, float max_dist);
 
-    // Copy a chunk plus a one-block border from its 8 neighbours (generating any that are missing).
+    // Copy a chunk plus a one-block border from its 8 neighbours (loading or generating any that are missing).
     Padded padded(int cx, int cz);
     // Mesh a chunk right now on this thread.
-    ChunkMesh build_mesh_now(int cx, int cz);
+    ChunkMesh build_mesh_now(int cx, int cz, MeshOptions options = {});
 
 private:
     TerrainGenerator generator_;
+    ChunkStore* store_ = nullptr;
     std::unordered_map<ChunkPos, std::unique_ptr<Chunk>, ChunkPosHash> chunks_;
     Chunk* last_ = nullptr;  // tiny cache for get_block
 };

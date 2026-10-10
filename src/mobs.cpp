@@ -194,6 +194,24 @@ std::vector<ModelPart> ItemDrop::parts() const {
     return {{ITEM_MODEL_BASE + item, translate(body.x, body.y + bob, body.z) * rot_y(age * 90)}};
 }
 
+// --- Player ---------------------------------------------------------------------------------
+
+std::vector<ModelPart> player_parts(const PlayerPose& pose) {
+    glm::mat4 root = translate(pose.x, pose.y - (pose.sneaking ? 0.1 : 0), pose.z) * rot_y(pose.yaw);
+    double swing = std::sin(pose.walk_phase) * pose.walk_amount * 40;
+    double lean = pose.sneaking ? 25 : 0;
+    glm::mat4 hips = root * translate(0, 0.675, 0);
+    glm::mat4 torso = hips * rot_x(lean);
+    std::vector<ModelPart> out;
+    out.push_back({MODEL_PLAYER_LEG, root * translate(-0.125, 0.675, pose.sneaking ? -0.1 : 0) * rot_x(swing)});
+    out.push_back({MODEL_PLAYER_LEG, root * translate(0.125, 0.675, pose.sneaking ? -0.1 : 0) * rot_x(-swing)});
+    out.push_back({MODEL_PLAYER_BODY, torso});
+    out.push_back({MODEL_PLAYER_ARM, torso * translate(-0.375, 0.615, 0) * rot_x(-swing)});
+    out.push_back({MODEL_PLAYER_ARM, torso * translate(0.375, 0.615, 0) * rot_x(swing)});
+    out.push_back({MODEL_PLAYER_HEAD, torso * translate(0, 0.675, 0) * rot_x(std::clamp(pose.pitch, -80.0, 80.0) - lean)});
+    return out;
+}
+
 // --- Models ---------------------------------------------------------------------------------
 
 std::map<int, MeshData> build_models() {
@@ -215,6 +233,26 @@ std::map<int, MeshData> build_models() {
             add_box(head, ident, {0.08f, 0.14f, 0.08f}, {side * 0.29f, 0.25f, 0.12f}, T_HORN);    // horns
         }
     }
+    // Player parts, each around its joint: head at the neck, body at the hips,
+    // arms at the shoulders and legs at the hips. The face looks along +z.
+    MeshData& head = models[MODEL_PLAYER_HEAD];
+    add_box(head, ident, {0.45f, 0.45f, 0.45f}, {0, 0.225f, 0}, T_SKIN);
+    add_box(head, ident, {0.47f, 0.1f, 0.47f}, {0, 0.42f, 0}, T_HAIR);
+    add_box(head, ident, {0.47f, 0.3f, 0.07f}, {0, 0.27f, -0.205f}, T_HAIR);
+    for (float side : {-1.0f, 1.0f}) {
+        add_box(head, ident, {0.09f, 0.05f, 0.02f}, {side * 0.1f, 0.24f, 0.228f}, T_EYE);
+        add_box(head, ident, {0.045f, 0.05f, 0.02f}, {side * 0.078f, 0.24f, 0.232f}, T_BLACK);
+    }
+    add_box(head, ident, {0.14f, 0.03f, 0.02f}, {0, 0.1f, 0.228f}, T_HAIR);  // mouth
+    MeshData& torso = models[MODEL_PLAYER_BODY];
+    add_box(torso, ident, {0.5f, 0.675f, 0.25f}, {0, 0.3375f, 0}, T_SHIRT);
+    MeshData& arm = models[MODEL_PLAYER_ARM];
+    add_box(arm, ident, {0.25f, 0.31f, 0.25f}, {0, -0.095f, 0}, T_SHIRT);
+    add_box(arm, ident, {0.24f, 0.365f, 0.24f}, {0, -0.4325f, 0}, T_SKIN);
+    MeshData& leg = models[MODEL_PLAYER_LEG];
+    add_box(leg, ident, {0.25f, 0.55f, 0.25f}, {0, -0.275f, 0}, T_PANTS);
+    add_box(leg, ident, {0.26f, 0.125f, 0.27f}, {0, -0.6125f, 0.005f}, T_SHOE);
+
     for (ItemId item : all_items()) {
         glm::vec3 size = is_block(item) ? glm::vec3(0.25f) : glm::vec3(0.4f, 0.4f, 0.03f);
         add_box(models[ITEM_MODEL_BASE + item], ident, size, {0, 0, 0}, icon_tile(item));

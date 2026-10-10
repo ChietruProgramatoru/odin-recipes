@@ -66,4 +66,19 @@ public:
     int tick(double dt);
 };
 
+// Sprinting starts with a quick double tap of the forward key and lasts while it stays held.
+class SprintControl {
+public:
+    static constexpr double DOUBLE_TAP = 0.35;  // seconds between the two taps
+    bool active = false;
+    // The forward key went down at time `now` (seconds).
+    void forward_pressed(double now, bool allowed);
+    // Every frame: sprinting ends when forward is let go or sprinting isn't allowed any more.
+    void update(bool forward_held, bool allowed);
+    void stop() { active = false; }
+
+private:
+    double last_press_ = -1e9;
+};
+
 int fall_damage(double distance);

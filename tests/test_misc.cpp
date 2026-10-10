@@ -102,3 +102,21 @@ TEST_CASE("PNG writer makes a valid header and compresses flat images") {
     CHECK(png[13] == 'H');
     CHECK(png.size() < rgb.size() / 10);
 }
+
+TEST_CASE("the player model has every body part, standing on the ground") {
+    auto models = build_models();
+    for (int m : {MODEL_PLAYER_HEAD, MODEL_PLAYER_BODY, MODEL_PLAYER_ARM, MODEL_PLAYER_LEG}) CHECK_FALSE(models[m].empty());
+    PlayerPose pose{5, 70, 5, 30, 10, 0, 0, false};
+    auto parts = player_parts(pose);
+    CHECK(parts.size() == 6);
+    // The lowest and highest model points: feet at y = 70, head top at about 1.8 above.
+    float lo = 1e9f, hi = -1e9f;
+    for (const ModelPart& p : parts)
+        for (const Vertex& v : models[p.model].vertices) {
+            glm::vec4 world = p.transform * glm::vec4(v.x, v.y, v.z, 1);
+            lo = std::min(lo, world.y);
+            hi = std::max(hi, world.y);
+        }
+    CHECK(lo == doctest::Approx(70).epsilon(0.001));
+    CHECK(hi == doctest::Approx(71.82).epsilon(0.005));
+}

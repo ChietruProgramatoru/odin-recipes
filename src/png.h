@@ -1,4 +1,4 @@
-// Minimal PNG writer (RGB, 8 bits per channel) with its own small deflate compressor.
+// Minimal PNG writer (RGB, 8 bits per channel), compressed with zlib.h.
 #pragma once
 #include <cstdint>
 #include <string>

@@ -66,16 +66,25 @@ add_library(petrutz_core STATIC
   src/mobs.cpp
   src/textures.cpp
   src/font.cpp
-  src/png.cpp)
+  src/png.cpp
+  src/zlib.cpp
+  src/json.cpp
+  src/save.cpp
+  src/options.cpp)
 target_include_directories(petrutz_core PUBLIC src)
+# GLFW's header only, for its key codes (options.txt stores them). The game links GLFW itself.
+target_include_directories(petrutz_core SYSTEM PUBLIC ${glfw_SOURCE_DIR}/include)
 target_link_libraries(petrutz_core PUBLIC glm_headers Threads::Threads)
 
 # --- The game ----------------------------------------------------------------
 add_executable(PetrutzCraft
   src/main.cpp
+  src/app.cpp
   src/gl.cpp
   src/renderer.cpp
+  src/ui.cpp
   src/hud.cpp
+  src/menu.cpp
   src/game.cpp
   src/autotest.cpp)
 target_link_libraries(PetrutzCraft PRIVATE petrutz_core glfw)
@@ -97,6 +106,7 @@ add_executable(petrutz_tests
   tests/test_world.cpp
   tests/test_survival.cpp
   tests/test_streamer.cpp
-  tests/test_misc.cpp)
+  tests/test_misc.cpp
+  tests/test_save.cpp)
 target_link_libraries(petrutz_tests PRIVATE petrutz_core doctest_header)
 add_test(NAME logic COMMAND petrutz_tests)

@@ -117,12 +117,25 @@ Image log_top(Rng& rng) {
     return img;
 }
 
+const Rgb LEAF_GREEN{58, 120, 36};
+
+// Fancy leaves: see-through gaps between the leaves.
 Image leaves(Rng& rng) {
-    const Rgb green{58, 120, 36};
-    Image img = noise_tile(rng, green, 0.22);
+    Image img = noise_tile(rng, LEAF_GREEN, 0.22);
     for (int i = 0; i < 26; ++i) {
         int x = rng.below(TILE), y = rng.below(TILE);
-        img.at(x, y) = shade(green, 0.5);
+        img.at(x, y) = shade(LEAF_GREEN, 0.5);
+    }
+    for (int i = 0; i < 40; ++i) img.at(rng.below(TILE), rng.below(TILE)).a = 0;
+    return img;
+}
+
+// Fast leaves: solid, with dark gaps instead of holes.
+Image leaves_fast(Rng& rng) {
+    Image img = noise_tile(rng, LEAF_GREEN, 0.22);
+    for (int i = 0; i < 50; ++i) {
+        int x = rng.below(TILE), y = rng.below(TILE);
+        img.at(x, y) = shade(LEAF_GREEN, 0.3);
     }
     return img;
 }
@@ -287,7 +300,9 @@ std::map<int, Image> make_tiles(int seed) {
         {T_LEAVES, leaves}, {T_PLANKS, planks}, {T_BEDROCK, bedrock}, {T_WATER, water}, {T_BRICK, brick},
         {T_COW_HIDE, cow_hide}, {T_WHITE, solid({255, 255, 255}, 0)}, {T_HOOF, solid({70, 48, 35})},
         {T_COW_HEAD, solid({85, 60, 45})}, {T_SNOUT, solid({225, 165, 160})}, {T_BLACK, solid({16, 16, 16}, 0)},
-        {T_HORN, solid({235, 230, 215})},
+        {T_HORN, solid({235, 230, 215})}, {T_LEAVES_FAST, leaves_fast},
+        {T_SKIN, solid({222, 170, 130})}, {T_HAIR, solid({84, 52, 28}, 0.1)}, {T_SHIRT, solid({196, 72, 48}, 0.08)},
+        {T_PANTS, solid({52, 62, 112}, 0.08)}, {T_SHOE, solid({64, 64, 64})}, {T_EYE, solid({240, 240, 240}, 0)},
         {T_APPLE, padded_sprite(APPLE_SPRITE, {{'g', {70, 110, 30, 255}}, {'r', {210, 30, 30, 255}},
                                                {'w', {255, 180, 180, 255}}})},
         {T_BEEF, padded_sprite(BEEF_SPRITE, {{'k', {90, 20, 20, 255}}, {'r', {215, 70, 70, 255}},

@@ -1,59 +1,70 @@
-// The game window: player input, mining/building, survival, cows and drawing.
+// One world being played: player input, mining/building, survival, cows, drawing and saving.
 #pragma once
+#include <filesystem>
 #include <memory>
 #include <optional>
 #include <set>
+#include <string>
 #include <vector>
 
 #include <glm/vec3.hpp>
 
 #include "hud.h"
 #include "mobs.h"
+#include "options.h"
 #include "physics.h"
 #include "renderer.h"
 #include "rng.h"
+#include "save.h"
 #include "survival.h"
 #include "world.h"
 
 struct GLFWwindow;
-class AutoTest;
 
 constexpr float EYE_HEIGHT = 1.62f;
+constexpr float SNEAK_EYE_DROP = 0.08f;
 constexpr float REACH = 5.0f;
 constexpr float ATTACK_REACH = 3.5f;
 constexpr double WALK_SPEED = 4.3;
 constexpr double SPRINT_SPEED = 5.8;
+constexpr double SNEAK_SPEED = 1.3;
 constexpr double FLY_SPEED = 11.0;
 constexpr double JUMP_SPEED = 8.4;
-constexpr double MOUSE_SENSITIVITY = 0.15;  // degrees per pixel
+constexpr double THIRD_PERSON_DISTANCE = 4.0;
 constexpr size_t MAX_COWS = 24;
 const glm::vec4 SKY(0.62f, 0.8f, 1.0f, 1.0f);
 
+struct GameSetup {
+    std::filesystem::path world_dir;  // the world's folder in saves/
+    LevelData level;                  // from level.json (no player yet for a new world)
+    bool scripted = false;            // the autotest drives this game: fixed random numbers, mouse left alone
+};
+
 class Game {
 public:
-    Game(GLFWwindow* window, uint64_t seed, int render_distance, AutoTest* autotest);
-    ~Game();
-    // Run until the window is closed (or the autotest finishes).
-    void run();
+    Game(GLFWwindow* window, GLuint atlas, Painter& painter, const Options& options, GameSetup setup);
+    ~Game();  // waits for the last save to finish
 
     // --- state (public so the autotest can drive it) ---
     GLFWwindow* window;
-    uint64_t seed;
+    const Options& options;
+    LevelData level;
+    std::unique_ptr<WorldSaver> saver;
     World world;
     Rng rng;
-    GLuint atlas = 0;
     std::unique_ptr<WorldRenderer> renderer;
     std::unique_ptr<Hud> hud;
 
     Inventory inventory, creative_inventory;
     Vitals vitals;
-    bool creative = false, flying = false;
+    bool creative = false, flying = false, sneaking = false;
 
     glm::dvec3 spawn;
     Body player;
     double yaw = 0, pitch = 0;  // pitch > 0 looks down
     double fall_peak;
     bool was_on_ground = true;
+    double walk_phase = 0, walk_amount = 0;  // for the third-person model
 
     std::vector<std::unique_ptr<Cow>> cows;
     std::vector<std::unique_ptr<ItemDrop>> drops;
@@ -63,32 +74,46 @@ public:
     std::optional<RayHit> target;
     Cow* target_cow = nullptr;
     bool paused = false;
-    bool quit = false;
+    bool hud_hidden = false, debug_screen = false, third_person = false;  // F1, F3, F5
+    double autosave_timer = 0;
     long frame = 0;
+    double fps = 60;
 
     Inventory& active_inventory() { return creative ? creative_inventory : inventory; }
     glm::vec3 eye() const;
     glm::vec3 forward() const;
+    // Where the camera is: the eyes, or behind the player in third person.
+    glm::vec3 camera();
 
     void update(double dt);
-    void draw();
+    void draw(int width, int height);
     void update_target();
     void break_block(glm::ivec3 pos, BlockId block);
     void use_item();
+    void drop_selected();
     void respawn();
     void set_paused(bool p);
+    // Video settings or render distance changed.
+    void apply_options();
 
-    // GLFW input callbacks forward here.
+    // Save the player, level and every changed chunk. In the background unless wait is true.
+    bool save(bool wait);
+    bool saving() const { return saver && saver->busy(); }
+    PlayerData player_data() const;
+
+    // GLFW input callbacks forward here (the app handles Escape and F2).
     void on_key(int key, int action, int mods);
     void on_mouse_button(int button, int action);
     void on_cursor(double x, double y);
     void on_scroll(double dy);
-    void on_focus(bool focused);
 
 private:
     glm::dvec3 find_spawn();
+    void restore_player(const PlayerData& p);
     bool spawn_cow_near(double x, double z, double rmin, double rmax);
-    void maybe_spawn_cows(ChunkPos pos);
+    void on_chunk_shown(ChunkPos pos);
+    void spawn_entity(const EntityRecord& e);
+    void stash_entity(const EntityRecord& e);
     void move(double dt);
     void try_attack();
     void mine(double dt);
@@ -98,12 +123,17 @@ private:
     void update_drops(double dt);
     void set_mouse_captured(bool captured);
     bool key_down(int key) const;
+    bool action_down(KeyAction action) const { return key_down(options.keys[action]); }
+    bool sprint_allowed() const { return !sneaking && !flying && (creative || vitals.can_sprint()); }
     bool mouse_down(int button) const { return mouse_buttons_.count(button) > 0; }
+    std::string debug_text();
+    std::string help_text() const;
 
-    AutoTest* autotest_;
+    bool scripted_;
     std::set<int> mouse_buttons_;
     double last_space_ = -1.0;
+    SprintControl sprint_;
     bool have_cursor_ = false;
     double cursor_x_ = 0, cursor_y_ = 0;
-    double fps_ = 60;
+    double ticks_ = 0;  // fraction of a game tick not yet added to level.time
 };

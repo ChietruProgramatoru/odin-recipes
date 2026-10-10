@@ -1,6 +1,8 @@
 // Scripted smoke test: `PetrutzCraft --seed 7 --autotest OUT_DIR`.
-// Drives the real game for a few hundred frames, exercises mining, building, cows, eating and
-// fall damage, saves screenshots to OUT_DIR and writes OUT_DIR/report.txt.
+// Drives the real program for a few hundred frames: the menus, creating a world, mining, building,
+// cows, eating, fall damage, the F3 and F5 views, the pause menu, then saving, quitting to the
+// title and loading the world again. Saves screenshots to OUT_DIR and writes OUT_DIR/report.txt.
+// The world and options.txt go to OUT_DIR too, so the real saves are never touched.
 #pragma once
 #include <map>
 #include <optional>
@@ -10,22 +12,27 @@
 #include <glm/vec3.hpp>
 
 #include "blocks.h"
+#include "save.h"
 
+class App;
 class Game;
 class Cow;
 
 class AutoTest {
 public:
-    explicit AutoTest(std::string out_dir);
-    void operator()(Game& g);  // called once per frame, after the game's update
+    AutoTest(std::string out_dir, uint64_t seed);
+    void operator()(App& app);  // called once per frame, after the game's update
     int failures() const { return failures_; }
 
 private:
     void log(const std::string& msg);
     void check(const std::string& name, bool ok);
-    void shot(Game& g, const std::string& name);
+    void shot(App& app, const std::string& name);
     void face(Game& g, double x, double z, double pitch);
-    void finish(Game& g);
+    void finish(App& app);
+    void menus(App& app);       // before the world exists
+    void play(App& app, Game& g);  // the first visit to the world
+    void reload(App& app);      // quit to the title and load the world again
 
     std::string out_;
     std::vector<std::string> lines_;
@@ -35,4 +42,11 @@ private:
     std::optional<glm::ivec3> broken_;
     BlockId broken_block_ = 0;
     int hp_before_fall_ = 0;
+    uint64_t seed_;
+    // Saving and loading.
+    int phase_ = 0;  // 0 menus, 1 playing, 2 back at the title, 3 playing again
+    long phase_start_ = 0;
+    glm::ivec3 marker_{0};
+    PlayerData saved_player_;
+    size_t saved_cows_ = 0;
 };

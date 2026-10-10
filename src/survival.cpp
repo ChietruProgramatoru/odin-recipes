@@ -138,4 +138,13 @@ int Vitals::tick(double dt) {
     return took;
 }
 
+void SprintControl::forward_pressed(double now, bool allowed) {
+    if (allowed && now - last_press_ <= DOUBLE_TAP) active = true;
+    last_press_ = now;
+}
+
+void SprintControl::update(bool forward_held, bool allowed) {
+    if (!forward_held || !allowed) active = false;
+}
+
 int fall_damage(double distance) { return std::max(0, static_cast<int>(distance - 3.0 + 0.5)); }

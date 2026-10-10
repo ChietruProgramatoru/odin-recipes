@@ -70,6 +70,13 @@ const std::array<BlockUvs, BLOCK_COUNT> BLOCK_UVS = [] {
     return out;
 }();
 
+// Fast graphics draws leaves as solid blocks with their own darker tile.
+const BlockUvs FAST_LEAVES_UVS = [] {
+    BlockUvs out{};
+    for (auto& uv : out.uv) uv = tile_uv(T_LEAVES_FAST);
+    return out;
+}();
+
 const std::array<bool, 256> OPAQUE = [] {
     std::array<bool, 256> o{};
     for (int b = 0; b < 256; ++b) o[b] = is_opaque(static_cast<BlockId>(b));
@@ -186,8 +193,31 @@ Chunk* World::find(int cx, int cz) {
 
 Chunk& World::chunk(int cx, int cz) {
     if (Chunk* c = find(cx, cz)) return *c;
-    insert(generator_.generate(cx, cz));
+    insert(load_or_generate(cx, cz));
     return *find(cx, cz);
+}
+
+std::unique_ptr<Chunk> World::load_or_generate(int cx, int cz) const {
+    if (store_)
+        if (auto c = store_->load(cx, cz)) return c;
+    return generator_.generate(cx, cz);
+}
+
+std::vector<Chunk*> World::all_chunks() {
+    std::vector<Chunk*> out;
+    out.reserve(chunks_.size());
+    for (auto& [pos, c] : chunks_) out.push_back(c.get());
+    return out;
+}
+
+void Chunk::recompute_max_y() {
+    max_y = 0;
+    for (int y = HEIGHT - 1; y >= 0 && !max_y; --y)
+        for (int i = 0; i < CHUNK * CHUNK; ++i)
+            if (blocks[(y << 8) | i] != AIR) {
+                max_y = std::min(HEIGHT - 1, y + 1);
+                break;
+            }
 }
 
 void World::insert(std::unique_ptr<Chunk> chunk) {
@@ -209,6 +239,7 @@ std::vector<ChunkPos> World::set_block(int x, int y, int z, BlockId block) {
     Chunk& c = chunk(cx, cz);
     int lx = x & 15, lz = z & 15;
     c.blocks[Chunk::index(lx, y, lz)] = block;
+    c.dirty = true;
     if (block != AIR) c.max_y = std::max(c.max_y, std::min(HEIGHT - 1, y + 1));
     // Faces and ambient occlusion reach one block into neighbouring chunks.
     std::vector<int> xs{cx}, zs{cz};
@@ -314,12 +345,12 @@ Padded World::padded(int cx, int cz) {
     return P;
 }
 
-ChunkMesh World::build_mesh_now(int cx, int cz) {
+ChunkMesh World::build_mesh_now(int cx, int cz, MeshOptions options) {
     Padded P = padded(cx, cz);
-    return build_mesh(P, cx, cz, chunk(cx, cz).max_y);
+    return build_mesh(P, cx, cz, chunk(cx, cz).max_y, options);
 }
 
-ChunkMesh build_mesh(const Padded& P, int cx, int cz, int max_y) {
+ChunkMesh build_mesh(const Padded& P, int cx, int cz, int max_y, MeshOptions options) {
     ChunkMesh mesh;
     const int ox = cx * CHUNK, oz = cz * CHUNK;
     const int up = off(0, 1, 0);
@@ -342,13 +373,17 @@ ChunkMesh build_mesh(const Padded& P, int cx, int cz, int max_y) {
                     }
                     continue;
                 }
-                const auto& uvs = BLOCK_UVS[blk].uv;
+                const auto& uvs = (blk == LEAVES && !options.fancy_leaves) ? FAST_LEAVES_UVS.uv : BLOCK_UVS[blk].uv;
                 for (const Face& f : FACES) {
-                    if (OPAQUE[P[i + f.offset]]) continue;
+                    BlockId nb = P[i + f.offset];
+                    if (OPAQUE[nb] && !(nb == LEAVES && options.fancy_leaves)) continue;
                     std::array<float, 4> shades;
                     for (int c = 0; c < 4; ++c) {
-                        bool a = OPAQUE[P[i + f.ao[c][0]]], b = OPAQUE[P[i + f.ao[c][1]]];
-                        int occ = (a && b) ? 3 : a + b + OPAQUE[P[i + f.ao[c][2]]];
+                        int occ = 0;
+                        if (options.smooth_lighting) {
+                            bool a = OPAQUE[P[i + f.ao[c][0]]], b = OPAQUE[P[i + f.ao[c][1]]];
+                            occ = (a && b) ? 3 : a + b + OPAQUE[P[i + f.ao[c][2]]];
+                        }
                         shades[c] = f.def->light * AO_LEVELS[occ];
                     }
                     mesh.solid.quad(wx, wy, wz, f.def->corners, 1.0f, uvs[f.def->slot], shades);

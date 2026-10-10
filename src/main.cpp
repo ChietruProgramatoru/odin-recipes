@@ -1,13 +1,15 @@
 // PetrutzCraft - a small Minecraft-style survival game.
 //
-//   PetrutzCraft                      random world
-//   PetrutzCraft --seed 42            same world every time
-//   PetrutzCraft --render-distance 4  lower it if the game is slow (default 6, max 12)
+//   PetrutzCraft                      starts at the title screen
+//   PetrutzCraft --seed 42            fills in the seed when you create a new world
 //   PetrutzCraft --fullscreen
+//
+// options.txt, saves/ and screenshots/ live in the folder the program is in.
 #include <algorithm>
 #include <cstdio>
 #include <cstdlib>
 #include <exception>
+#include <filesystem>
 #include <memory>
 #include <optional>
 #include <random>
@@ -15,8 +17,8 @@
 
 #include <GLFW/glfw3.h>
 
+#include "app.h"
 #include "autotest.h"
-#include "game.h"
 #include "gl.h"
 
 #ifdef _WIN32
@@ -28,10 +30,10 @@ namespace {
 
 void usage() {
     std::printf(
-        "usage: PetrutzCraft [--seed N] [--render-distance N] [--fullscreen]\n"
-        "  --seed N             world seed (random if omitted)\n"
-        "  --render-distance N  view distance in chunks (default 6, 2 to 12)\n"
-        "  --fullscreen         fill the screen\n");
+        "usage: PetrutzCraft [--seed N] [--fullscreen]\n"
+        "  --seed N             seed to fill in when creating a new world\n"
+        "  --fullscreen         fill the screen\n"
+        "  --autotest OUT_DIR   run the scripted smoke test (uses --seed, default 7)\n");
 }
 
 void fail(const char* msg) {
@@ -42,13 +44,26 @@ void fail(const char* msg) {
 #endif
 }
 
-Game* game_of(GLFWwindow* w) { return static_cast<Game*>(glfwGetWindowUserPointer(w)); }
+App* app_of(GLFWwindow* w) { return static_cast<App*>(glfwGetWindowUserPointer(w)); }
+
+// The folder the program is in: options and saves are kept next to the game.
+std::filesystem::path program_dir() {
+#ifdef _WIN32
+    std::wstring buf(32768, L'\0');
+    DWORD n = GetModuleFileNameW(nullptr, buf.data(), static_cast<DWORD>(buf.size()));
+    if (n > 0 && n < buf.size()) return std::filesystem::path(buf.substr(0, n)).parent_path();
+#else
+    std::error_code ec;
+    auto exe = std::filesystem::read_symlink("/proc/self/exe", ec);
+    if (!ec) return exe.parent_path();
+#endif
+    return std::filesystem::current_path();
+}
 
 }  // namespace
 
 int main(int argc, char** argv) {
     std::optional<uint64_t> seed;
-    int render_distance = 6;
     bool fullscreen = false;
     std::string autotest_dir;
     for (int i = 1; i < argc; ++i) {
@@ -62,8 +77,6 @@ int main(int argc, char** argv) {
         };
         if (a == "--seed")
             seed = std::strtoull(value().c_str(), nullptr, 10);
-        else if (a == "--render-distance")
-            render_distance = std::atoi(value().c_str());
         else if (a == "--fullscreen")
             fullscreen = true;
         else if (a == "--autotest")
@@ -76,8 +89,6 @@ int main(int argc, char** argv) {
             return 2;
         }
     }
-    render_distance = std::clamp(render_distance, 2, 12);
-    if (!seed) seed = std::random_device{}() % (1u << 30);
 
     if (!glfwInit()) {
         fail("could not start GLFW (no display?)");
@@ -111,21 +122,26 @@ int main(int argc, char** argv) {
     }
     std::unique_ptr<AutoTest> autotest;
     if (!autotest_dir.empty()) {
-        autotest = std::make_unique<AutoTest>(autotest_dir);
+        autotest = std::make_unique<AutoTest>(autotest_dir, seed.value_or(7));
         std::printf("[autotest] OpenGL %s on %s\n", glGetString(GL_VERSION), glGetString(GL_RENDERER));
     }
     glfwSwapInterval(autotest ? 0 : 1);
 
     int code = 0;
     try {
-        Game game(window, *seed, render_distance, autotest.get());
-        glfwSetWindowUserPointer(window, &game);
-        glfwSetKeyCallback(window, [](GLFWwindow* w, int key, int, int action, int mods) { game_of(w)->on_key(key, action, mods); });
-        glfwSetMouseButtonCallback(window, [](GLFWwindow* w, int button, int action, int) { game_of(w)->on_mouse_button(button, action); });
-        glfwSetCursorPosCallback(window, [](GLFWwindow* w, double x, double y) { game_of(w)->on_cursor(x, y); });
-        glfwSetScrollCallback(window, [](GLFWwindow* w, double, double dy) { game_of(w)->on_scroll(dy); });
-        glfwSetWindowFocusCallback(window, [](GLFWwindow* w, int focused) { game_of(w)->on_focus(focused != 0); });
-        game.run();
+        AppConfig config;
+        config.data_dir = autotest ? std::filesystem::path(autotest_dir) : program_dir();
+        config.seed = seed;
+        config.autotest = autotest.get();
+        App app(window, config);
+        glfwSetWindowUserPointer(window, &app);
+        glfwSetKeyCallback(window, [](GLFWwindow* w, int key, int, int action, int mods) { app_of(w)->on_key(key, action, mods); });
+        glfwSetCharCallback(window, [](GLFWwindow* w, unsigned int c) { app_of(w)->on_char(c); });
+        glfwSetMouseButtonCallback(window, [](GLFWwindow* w, int button, int action, int) { app_of(w)->on_mouse_button(button, action); });
+        glfwSetCursorPosCallback(window, [](GLFWwindow* w, double x, double y) { app_of(w)->on_cursor(x, y); });
+        glfwSetScrollCallback(window, [](GLFWwindow* w, double, double dy) { app_of(w)->on_scroll(dy); });
+        glfwSetWindowFocusCallback(window, [](GLFWwindow* w, int focused) { app_of(w)->on_focus(focused != 0); });
+        app.run();
         glfwSetWindowUserPointer(window, nullptr);
         if (autotest && autotest->failures()) code = 1;
     } catch (const std::exception& e) {

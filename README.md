@@ -5,15 +5,24 @@ It runs on Windows (the main target) and Linux.
 
 ![Spawn](screenshots/spawn.png)
 
+![Title screen](screenshots/title.png)
+
 ## Features
 
-- **Endless terrain** generated from Perlin noise: grassy hills, sandy beaches, lakes, rare stone peaks and oak trees. Chunks are generated and meshed on background threads as you walk, so the game doesn't stutter.
+- **Title screen and worlds**: Beta-style gray buttons on a dark dirt background, all drawn by the code. Singleplayer lists your worlds (newest first) and lets you create, rename and delete them. A new world takes a name and an optional seed: a number is used as is, any other text is turned into a number, and a blank seed picks a random one.
+- **Saving**: worlds are saved every 60 seconds, when you open the pause menu and when you quit. Blocks you changed, where you stand, health, hunger, your hotbar, cows and dropped items all come back when you load the world.
+- **Endless terrain** generated from Perlin noise: grassy hills, sandy beaches, lakes, rare stone peaks and oak trees. The world is 128 blocks tall with the sea at height 64. Chunks are generated (or loaded from the save) and meshed on background threads as you walk, so the game doesn't stutter.
 - **Building**: hold the left mouse button to mine a block. The block drops as an item that you pick up by walking over it. Right click places the selected block.
 - **Health and hunger**: you have 10 hearts and 10 drumsticks. Walking, sprinting, jumping, mining and fighting use up hunger. When you are well fed you slowly heal. When you are starving you slowly lose health, down to half a heart. Falls of more than 3 blocks hurt, and a big enough fall kills you.
 - **Cows** wander, graze and hop up ledges. Punch one and it panics and runs away. Each cow drops 1 to 3 beef, which you eat with a right click to restore 6 hunger.
 - Apples sometimes drop from leaves.
 - Crafting: turn 1 log into 4 planks.
 - **Creative mode** (a cheat key) gives you unlimited blocks, instant mining and flying.
+- **Sneaking** (Shift) makes you slower and stops you from walking off edges. **Sprinting**: double-tap W and keep holding it.
+- **Third-person view** (F5) shows your character: an original blocky figure with a red shirt and jeans.
+
+  ![Third person](screenshots/third_person.png)
+- **Debug screen** (F3) with your position, chunk, facing, sky light, seed and frame rate. F1 hides the HUD and F2 saves a screenshot.
 - All textures and the font are drawn by the code itself (no image files), with smooth ambient-occlusion lighting and distance fog.
 
 ## Build and run on Windows
@@ -46,34 +55,64 @@ cmake --build build
 ./build/PetrutzCraft
 ```
 
+## Where your worlds and settings are kept
+
+Everything lives in the folder the program is in (for example `build\Release\`):
+
+| Path | What it is |
+| --- | --- |
+| `saves/<world>/level.json` | The world's name, seed, play time, spawn point and the player (position, health, hunger, hotbar) |
+| `saves/<world>/region/r.X.Z.pcr` | The world's chunks, 32 x 32 chunks per file, each one compressed. Cows and dropped items are stored with the chunk they are in |
+| `options.txt` | Your settings, one `name:value` per line like Beta's |
+| `screenshots/` | Pictures taken with F2 |
+
+Deleting the `build` folder deletes these too, so copy `saves/` somewhere safe first.
+
 ## Options
 
+The **Options** button on the title screen (or in the pause menu) has:
+
+- **Invert Mouse** and mouse **Sensitivity**. Music, Sound, Difficulty and Clouds will be added along with sound, monsters and clouds.
+- **Video Settings**: **Graphics** Fancy (see-through leaves) or Fast (solid leaves), **Render Distance** Far (16 chunks), Normal (8, the default), Short (4) or Tiny (2), and **Smooth Lighting** on or off.
+- **Controls**: click a key, then press the new key for it. A key used twice turns red.
+
+Command line:
+
 ```bash
-PetrutzCraft --seed 42              # same world every time
-PetrutzCraft --render-distance 4    # lower it if the game is slow (default 6, 2 to 12)
+PetrutzCraft --seed 42      # fills in the seed when you create a new world
 PetrutzCraft --fullscreen
 ```
 
 ## Controls
+
+These are the defaults. Every key except the F keys, Esc, H, R and 1–9 can be changed under Options > Controls.
 
 | Key | Action |
 | --- | --- |
 | Mouse | Look around |
 | W A S D | Move |
 | Space | Jump, or swim up in water |
-| Left Shift | Sprint (not possible when hunger is 3 drumsticks or less) |
+| Left Shift | Sneak: walk slowly without falling off edges |
+| Double-tap W (and hold) | Sprint (not possible when hunger is 3 drumsticks or less; stops when you let go, sneak or hit a wall) |
 | Left mouse (hold) | Mine a block, or hit a cow |
 | Right mouse | Place the selected block, or eat the selected food |
 | 1–9 / mouse wheel | Choose a hotbar slot |
-| F | Craft 1 oak log into 4 planks |
+| Q | Drop one of the selected item |
+| E | Inventory (the inventory screen comes with crafting in M2) |
+| F | Craft 1 oak log into 4 planks (moves into the crafting grid in M2) |
 | C | Cheat: switch between survival and creative |
 | Space twice (creative) | Toggle flying. While flying, Space goes up and Shift goes down |
+| F1 | Hide or show the HUD |
+| F2 | Save a screenshot to `screenshots/` |
+| F3 | Debug screen |
+| F5 | Third-person view |
 | H | Show or hide the help text |
-| Esc | Pause and free the mouse. Click to resume |
+| Esc | Pause menu (Back to Game, Options, Save and Quit to Title). The world is saved when it opens |
 | R | Respawn after dying |
 
 ## Survival tips
 
+- Click **Singleplayer**, then **Create New World**.
 - Punch a tree (about 1.5 s per log), press **F** to make planks, then build a shelter.
 - Cows are found on grass. Five spawn near you at the start, and more appear as you explore.
 - Keep at least 9 drumsticks of hunger to regenerate health.
@@ -85,7 +124,7 @@ ctest --test-dir build --output-on-failure        # logic tests (add -C Release 
 xvfb-run -a -s "-screen 0 1280x720x24" ./build/PetrutzCraft --seed 7 --autotest OUT_DIR
 ```
 
-The second command plays a scripted game (find a cow, kill it, pick up and eat the beef, mine and place a block, fall, fly) and saves screenshots plus `report.txt` to `OUT_DIR`. It exits with an error if any check fails. On Windows or a Linux desktop, run it without `xvfb-run`. GitHub runs both on every push (the screenshot test on Linux only, since GitHub's Windows machines have no graphics card).
+The second command plays a scripted game and saves screenshots plus `report.txt` to `OUT_DIR`: it opens the title and options screens, creates a world from the Create New World screen, finds a cow, kills it, picks up and eats the beef, mines and places a block, falls, flies, takes F5 and F3 pictures, opens the pause menu, changes a block, saves and quits to the title, and loads the world again to check that everything came back. Its world and `options.txt` go in `OUT_DIR`, so your own saves are never touched. It exits with an error if any check fails. On Windows or a Linux desktop, run it without `xvfb-run`. GitHub runs both on every push (the screenshot test on Linux only, since GitHub's Windows machines have no graphics card).
 
 ## Project layout
 
@@ -93,14 +132,21 @@ The second command plays a scripted game (find a cow, kill it, pick up and eat t
 CMakeLists.txt     build script; downloads GLFW, GLM and doctest
 src/
   main.cpp         command-line options and the window
-  game.cpp         controls, mining/building, survival rules, cows and item drops
+  app.cpp          the title screen, menus and options around the game, loading and quitting worlds
+  menu.cpp         every menu screen (title, world list, create/rename/delete, options, controls, pause)
+  ui.cpp           2D drawing: rectangles, icons and pixel text for the HUD and menus
+  game.cpp         controls, mining/building, survival rules, cows, item drops and saving one world
+  save.cpp         save files: level.json, region files, world folders, background saving
+  options.cpp      options.txt and the key bindings
+  json.cpp         a small JSON reader and writer
+  zlib.cpp         zlib compression and decompression (for saves and PNG screenshots)
   world.cpp        chunk storage, terrain generation, meshing (with ambient occlusion), ray casting
   streamer.cpp     background threads that generate and mesh chunks
   renderer.cpp     OpenGL shaders and drawing chunks, cows, items and the block outline
   hud.cpp          crosshair, hotbar, hearts, hunger, text and overlays
   physics.cpp      box-vs-voxel collision used by the player, cows and items
   survival.cpp     inventory, health, hunger and saturation
-  mobs.cpp         cow AI and model, dropped items
+  mobs.cpp         cow AI and model, the player model, dropped items
   textures.cpp     procedurally generated pixel-art textures
   font.cpp         the 5x7 pixel font
   blocks.cpp       block and item definitions
@@ -113,7 +159,9 @@ tests/             doctest logic tests (no window needed)
 
 ## Known limits
 
-- The world is not saved when you quit.
 - There are no tools, furnaces, day/night cycle, caves or hostile mobs yet.
-- The world is 64 blocks tall with the sea at height 20.
+- No sound, music, clouds or monsters yet, and no options for them until they arrive. The F3 screen shows only whether the sky is open (real light levels come in M5).
+- Pressing E shows a message: the inventory screen comes with crafting in M2.
+- The menus and text use only plain ASCII letters, numbers and symbols.
+- Worlds saved by this version can't be read by the Python version (or by Minecraft).
 - The same seed makes a different world than the Python version did, because the random numbers come from a different generator. The terrain rules are the same.
