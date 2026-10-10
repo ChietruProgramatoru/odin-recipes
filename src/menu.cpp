@@ -248,7 +248,7 @@ public:
         float x = (g.width() - logo_w) / 2, top = 30;
         g.p.block_text(logo, x * g.s, static_cast<float>(g.p.height()) - top * g.s, pixel * g.s, T_STONE);
         g.text("A Beta-style block game", g.width() / 2.0f, top + 7 * pixel + 8, TEXT_YELLOW, 0.5f);
-        g.text("PetrutzCraft M1", 2, static_cast<float>(g.height()) - 10, TEXT_DARK_GRAY);
+        g.text("PetrutzCraft M2", 2, static_cast<float>(g.height()) - 10, TEXT_DARK_GRAY);
         g.text("Fan-made, not affiliated with Mojang", static_cast<float>(g.width()) - 2, static_cast<float>(g.height()) - 10,
                TEXT_DARK_GRAY, 1);
     }

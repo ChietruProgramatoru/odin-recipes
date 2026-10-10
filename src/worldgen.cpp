@@ -294,7 +294,7 @@ void clay(Region& r, Rng& rng, int x, int z) {
             for (int y = floor - 1; y <= floor + 1; ++y) {
                 BlockId b = r.get(x + dx, y, z + dz);
                 if ((b == SAND || b == DIRT || b == GRAVEL) && r.get(x + dx, y + 1, z + dz) == WATER)
-                    r.set(x + dx, y, z + dz, CLAY);
+                    r.set(x + dx, y, z + dz, CLAY_BLOCK);
             }
         }
 }

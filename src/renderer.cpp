@@ -295,3 +295,32 @@ void WorldRenderer::draw(int width, int height, glm::vec3 eye, glm::vec3 forward
     glFrontFace(GL_CCW);
     glBindVertexArray(0);
 }
+
+void WorldRenderer::draw_models(const std::vector<ModelPart>& parts, int x, int y, int width, int height,
+                                const glm::mat4& view_proj) {
+    glViewport(x, y, width, height);
+    glEnable(GL_SCISSOR_TEST);
+    glScissor(x, y, width, height);
+    glClear(GL_DEPTH_BUFFER_BIT);
+    program_.use();
+    glUniformMatrix4fv(program_.uniform("mvp"), 1, GL_FALSE, glm::value_ptr(view_proj));
+    glUniform3f(program_.uniform("eye"), 0, 0, 0);
+    glUniform1f(program_.uniform("fog_start"), 1e6f);
+    glUniform1f(program_.uniform("fog_end"), 2e6f);
+    glUniform1i(program_.uniform("atlas"), 0);
+    glUniform1f(program_.uniform("alpha_cut"), 0.5f);
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, atlas_);
+    glEnable(GL_DEPTH_TEST);
+    glEnable(GL_CULL_FACE);
+    glFrontFace(GL_CW);
+    glDisable(GL_BLEND);
+    GLint model = program_.uniform("model");
+    for (const ModelPart& part : parts) {
+        auto it = models_.find(part.model);
+        if (it == models_.end()) continue;
+        glUniformMatrix4fv(model, 1, GL_FALSE, glm::value_ptr(part.transform));
+        it->second.draw();
+    }
+    glDisable(GL_SCISSOR_TEST);
+}

@@ -8,6 +8,7 @@
 
 #include "biome.h"
 #include "blocks.h"
+#include "icons.h"
 #include "rng.h"
 
 namespace {
@@ -210,27 +211,6 @@ Image gravel(Rng& rng) {
     return img;
 }
 
-Image clay(Rng& rng) { return noise_tile(rng, {160, 166, 179}, 0.05); }
-
-const Rgb SANDSTONE_TAN{218, 205, 158};
-
-Image sandstone_top(Rng& rng) { return noise_tile(rng, SANDSTONE_TAN, 0.04); }
-
-Image sandstone_side(Rng& rng) {
-    Image img(TILE, TILE);
-    for (int y = 0; y < TILE; ++y) {
-        double band = y < 3 ? 1.04 : y < 4 ? 0.82 : y % 5 == 4 ? 0.9 : 0.98;
-        for (int x = 0; x < TILE; ++x) img.at(x, y) = shade(SANDSTONE_TAN, band * rng.uniform(0.96, 1.04));
-    }
-    return img;
-}
-
-Image sandstone_bottom(Rng& rng) {
-    Image img = noise_tile(rng, SANDSTONE_TAN, 0.05);
-    for (int i = 0; i < 20; ++i) img.at(rng.below(TILE), rng.below(TILE)) = shade(SANDSTONE_TAN, 0.8);
-    return img;
-}
-
 // Stone with clusters of coloured specks.
 std::function<Image(Rng&)> ore(Rgb color) {
     return [=](Rng& rng) {
@@ -412,45 +392,6 @@ const std::vector<const char*> BEEF_SPRITE = {
     "....kkk...",
 };
 
-const std::vector<const char*> LUMP_SPRITE = {
-    "...kkk....",
-    "..kaabk...",
-    ".kaaaabk..",
-    ".kaaaaabk.",
-    "kaaaaaaabk",
-    "kaaaaaabbk",
-    ".kaaabbbk.",
-    "..kkbbbk..",
-    "....kkk...",
-};
-const std::vector<const char*> GEM_SPRITE = {
-    "..kkkkkk..",
-    ".kwwaaaak.",
-    "kwaaaaaabk",
-    ".kaaaaabk.",
-    "..kaaabk..",
-    "...kabk...",
-    "....kk....",
-};
-const std::vector<const char*> DUST_SPRITE = {
-    "....a.....",
-    "..a..aa.a.",
-    ".aaaaaaa..",
-    "a.aabaaa.a",
-    ".aaaabaaa.",
-    "..aaaaa.a.",
-    ".a..a.....",
-};
-const std::vector<const char*> BALL_SPRITE = {
-    "..kkkk..",
-    ".kwaaak.",
-    "kwaaaabk",
-    "kaaaaabk",
-    "kaaaabbk",
-    ".kabbbk.",
-    "..kkkk..",
-};
-
 // Left half from `full`, right half from `empty`.
 Image halve(const Image& full, const Image& empty) {
     Image img = empty;
@@ -485,31 +426,24 @@ std::map<int, Image> make_tiles(int seed) {
                                                {'w', {255, 180, 180, 255}}})},
         {T_BEEF, padded_sprite(BEEF_SPRITE, {{'k', {90, 20, 20, 255}}, {'r', {215, 70, 70, 255}},
                                              {'p', {240, 150, 150, 255}}, {'w', {245, 225, 225, 255}}})},
-        {T_GRAVEL, gravel}, {T_CLAY, clay}, {T_SANDSTONE_TOP, sandstone_top}, {T_SANDSTONE_SIDE, sandstone_side},
-        {T_SANDSTONE_BOTTOM, sandstone_bottom}, {T_COAL_ORE, ore({35, 35, 35})}, {T_IRON_ORE, ore({216, 175, 147})},
+        {T_GRAVEL, gravel}, {T_COAL_ORE, ore({35, 35, 35})}, {T_IRON_ORE, ore({216, 175, 147})},
         {T_GOLD_ORE, ore({250, 236, 78})}, {T_DIAMOND_ORE, ore({100, 232, 240})}, {T_REDSTONE_ORE, ore({200, 10, 10})},
         {T_LAPIS_ORE, ore({30, 64, 175})}, {T_MOSSY_COBBLE, mossy_cobble}, {T_SPAWNER, spawner}, {T_LAVA, lava},
         {T_ICE, ice}, {T_BIRCH_LOG_SIDE, birch_log}, {T_SPRUCE_LOG_SIDE, spruce_log},
         {T_SPRUCE_LEAVES, [](Rng& rng) { return spruce_leaves(rng, true); }},
         {T_SPRUCE_LEAVES_FAST, [](Rng& rng) { return spruce_leaves(rng, false); }},
+        {T_GRASS_TOP_ICON, coloured(grass_top, grass_color(ICON_TEMPERATURE, ICON_RAINFALL))},
         {T_GRASS_ICON, coloured(grass_side, grass_color(ICON_TEMPERATURE, ICON_RAINFALL))},
         {T_LEAVES_ICON, coloured(leaves, foliage_color(ICON_TEMPERATURE, ICON_RAINFALL))},
         {T_BIRCH_LEAVES_ICON, coloured(leaves, BIRCH_COLOR)},
         {T_SPRUCE_LEAVES_ICON, coloured([](Rng& rng) { return spruce_leaves(rng, true); }, SPRUCE_COLOR)},
-        {T_COAL, padded_sprite(LUMP_SPRITE, {{'k', {10, 10, 10, 255}}, {'a', {45, 45, 45, 255}}, {'b', {25, 25, 25, 255}}})},
-        {T_DIAMOND, padded_sprite(GEM_SPRITE, {{'k', {20, 80, 85, 255}}, {'a', {100, 232, 240, 255}},
-                                               {'b', {50, 170, 180, 255}}, {'w', {230, 255, 255, 255}}})},
-        {T_REDSTONE, padded_sprite(DUST_SPRITE, {{'a', {190, 10, 10, 255}}, {'b', {120, 0, 0, 255}}})},
-        {T_LAPIS, padded_sprite(GEM_SPRITE, {{'k', {15, 30, 90, 255}}, {'a', {40, 80, 200, 255}},
-                                             {'b', {25, 50, 140, 255}}, {'w', {140, 170, 255, 255}}})},
-        {T_CLAY_BALL, padded_sprite(BALL_SPRITE, {{'k', {90, 95, 110, 255}}, {'a', {170, 176, 190, 255}},
-                                                  {'b', {130, 136, 150, 255}}, {'w', {220, 225, 235, 255}}})},
     };
     std::map<int, Image> tiles;
     for (const auto& [index, gen] : generators) {
         Rng rng(static_cast<uint64_t>(seed) * 100 + index);
         tiles[index] = gen(rng);
     }
+    tiles.merge(make_item_tiles());
     return tiles;
 }
 

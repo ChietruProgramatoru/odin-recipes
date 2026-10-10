@@ -58,6 +58,10 @@ endif()
 # --- Game logic: no window or OpenGL, shared by the game and the tests ------
 add_library(petrutz_core STATIC
   src/blocks.cpp
+  src/items.cpp
+  src/icons.cpp
+  src/crafting.cpp
+  src/container.cpp
   src/noise.cpp
   src/world.cpp
   src/worldgen.cpp
@@ -85,6 +89,7 @@ add_executable(PetrutzCraft
   src/gl.cpp
   src/renderer.cpp
   src/ui.cpp
+  src/inventory_screen.cpp
   src/hud.cpp
   src/menu.cpp
   src/game.cpp
@@ -108,6 +113,7 @@ add_executable(petrutz_tests
   tests/test_world.cpp
   tests/test_worldgen.cpp
   tests/test_survival.cpp
+  tests/test_crafting.cpp
   tests/test_streamer.cpp
   tests/test_misc.cpp
   tests/test_save.cpp)

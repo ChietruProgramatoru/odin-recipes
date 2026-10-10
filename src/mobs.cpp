@@ -169,8 +169,8 @@ std::vector<ModelPart> Cow::parts() const {
 
 // --- Dropped items ------------------------------------------------------------------------
 
-ItemDrop::ItemDrop(World& world, ItemId item_, double x, double y, double z, Rng& rng)
-    : item(item_), body(world, x, y, z, 0.12, 0.25) {
+ItemDrop::ItemDrop(World& world, Stack stack_, double x, double y, double z, Rng& rng)
+    : stack(stack_), body(world, x, y, z, 0.12, 0.25) {
     body.vx = rng.uniform(-1.5, 1.5);
     body.vz = rng.uniform(-1.5, 1.5);
     body.vy = rng.uniform(3, 5);
@@ -191,7 +191,7 @@ void ItemDrop::tick(double dt) {
 
 std::vector<ModelPart> ItemDrop::parts() const {
     double bob = 0.2 + std::sin(age * 3) * 0.06;
-    return {{ITEM_MODEL_BASE + item, translate(body.x, body.y + bob, body.z) * rot_y(age * 90)}};
+    return {{ITEM_MODEL_BASE + stack.item, translate(body.x, body.y + bob, body.z) * rot_y(age * 90)}};
 }
 
 // --- Player ---------------------------------------------------------------------------------
@@ -254,7 +254,7 @@ std::map<int, MeshData> build_models() {
     add_box(leg, ident, {0.26f, 0.125f, 0.27f}, {0, -0.6125f, 0.005f}, T_SHOE);
 
     for (ItemId item : all_items()) {
-        glm::vec3 size = is_block(item) ? glm::vec3(0.25f) : glm::vec3(0.4f, 0.4f, 0.03f);
+        glm::vec3 size = looks_like_block(item) ? glm::vec3(0.25f) : glm::vec3(0.4f, 0.4f, 0.03f);
         add_box(models[ITEM_MODEL_BASE + item], ident, size, {0, 0, 0}, icon_tile(item));
     }
     return models;

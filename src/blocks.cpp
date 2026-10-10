@@ -1,5 +1,8 @@
 #include "blocks.h"
 
+#include "icons.h"
+#include "items.h"
+
 namespace {
 
 const BlockInfo BLOCKS[BLOCK_COUNT] = {
@@ -15,15 +18,18 @@ const BlockInfo BLOCKS[BLOCK_COUNT] = {
     {"Bedrock", {T_BEDROCK, T_BEDROCK, T_BEDROCK}, std::nullopt, std::nullopt},
     {"Water", {T_WATER, T_WATER, T_WATER}, std::nullopt, std::nullopt},
     {"Bricks", {T_BRICK, T_BRICK, T_BRICK}, 2.0f, BRICK},
+    {"Crafting Table", {IT_CRAFT_TOP, IT_CRAFT_FRONT, T_PLANKS}, 1.8f, CRAFTING_TABLE},
+    {"Chest", {IT_CHEST_TOP, IT_CHEST_FRONT, IT_CHEST_TOP}, 1.8f, CHEST},
+    {"Furnace", {IT_FURNACE_TOP, IT_FURNACE_FRONT, IT_FURNACE_TOP}, 2.4f, FURNACE},
     {"Gravel", {T_GRAVEL, T_GRAVEL, T_GRAVEL}, 0.6f, GRAVEL},
-    {"Clay", {T_CLAY, T_CLAY, T_CLAY}, 0.6f, CLAY_BALL, 4, 4},
-    {"Sandstone", {T_SANDSTONE_TOP, T_SANDSTONE_SIDE, T_SANDSTONE_BOTTOM}, 0.8f, SANDSTONE},
+    {"Clay", {IT_CLAY, IT_CLAY, IT_CLAY}, 0.6f, CLAY_BALL, 4, 4},
+    {"Sandstone", {IT_SANDSTONE_TOP, IT_SANDSTONE_SIDE, IT_SANDSTONE_TOP}, 0.8f, SANDSTONE},
     {"Coal Ore", {T_COAL_ORE, T_COAL_ORE, T_COAL_ORE}, 3.0f, COAL},
     {"Iron Ore", {T_IRON_ORE, T_IRON_ORE, T_IRON_ORE}, 3.0f, IRON_ORE},
     {"Gold Ore", {T_GOLD_ORE, T_GOLD_ORE, T_GOLD_ORE}, 3.0f, GOLD_ORE},
     {"Diamond Ore", {T_DIAMOND_ORE, T_DIAMOND_ORE, T_DIAMOND_ORE}, 3.0f, DIAMOND},
     {"Redstone Ore", {T_REDSTONE_ORE, T_REDSTONE_ORE, T_REDSTONE_ORE}, 3.0f, REDSTONE, 4, 5},
-    {"Lapis Lazuli Ore", {T_LAPIS_ORE, T_LAPIS_ORE, T_LAPIS_ORE}, 3.0f, LAPIS, 4, 8},
+    {"Lapis Lazuli Ore", {T_LAPIS_ORE, T_LAPIS_ORE, T_LAPIS_ORE}, 3.0f, LAPIS_LAZULI, 4, 8},
     {"Mossy Cobblestone", {T_MOSSY_COBBLE, T_MOSSY_COBBLE, T_MOSSY_COBBLE}, 2.0f, MOSSY_COBBLE},
     {"Monster Spawner", {T_SPAWNER, T_SPAWNER, T_SPAWNER}, 5.0f, std::nullopt},
     {"Lava", {T_LAVA, T_LAVA, T_LAVA}, std::nullopt, std::nullopt},
@@ -34,44 +40,11 @@ const BlockInfo BLOCKS[BLOCK_COUNT] = {
     {"Spruce Leaves", {T_SPRUCE_LEAVES, T_SPRUCE_LEAVES, T_SPRUCE_LEAVES}, 0.2f, std::nullopt},
 };
 
-struct MaterialInfo {
-    ItemId id;
-    const char* name;
-    int tile;
-};
-const MaterialInfo MATERIALS[] = {
-    {COAL, "Coal", T_COAL}, {DIAMOND, "Diamond", T_DIAMOND}, {REDSTONE, "Redstone", T_REDSTONE},
-    {LAPIS, "Lapis Lazuli", T_LAPIS}, {CLAY_BALL, "Clay", T_CLAY_BALL},
-};
-
-const MaterialInfo* material_info(ItemId id) {
-    for (const MaterialInfo& m : MATERIALS)
-        if (m.id == id) return &m;
-    return nullptr;
-}
-
-const FoodInfo APPLE_FOOD{4, 2.4f};
-const FoodInfo BEEF_FOOD{6, 4.0f};
-
 }  // namespace
 
 const BlockInfo* block_info(ItemId id) {
     if (id <= AIR || id >= BLOCK_COUNT) return nullptr;
     return &BLOCKS[id];
-}
-
-const FoodInfo* food_info(ItemId id) {
-    if (id == APPLE) return &APPLE_FOOD;
-    if (id == BEEF) return &BEEF_FOOD;
-    return nullptr;
-}
-
-std::string item_name(ItemId id) {
-    if (id == APPLE) return "Apple";
-    if (id == BEEF) return "Beef";
-    if (const MaterialInfo* m = material_info(id)) return m->name;
-    if (const BlockInfo* b = block_info(id)) return b->name;
-    return "";
 }
 
 bool is_fluid(BlockId id) { return id == WATER || id == LAVA; }
@@ -89,34 +62,4 @@ BlockTint block_tint(BlockId id) {
         case SPRUCE_LEAVES: return BlockTint::SPRUCE;
         default: return BlockTint::NONE;
     }
-}
-
-int icon_tile(ItemId id) {
-    if (id == APPLE) return T_APPLE;
-    if (id == BEEF) return T_BEEF;
-    if (const MaterialInfo* m = material_info(id)) return m->tile;
-    switch (id) {
-        case GRASS: return T_GRASS_ICON;
-        case LEAVES: return T_LEAVES_ICON;
-        case BIRCH_LEAVES: return T_BIRCH_LEAVES_ICON;
-        case SPRUCE_LEAVES: return T_SPRUCE_LEAVES_ICON;
-        default: return block_info(id)->tiles[1];
-    }
-}
-
-const std::vector<ItemId>& all_items() {
-    static const std::vector<ItemId> items = [] {
-        std::vector<ItemId> v;
-        for (int b = GRASS; b < BLOCK_COUNT; ++b) v.push_back(b);
-        v.push_back(APPLE);
-        v.push_back(BEEF);
-        for (const MaterialInfo& m : MATERIALS) v.push_back(m.id);
-        return v;
-    }();
-    return items;
-}
-
-const std::vector<ItemId>& creative_items() {
-    static const std::vector<ItemId> items = {GRASS, DIRT, STONE, COBBLE, SAND, LOG, PLANKS, BRICK, LEAVES};
-    return items;
 }

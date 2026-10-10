@@ -7,13 +7,13 @@
 #include "image.h"
 
 constexpr int TILE = 16;
-constexpr int ATLAS_COLS = 8;
-constexpr int ATLAS_ROWS = 8;
+constexpr int ATLAS_COLS = 16;
+constexpr int ATLAS_ROWS = 32;  // world tiles first, item tiles from ITEM_TILE_BASE (icons.h)
 
 // UV rectangle (u0, v0, u1, v1) of an atlas tile. The atlas is uploaded so v = 1 is its top row.
 std::array<float, 4> tile_uv(int index);
 
-// One 16x16 image per tile index.
+// One 16x16 image per tile index, world tiles and item tiles.
 std::map<int, Image> make_tiles(int seed = 1234);
 Image make_atlas(const std::map<int, Image>& tiles);
 

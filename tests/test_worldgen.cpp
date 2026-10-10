@@ -5,6 +5,7 @@
 #include <cstdlib>
 #include <map>
 
+#include "items.h"
 #include "world.h"
 
 namespace {
@@ -209,18 +210,24 @@ TEST_CASE("ores drop Beta's items and new blocks have names") {
     CHECK(block_info(REDSTONE_ORE)->drop == REDSTONE);
     CHECK(block_info(REDSTONE_ORE)->drop_min == 4);
     CHECK(block_info(REDSTONE_ORE)->drop_max == 5);
-    CHECK(block_info(LAPIS_ORE)->drop == LAPIS);
+    CHECK(block_info(LAPIS_ORE)->drop == LAPIS_LAZULI);
     CHECK(block_info(LAPIS_ORE)->drop_max == 8);
-    CHECK(block_info(CLAY)->drop == CLAY_BALL);
-    CHECK(block_info(CLAY)->drop_min == 4);
+    CHECK(block_info(CLAY_BLOCK)->drop == CLAY_BALL);
+    CHECK(block_info(CLAY_BLOCK)->drop_min == 4);
     CHECK_FALSE(block_info(SPAWNER)->drop);
     CHECK_FALSE(block_info(LAVA)->hardness);
     CHECK(item_name(COAL) == "Coal");
     CHECK(item_name(CLAY_BALL) == "Clay");
     CHECK(item_name(MOSSY_COBBLE) == "Mossy Cobblestone");
     CHECK_FALSE(is_block(DIAMOND));
-    for (ItemId item : all_items()) CHECK_MESSAGE(icon_tile(item) < TILE_COUNT, item_name(item));
-    CHECK(std::count(all_items().begin(), all_items().end(), LAPIS) == 1);
+    CHECK(item_name(CLAY_BLOCK) == "Clay");
+    CHECK(item_name(SANDSTONE) == "Sandstone");
+    CHECK_FALSE(valid_item(LAVA));  // not an item, like water
+    // Grass and leaves icons are coloured in (their world tiles are grey and tinted by biome).
+    CHECK(icon_tile(GRASS) == T_GRASS_ICON);
+    CHECK(icon_tile(SPRUCE_LEAVES) == T_SPRUCE_LEAVES_ICON);
+    for (BlockId b : {GRAVEL, COAL_ORE, MOSSY_COBBLE, SPAWNER, ICE, BIRCH_LOG, SPRUCE_LOG})
+        CHECK(std::count(all_items().begin(), all_items().end(), b) == 1);
 }
 
 TEST_CASE("lava and water don't stop the crosshair; lava, ice and spawners show what's behind them") {

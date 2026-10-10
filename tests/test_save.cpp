@@ -124,6 +124,9 @@ TEST_CASE("level.json keeps the seed, spawn and the player") {
     p.inventory.add(DIRT, 70);
     p.inventory.add(BEEF, 3);
     p.inventory.add(DIAMOND, 2);  // materials from ores are saved too
+    p.inventory.slots[35] = Stack{DIAMOND_SWORD, 1, 200};
+    p.inventory.armor[0] = Stack{IRON_HELMET, 1, 7};
+    p.inventory.armor[3] = Stack{LEATHER_BOOTS, 1};
     p.inventory.selected = 4;
     level.player = p;
 
@@ -148,7 +151,16 @@ TEST_CASE("level.json keeps the seed, spawn and the player") {
     REQUIRE(odd);
     CHECK(odd->player->health == MAX_HEALTH);
     CHECK_FALSE(odd->player->inventory.slots[0]);
-    CHECK(odd->player->inventory.slots[1] == Stack{STONE, STACK});
+    CHECK(odd->player->inventory.slots[1] == Stack{STONE, 64});
+    // Armor only goes in its own slot; stacks are cut to the item's limit; wear is kept in range.
+    auto armor = level_from_json(R"({"seed": "7", "player": {"pos": [1, 2, 3], "inventory": [
+        {"slot": 100, "item": )" + std::to_string(IRON_BOOTS) + R"(, "count": 1},
+        {"slot": 103, "item": )" + std::to_string(IRON_BOOTS) + R"(, "count": 1, "damage": 99999},
+        {"slot": 2, "item": )" + std::to_string(SNOWBALL) + R"(, "count": 64}]}})");
+    REQUIRE(armor);
+    CHECK_FALSE(armor->player->inventory.armor[0]);
+    CHECK(armor->player->inventory.armor[3] == Stack{IRON_BOOTS, 1, max_damage(IRON_BOOTS)});
+    CHECK(armor->player->inventory.slots[2] == Stack{SNOWBALL, 16});
 }
 
 TEST_CASE("chunks keep their blocks, cow flag and entities") {
@@ -158,6 +170,8 @@ TEST_CASE("chunks keep their blocks, cow flag and entities") {
     c.mob_spawned = true;
     c.entities.push_back({EntityRecord::COW, 50.5, 70, -30.25, 90, 8, 0, 0});
     c.entities.push_back({EntityRecord::ITEM, 51.5, 70.5, -29.75, 0, 0, BEEF, 12.5f});
+    c.entities.push_back({EntityRecord::ITEM, 52.5, 70.5, -29.75, 0, 0, STONE_PICKAXE, 1.0f, 1, 40});
+    c.entities.push_back({EntityRecord::ITEM, 53.5, 70.5, -29.75, 0, 0, COBBLE, 1.0f, 37, 0});
     auto back = decode_chunk(encode_chunk(c), 3, -2);
     REQUIRE(back);
     CHECK(back->blocks == c.blocks);

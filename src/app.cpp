@@ -231,7 +231,10 @@ void App::on_key(int key, int action, int mods) {
     }
     if (!game) return;
     if (action == GLFW_PRESS && key == GLFW_KEY_ESCAPE) {
-        pause();
+        if (game->gui)
+            game->close_gui();  // Escape closes the inventory first, like E
+        else
+            pause();
         return;
     }
     game->on_key(key, action, mods);

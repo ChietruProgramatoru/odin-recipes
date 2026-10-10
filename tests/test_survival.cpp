@@ -3,29 +3,31 @@
 
 #include "survival.h"
 
-TEST_CASE("inventory stacks to 64, crafts planks and reports overflow") {
+TEST_CASE("inventory stacks to each item's limit, hotbar first, and reports overflow") {
     Inventory inv;
     CHECK(inv.add(DIRT, 70) == 0);
     CHECK(inv.slots[0] == Stack{DIRT, 64});
     CHECK(inv.slots[1] == Stack{DIRT, 6});
-    inv.add(LOG, 1);
-    CHECK(inv.craft_planks());
-    CHECK(inv.count(PLANKS) == 4);
-    CHECK(inv.count(LOG) == 0);
+    CHECK(inv.add(SNOWBALL, 20) == 0);  // snowballs stack to 16
+    CHECK(inv.slots[2] == Stack{SNOWBALL, 16});
+    CHECK(inv.slots[3] == Stack{SNOWBALL, 4});
+    CHECK(inv.add(WOOD_PICKAXE, 2) == 0);  // tools don't stack
+    CHECK(inv.slots[4] == Stack{WOOD_PICKAXE, 1});
+    CHECK(inv.slots[5] == Stack{WOOD_PICKAXE, 1});
     inv.selected = 0;
     CHECK(inv.take_selected() == DIRT);
     CHECK(inv.count(DIRT) == 69);
-    CHECK(inv.add(STONE, 64 * 9) > 0);  // overflow is reported
-    CHECK(inv.count(COBBLE) == 0);
+    CHECK(inv.add(STONE, 64 * 36) > 0);  // overflow is reported
+    CHECK(inv.slots[35] == Stack{STONE, 64});
 }
 
-TEST_CASE("crafting planks needs a log and room") {
+TEST_CASE("worn tools only stack with tools worn the same") {
+    CHECK(stackable(Stack{DIRT, 3}, Stack{DIRT, 9}));
+    CHECK_FALSE(stackable(Stack{DIRT, 3}, Stack{SAND, 3}));
+    CHECK_FALSE(stackable(Stack{IRON_SWORD, 1}, Stack{IRON_SWORD, 1}));  // max stack 1
     Inventory inv;
-    CHECK_FALSE(inv.craft_planks());
-    for (int i = 0; i < Inventory::SIZE; ++i) inv.slots[i] = Stack{i == 0 ? LOG : STONE, i == 0 ? 1 : 64};
-    inv.slots[0] = Stack{LOG, 2};
-    CHECK_FALSE(inv.craft_planks());  // no free slot for the planks
-    CHECK(inv.count(LOG) == 2);
+    inv.add(Stack{BOW, 1, 30});
+    CHECK(inv.slots[0] == Stack{BOW, 1, 30});
 }
 
 TEST_CASE("hunger, regeneration, starving, eating and fall damage") {
