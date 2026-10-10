@@ -46,6 +46,16 @@ endif()
 add_library(doctest_header INTERFACE)
 target_include_directories(doctest_header SYSTEM INTERFACE ${FETCHCONTENT_BASE_DIR}/doctest)
 
+# miniaudio (public domain) plays the sound effects. It is a single header too.
+set(MINIAUDIO_HEADER ${FETCHCONTENT_BASE_DIR}/miniaudio/miniaudio.h)
+if(NOT EXISTS ${MINIAUDIO_HEADER})
+  file(DOWNLOAD https://raw.githubusercontent.com/mackron/miniaudio/0.11.21/miniaudio.h ${MINIAUDIO_HEADER}
+    EXPECTED_HASH SHA256=6b2029714f8634c4d7c70cc042f45074e0565766113fc064f20cd27c986be9c9
+    SHOW_PROGRESS)
+endif()
+add_library(miniaudio_header INTERFACE)
+target_include_directories(miniaudio_header SYSTEM INTERFACE ${FETCHCONTENT_BASE_DIR}/miniaudio)
+
 find_package(Threads REQUIRED)
 
 if(MSVC)
@@ -75,6 +85,9 @@ add_library(petrutz_core STATIC
   src/survival.cpp
   src/tools.cpp
   src/mobs.cpp
+  src/combat.cpp
+  src/monsters.cpp
+  src/sound.cpp
   src/textures.cpp
   src/font.cpp
   src/png.cpp
@@ -98,8 +111,9 @@ add_executable(PetrutzCraft
   src/hud.cpp
   src/menu.cpp
   src/game.cpp
+  src/audio.cpp
   src/autotest.cpp)
-target_link_libraries(PetrutzCraft PRIVATE petrutz_core glfw)
+target_link_libraries(PetrutzCraft PRIVATE petrutz_core glfw miniaudio_header ${CMAKE_DL_LIBS})
 target_compile_definitions(PetrutzCraft PRIVATE GLFW_INCLUDE_NONE)
 if(WIN32)
   # A normal windowed program: no console window when you double-click it.
@@ -124,6 +138,7 @@ add_executable(petrutz_tests
   tests/test_save.cpp
   tests/test_light.cpp
   tests/test_tools.cpp
-  tests/test_weather.cpp)
+  tests/test_weather.cpp
+  tests/test_monsters.cpp)
 target_link_libraries(petrutz_tests PRIVATE petrutz_core doctest_header)
 add_test(NAME logic COMMAND petrutz_tests)

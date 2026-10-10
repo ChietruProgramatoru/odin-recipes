@@ -42,10 +42,11 @@ struct ChunkPosHash {
 // Floor division by 16 for block -> chunk coordinates (works for negatives).
 inline int chunk_of(int block) { return block >> 4; }
 
-// A cow or dropped item stored with the chunk it is in (in a save file, or while the
+// A cow, monster or dropped item stored with the chunk it is in (in a save file, or while the
 // player is too far away for it to be simulated).
 struct EntityRecord {
-    enum Kind : uint8_t { COW = 1, ITEM = 2 };
+    enum Kind : uint8_t { COW = 1, ITEM = 2, MONSTER = 3 };
+    enum Flags : uint8_t { POWERED = 1, JOCKEY = 2 };  // a charged creeper; a spider with a skeleton riding it
     Kind kind = COW;
     double x = 0, y = 0, z = 0;
     float yaw = 0;   // cows
@@ -54,6 +55,9 @@ struct EntityRecord {
     float age = 0;   // dropped items, seconds
     int count = 1;   // dropped items: how many
     int damage = 0;  // dropped items: wear of a tool
+    int mob = 0;     // monsters: the MobKind (combat.h)
+    int size = 1;    // monsters: a slime's size
+    int flags = 0;   // monsters: Flags
     bool operator==(const EntityRecord&) const = default;
 };
 

@@ -1,4 +1,5 @@
 // Cows, dropped items and arrows: behaviour plus the box geometry used to draw them.
+// Monsters are in monsters.h.
 #pragma once
 #include <array>
 #include <map>
@@ -23,6 +24,13 @@ enum Model : int {
     MODEL_COW_BODY, MODEL_COW_BODY_HURT, MODEL_COW_LEG, MODEL_COW_LEG_HURT, MODEL_COW_HEAD, MODEL_COW_HEAD_HURT,
     MODEL_PLAYER_HEAD, MODEL_PLAYER_BODY, MODEL_PLAYER_ARM, MODEL_PLAYER_LEG,
     MODEL_ARROW,
+    // Monsters (see monsters.cpp), primed TNT, smoke puffs and the flames on a burning mob.
+    MODEL_ZOMBIE_HEAD = 200, MODEL_ZOMBIE_BODY, MODEL_ZOMBIE_ARM, MODEL_ZOMBIE_LEG,
+    MODEL_SKELETON_HEAD, MODEL_SKELETON_BODY, MODEL_SKELETON_ARM, MODEL_SKELETON_LEG,
+    MODEL_CREEPER_HEAD, MODEL_CREEPER_BODY, MODEL_CREEPER_LEG,
+    MODEL_SPIDER_HEAD, MODEL_SPIDER_BODY, MODEL_SPIDER_LEG,
+    MODEL_SLIME,
+    MODEL_TNT, MODEL_PUFF, MODEL_FLAMES,
     // Armor on the player, one model per material (leather, chain, iron, gold, diamond) from each base.
     MODEL_ARMOR_HELMET = 100, MODEL_ARMOR_CHEST = 105, MODEL_ARMOR_SLEEVE = 110, MODEL_ARMOR_WAIST = 115,
     MODEL_ARMOR_LEG = 120, MODEL_ARMOR_BOOT = 125,
@@ -33,6 +41,20 @@ struct ModelPart {
     int model;
     glm::mat4 transform;
     float sky = 1, block = 0;  // light levels 0..1 where the model stands
+    glm::vec4 overlay{0};      // colour mixed over the model by its alpha (red when hurt, white for a fuse)
+};
+
+// Add a textured box of `size` centred at `center` (in the frame of matrix m) to a model.
+void add_box(MeshData& mesh, const glm::mat4& m, glm::vec3 size, glm::vec3 center, int tile, float brightness = 1.0f);
+
+// Distance along a ray to a box, or nothing.
+std::optional<float> ray_box(glm::vec3 origin, glm::vec3 direction, float max_dist, glm::vec3 lo, glm::vec3 hi);
+
+// Something an arrow can hit: its box and who it is (Game's numbering).
+struct ArrowTarget {
+    glm::vec3 lo, hi;
+    int kind = 0, index = 0;
+    const void* who = nullptr;  // an arrow never hits the monster that shot it
 };
 
 class Cow {
@@ -57,6 +79,7 @@ public:
     void hurt(int amount, double from_x, double from_z);
     // Distance along a ray to this cow's hit box, or nothing.
     std::optional<float> ray_hit(glm::vec3 origin, glm::vec3 direction, float max_dist) const;
+    ArrowTarget target(int kind, int index) const;
     // Returns true when the cow has finished dying and should drop loot.
     bool tick(double dt, double player_x, double player_z, Rng& rng);
     std::vector<ModelPart> parts() const;
@@ -74,7 +97,7 @@ public:
     std::vector<ModelPart> parts() const;
 };
 
-// An arrow shot from a bow. It flies with gravity and drag, hurts the first cow it hits,
+// An arrow shot from a bow. It flies with gravity and drag, hurts the first mob (or player) it hits,
 // and sticks in the first solid block until it is picked up or a minute has passed.
 class Arrow {
 public:
@@ -88,9 +111,12 @@ public:
     bool stuck = false;
     glm::ivec3 stuck_in{0};
     double age = 0, stuck_time = 0;
+    // Shot by a skeleton: it can't be picked up (Beta), and it doesn't hit the skeleton.
+    const void* shooter = nullptr;
+    bool from_player = true;
 
-    // Fly for dt seconds. Returns the cow it hit (the arrow is then used up), if any.
-    Cow* tick(double dt, World& world, const std::vector<std::unique_ptr<Cow>>& cows);
+    // Fly for dt seconds. Returns what it hit (the arrow is then used up), if anything.
+    std::optional<ArrowTarget> tick(double dt, World& world, const std::vector<ArrowTarget>& targets);
     bool expired() const { return stuck && stuck_time > STUCK_LIFETIME; }
     std::vector<ModelPart> parts() const;
 

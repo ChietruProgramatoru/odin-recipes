@@ -12,6 +12,7 @@
 
 struct GLFWwindow;
 class AutoTest;
+class Audio;
 class Game;
 class Screen;
 
@@ -37,6 +38,7 @@ public:
     GLuint atlas = 0;
     std::unique_ptr<Painter> painter;
     std::unique_ptr<Game> game;
+    std::unique_ptr<Audio> audio;  // sound effects (silent without an audio device, and in the autotest)
     bool quit = false;
     long frame = 0;
 

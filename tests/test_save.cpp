@@ -172,6 +172,9 @@ TEST_CASE("chunks keep their blocks, cow flag and entities") {
     c.entities.push_back({EntityRecord::ITEM, 51.5, 70.5, -29.75, 0, 0, BEEF, 12.5f});
     c.entities.push_back({EntityRecord::ITEM, 52.5, 70.5, -29.75, 0, 0, STONE_PICKAXE, 1.0f, 1, 40});
     c.entities.push_back({EntityRecord::ITEM, 53.5, 70.5, -29.75, 0, 0, COBBLE, 1.0f, 37, 0});
+    c.entities.push_back({EntityRecord::MONSTER, 54.5, 70, -29.5, 45, 16, 0, 0, 1, 0, 4, 4, 0});
+    c.entities.push_back({EntityRecord::MONSTER, 55.5, 70, -29.5, 90, 20, 0, 0, 1, 0, 2, 1, EntityRecord::POWERED});
+    c.entities.push_back({EntityRecord::MONSTER, 56.5, 70, -29.5, 0, 16, 0, 0, 1, 0, 3, 1, EntityRecord::JOCKEY});
     auto back = decode_chunk(encode_chunk(c), 3, -2);
     REQUIRE(back);
     CHECK(back->blocks == c.blocks);
@@ -180,6 +183,15 @@ TEST_CASE("chunks keep their blocks, cow flag and entities") {
     CHECK(back->max_y == 101);
     CHECK_FALSE(back->dirty);
     CHECK(back->saved_entities);
+
+    // A slime of a size that can't be is put right; a monster kind that doesn't exist is left out.
+    Chunk odd(0, 0);
+    odd.entities.push_back({EntityRecord::MONSTER, 1.5, 70, 1.5, 0, 4, 0, 0, 1, 0, 4, 3, 0});
+    odd.entities.push_back({EntityRecord::MONSTER, 1.5, 70, 1.5, 0, 20, 0, 0, 1, 0, 9, 1, 0});
+    auto odd_back = decode_chunk(encode_chunk(odd), 0, 0);
+    REQUIRE(odd_back);
+    REQUIRE(odd_back->entities.size() == 1);
+    CHECK(odd_back->entities[0].size == 2);
 
     auto bytes = encode_chunk(c);
     bytes.resize(bytes.size() / 2);
@@ -293,6 +305,10 @@ TEST_CASE("options.txt keeps every setting and ignores junk") {
     CHECK(back.to_text() == o.to_text());
     CHECK(back.keys[KEY_JUMP] == GLFW_KEY_J);
     CHECK(back.sensitivity == 0.75f);
+    CHECK(Options().difficulty == 2);
+    o.difficulty = 0;
+    CHECK(Options::from_text(o.to_text()).difficulty == 0);
+    CHECK(Options::from_text("difficulty:7\n").difficulty == 3);
 
     Options junk = Options::from_text("mouseSensitivity:fast\nviewDistance:9\nnonsense\nkey_key.jump:-5\r\nao:false\r\n");
     CHECK(junk.sensitivity == 0.5f);

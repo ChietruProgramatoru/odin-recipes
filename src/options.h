@@ -38,6 +38,7 @@ struct Options {
     bool fancy_graphics = true;
     bool smooth_lighting = true;
     bool clouds = true;  // Fancy graphics draws them as 3D boxes, Fast as a flat layer
+    int difficulty = 2;  // 0 Peaceful, 1 Easy, 2 Normal, 3 Hard (see combat.h)
     std::array<int, KEY_ACTION_COUNT> keys;
 
     Options();

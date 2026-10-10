@@ -190,8 +190,8 @@ TEST_CASE("an arrow flies, drops a little, and sticks in the first solid block")
     w.set_block(0, 110, 8, STONE);
     w.set_block(0, 110, 4, TORCH);  // arrows fly through torches
     Arrow a({0.5, 110.5, 0.5}, {0, 0, Arrow::SPEED});
-    std::vector<std::unique_ptr<Cow>> none;
-    for (int i = 0; i < 40 && !a.stuck; ++i) CHECK(a.tick(0.02, w, none) == nullptr);
+    std::vector<ArrowTarget> none;
+    for (int i = 0; i < 40 && !a.stuck; ++i) CHECK_FALSE(a.tick(0.02, w, none));
     REQUIRE(a.stuck);
     CHECK(a.stuck_in == glm::ivec3(0, 110, 8));
     CHECK(a.pos.z == doctest::Approx(8.15).epsilon(0.01));
@@ -216,19 +216,21 @@ TEST_CASE("an arrow flies, drops a little, and sticks in the first solid block")
     CHECK(b.expired());
 }
 
-TEST_CASE("an arrow hits the first cow in its path") {
+TEST_CASE("an arrow hits the first cow in its path, but never the one who shot it") {
     World w(7);
     clear_sky(w);
     w.set_block(5, 109, 5, STONE);
     Rng rng(1);
-    std::vector<std::unique_ptr<Cow>> cows;
-    cows.push_back(std::make_unique<Cow>(w, 5.5, 110, 6.5, rng));
+    Cow near(w, 5.5, 110, 3.5, rng), far(w, 5.5, 110, 6.5, rng);
+    std::vector<ArrowTarget> targets{far.target(0, 1), near.target(0, 0)};
     Arrow a({5.5, 110.8, 0.5}, {0, 0, Arrow::SPEED});
-    Cow* hit = nullptr;
-    for (int i = 0; i < 40 && !hit && !a.stuck; ++i) hit = a.tick(0.02, w, cows);
-    CHECK(hit == cows[0].get());
-    hit->hurt(ARROW_DAMAGE, a.pos.x, a.pos.z - 1);
-    CHECK(hit->health == COW_MAX_HEALTH - ARROW_DAMAGE);
+    a.shooter = &near;  // flies through its own shooter
+    std::optional<ArrowTarget> hit;
+    for (int i = 0; i < 40 && !hit && !a.stuck; ++i) hit = a.tick(0.02, w, targets);
+    REQUIRE(hit);
+    CHECK(hit->index == 1);
+    far.hurt(ARROW_DAMAGE, a.pos.x, a.pos.z - 1);
+    CHECK(far.health == COW_MAX_HEALTH - ARROW_DAMAGE);
 }
 
 TEST_CASE("fire is a thin light source you walk through") {

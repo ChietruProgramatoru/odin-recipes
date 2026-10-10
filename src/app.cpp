@@ -7,6 +7,7 @@
 
 #include <GLFW/glfw3.h>
 
+#include "audio.h"
 #include "autotest.h"
 #include "game.h"
 #include "menu.h"
@@ -23,6 +24,7 @@ App::App(GLFWwindow* w, AppConfig cfg) : window(w), config(std::move(cfg)) {
     options = Options::load(config.data_dir / "options.txt");
     atlas = upload_texture(make_atlas(make_tiles()));
     painter = std::make_unique<Painter>(atlas);
+    audio = std::make_unique<Audio>(config.autotest == nullptr);
     screen_ = title_screen(*this);
 }
 
@@ -83,7 +85,12 @@ void App::run() {
 void App::update(double dt) {
     ++frame;
     if (dt > 0) fps_ += (1.0 / std::max(dt, 1e-4) - fps_) * 0.05;
-    if (game) game->update(dt);
+    if (game) {
+        game->update(dt);
+        for (const SoundEvent& e : game->sounds) audio->play(e, glm::dvec3(game->eye()), game->yaw);
+        game->sounds.clear();
+    }
+    if (game && game->vitals.dead() && !screen_ && !has_pending_) open(death_screen(*this));
     if (screen_) screen_->update(dt);
     if (config.autotest) (*config.autotest)(*this);
     apply_pending_screen();
@@ -163,7 +170,7 @@ void App::apply_pending_screen() {
     has_pending_ = false;
     screen_ = std::move(pending_);  // the old screen is destroyed here, outside its own event handlers
     if (game) {
-        game->set_paused(screen_ != nullptr);
+        game->set_paused(screen_ != nullptr && screen_->pauses_game());
     } else {
         glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
         if (!screen_) screen_ = title_screen(*this);

@@ -33,7 +33,8 @@ Game::Game(GLFWwindow* win, GLuint atlas, Painter& painter, const Options& opts,
       player(world, 0, 0, 0, 0.3, 1.8),
       painter_(painter),
       scripted_(setup.scripted),
-      weather_rng_(setup.scripted ? 1 : std::random_device{}()) {
+      weather_rng_(setup.scripted ? 1 : std::random_device{}()),
+      monster_rng_(setup.scripted ? 2 : std::random_device{}()) {
     weather = Weather(level.weather);
     world.set_store(&saver->store());
     renderer = std::make_unique<WorldRenderer>(world, atlas, view_distance_chunks(options.view_distance));
@@ -136,13 +137,17 @@ void Game::on_chunk_shown(ChunkPos pos) {
     Chunk* chunk = world.find(pos.cx, pos.cz);
     if (!chunk) return;
     // Fires that were burning when the world was saved go on burning down.
-    for (int i = 0; i < static_cast<int>(chunk->blocks.size()); ++i)
-        if (chunk->blocks[i] == FIRE) {
-            glm::ivec3 at(chunk->cx * CHUNK + (i & 15), i >> 8, chunk->cz * CHUNK + ((i >> 4) & 15));
-            if (std::none_of(fires.begin(), fires.end(), [&](const Fire& f) { return f.pos == at; }))
-                fires.push_back({at, rng.uniform(FIRE_MIN_SECONDS, FIRE_MAX_SECONDS)});
-        }
-    // Cows and items that were saved here, or left behind when the player walked away.
+    // So do mob spawners (dungeons) start working.
+    for (int i = 0; i < static_cast<int>(chunk->blocks.size()); ++i) {
+        const BlockId b = chunk->blocks[i];
+        if (b != FIRE && b != SPAWNER) continue;
+        glm::ivec3 at(chunk->cx * CHUNK + (i & 15), i >> 8, chunk->cz * CHUNK + ((i >> 4) & 15));
+        if (b == FIRE && std::none_of(fires.begin(), fires.end(), [&](const Fire& f) { return f.pos == at; }))
+            fires.push_back({at, rng.uniform(FIRE_MIN_SECONDS, FIRE_MAX_SECONDS)});
+        if (b == SPAWNER && std::none_of(spawners.begin(), spawners.end(), [&](const Spawner& s) { return s.pos == at; }))
+            spawners.push_back({at});
+    }
+    // Cows, monsters and items that were saved here, or left behind when the player walked away.
     if (!chunk->entities.empty()) {
         auto entities = std::move(chunk->entities);
         chunk->entities.clear();
@@ -159,7 +164,21 @@ void Game::on_chunk_shown(ChunkPos pos) {
 }
 
 void Game::spawn_entity(const EntityRecord& e) {
-    if (e.kind == EntityRecord::COW) {
+    if (e.kind == EntityRecord::MONSTER) {
+        const auto kind = static_cast<MobKind>(e.mob);
+        auto m = std::make_unique<Monster>(world, kind, e.x, e.y, e.z, monster_rng_, e.size);
+        m->yaw = m->target_yaw = e.yaw;
+        m->health = std::clamp(e.health, 1, m->info().health);
+        m->powered = e.flags & EntityRecord::POWERED;
+        Monster* spider = m.get();
+        monsters.push_back(std::move(m));
+        if (e.flags & EntityRecord::JOCKEY) {
+            auto rider = std::make_unique<Monster>(world, MobKind::Skeleton, e.x, e.y, e.z, monster_rng_);
+            rider->mount = spider;
+            spider->rider = rider.get();
+            monsters.push_back(std::move(rider));
+        }
+    } else if (e.kind == EntityRecord::COW) {
         auto cow = std::make_unique<Cow>(world, e.x, e.y, e.z, rng);
         cow->yaw = cow->target_yaw = e.yaw;
         cow->health = std::clamp(e.health, 1, COW_MAX_HEALTH);
@@ -189,6 +208,20 @@ EntityRecord cow_record(const Cow& c) {
     e.health = c.health;
     return e;
 }
+// A monster for its chunk. A skeleton riding a spider is saved as part of the spider.
+EntityRecord monster_record(const Monster& m) {
+    EntityRecord e;
+    e.kind = EntityRecord::MONSTER;
+    e.x = m.body.x;
+    e.y = m.body.y;
+    e.z = m.body.z;
+    e.yaw = static_cast<float>(m.yaw);
+    e.health = m.health;
+    e.mob = static_cast<int>(m.kind);
+    e.size = m.size;
+    e.flags = (m.powered ? EntityRecord::POWERED : 0) | (m.rider ? EntityRecord::JOCKEY : 0);
+    return e;
+}
 EntityRecord drop_record(const ItemDrop& d) {
     EntityRecord e;
     e.kind = EntityRecord::ITEM;
@@ -206,10 +239,12 @@ EntityRecord drop_record(const ItemDrop& d) {
 // --- saving --------------------------------------------------------------------------------
 
 bool Game::save(bool wait) {
-    // Cows and items are saved with the chunk they stand in.
+    // Cows, monsters and items are saved with the chunk they stand in.
     std::unordered_map<ChunkPos, std::vector<EntityRecord>, ChunkPosHash> live;
     for (const auto& cow : cows)
         if (cow->alive()) live[chunk_at(cow->body.x, cow->body.z)].push_back(cow_record(*cow));
+    for (const auto& m : monsters)
+        if (m->alive() && !m->mount && !m->vanish) live[chunk_at(m->body.x, m->body.z)].push_back(monster_record(*m));
     for (const auto& drop : drops) live[chunk_at(drop->body.x, drop->body.z)].push_back(drop_record(*drop));
     for (const auto& [pos, list] : live) world.chunk(pos.cx, pos.cz);
 
@@ -420,6 +455,7 @@ void Game::update(double dt) {
     if (dt > 0) fps += (1.0 / std::max(dt, 1e-4) - fps) * 0.05;
     const bool dead = vitals.dead();
 
+    vitals.peaceful = difficulty() == PEACEFUL;
     if (!paused && !dead) {
         if (!sleeping_in) move(dt);
         if (gui || sleeping_in) {
@@ -443,9 +479,19 @@ void Game::update(double dt) {
 
     if (!paused) {
         update_cows(dt);
+        update_monsters(dt);
         update_drops(dt);
         update_arrows(dt);
+        update_tnts(dt);
         update_fires(dt);
+        for (size_t i = 0; i < puffs.size();) {
+            if (puffs[i].tick(dt)) {
+                ++i;
+            } else {
+                puffs[i] = puffs.back();
+                puffs.pop_back();
+            }
+        }
         ticks_ += dt * 20;
         const int whole = static_cast<int>(ticks_);
         ticks_ -= whole;
@@ -474,6 +520,27 @@ void Game::update(double dt) {
     };
     for (const auto& cow : cows)
         if (in_view(cow->body)) add_lit(cow->parts(), cow->body);
+    for (const auto& m : monsters)
+        if (in_view(m->body)) add_lit(m->parts(), m->body);
+    for (const auto& tnt : tnts) add_lit(tnt->parts(), tnt->body);
+    for (const Puff& puff : puffs)
+        for (ModelPart part : puff.parts()) parts.push_back(part);
+    // A little monster spins inside each mob spawner near the player.
+    const double spin = (static_cast<double>(level.time % 7200) + ticks_) * 9;
+    for (const Spawner& s : spawners) {
+        const glm::dvec3 c = glm::dvec3(s.pos) + 0.5;
+        if (glm::length(c - glm::dvec3(player.x, player.y, player.z)) > SPAWNER_RANGE) continue;
+        const MobKind kind = spawner_mob(level.seed, s.pos);
+        const double sc = kind == MobKind::Spider ? 0.3 : 0.4;
+        glm::mat4 root = glm::translate(glm::mat4(1.0f), glm::vec3(c.x, s.pos.y + 0.15, c.z)) *
+                         glm::rotate(glm::mat4(1.0f), static_cast<float>(radians(spin)), glm::vec3(0, 1, 0)) *
+                         glm::scale(glm::mat4(1.0f), glm::vec3(static_cast<float>(sc)));
+        for (ModelPart part : monster_model(kind, 1, root, 0, 0)) {
+            part.sky = world.sky_light(s.pos.x, s.pos.y, s.pos.z) / static_cast<float>(MAX_LIGHT);
+            part.block = world.block_light(s.pos.x, s.pos.y, s.pos.z) / static_cast<float>(MAX_LIGHT);
+            parts.push_back(part);
+        }
+    }
     for (const auto& drop : drops)
         if (in_view(drop->body)) add_lit(drop->parts(), drop->body);
     for (const auto& arrow : arrows) {
@@ -496,7 +563,7 @@ void Game::update(double dt) {
         add_lit(player_parts(pose), player);
     }
     renderer->set_instances(std::move(parts));
-    renderer->set_outline(target && !target_cow ? std::optional<glm::ivec3>(target->block) : std::nullopt);
+    renderer->set_outline(target && !targeting_mob() ? std::optional<glm::ivec3>(target->block) : std::nullopt);
     hud->update(static_cast<float>(dt));
 }
 
@@ -504,7 +571,7 @@ std::string Game::help_text() const {
     auto k = [&](KeyAction a) { return key_name(options.keys[a]); };
     return k(KEY_FORWARD) + k(KEY_LEFT) + k(KEY_BACK) + k(KEY_RIGHT) + " move   " + k(KEY_JUMP) + " jump/swim   " + k(KEY_SNEAK) +
            " sneak   double-tap " + k(KEY_FORWARD) + " sprint\n"
-           "Left mouse: mine block / hit cow (hold to mine; stone needs a pickaxe)\n"
+           "Left mouse: mine block / hit a mob (hold to mine; stone needs a pickaxe)\n"
            "Right mouse: place block / eat / shoot the bow / use flint and steel or a bucket\n"
            "1-9 or wheel: pick slot   " + k(KEY_DROP) + ": drop   " + k(KEY_INVENTORY) + ": inventory and crafting\n" +
            k(KEY_CREATIVE) + ": creative cheat (double-tap " + k(KEY_JUMP) + " to fly)\n"
@@ -523,7 +590,7 @@ std::string Game::debug_text() {
     int dimmed = std::max(0, sky - static_cast<int>(current_sky().darkness));
     int minutes = clock_minutes(level.time);
     std::snprintf(buf, sizeof buf,
-                  "PetrutzCraft M5 (%.0f fps, %d chunk updates)\n"
+                  "PetrutzCraft M10 (%.0f fps, %d chunk updates)\n"
                   "x: %.3f (block %d)\ny: %.3f (feet, block %d)\nz: %.3f (block %d)\n"
                   "Chunk: %d %d (at %d %d in it)\n"
                   "Facing: %s (f: %d)\n"
@@ -532,13 +599,15 @@ std::string Game::debug_text() {
                   "Time: day %lld, %02d:%02d\n"
                   "Weather: %s (rain %.2f, thunder %.2f)\n"
                   "Seed: %lld\n"
-                  "Chunks loaded: %zu   cows: %zu   items: %zu",
+                  "Difficulty: %s\n"
+                  "Chunks loaded: %zu   cows: %zu   monsters: %zu   items: %zu",
                   fps, renderer->jobs_in_flight(), player.x, bx, player.y, by, player.z, bz, chunk_of(bx), chunk_of(bz),
                   bx & 15, bz & 15, FACING[f], f, biome_name(world.generator().biome_at(bx, bz)), std::max(dimmed, blk),
                   sky, blk, static_cast<long long>(level.time / DAY_TICKS + 1), minutes / 60, minutes % 60,
                   weather.is_thundering() ? "thunderstorm" : weather.is_raining() ? "rain" : "clear",
                   weather.rain_strength(), weather.thunder_strength(),
-                  static_cast<long long>(level.seed), world.chunk_count(), cows.size(), drops.size());
+                  static_cast<long long>(level.seed), difficulty_name(difficulty()), world.chunk_count(), cows.size(),
+                  monsters.size(), drops.size());
     return buf;
 }
 
@@ -563,7 +632,7 @@ void Game::draw(int w, int h) {
 
     if (hud_hidden && !vitals.dead()) return;
     bool underwater = world.get_block(ifloor(cam.x), ifloor(cam.y), ifloor(cam.z)) == WATER;
-    std::string info = debug_screen ? debug_text() : "PetrutzCraft M5";
+    std::string info = debug_screen ? debug_text() : "PetrutzCraft M10";
     if (!debug_screen && creative) info += flying ? "\nCreative (flying)" : "\nCreative";
     hud->draw(w, h, {&active_inventory(), &vitals, armor_value(inventory), creative, info, help_text(), underwater, vitals.dead()});
     if (gui && !vitals.dead()) {
@@ -668,6 +737,7 @@ void Game::update_target() {
     glm::vec3 origin = eye(), direction = forward();
     target = world.raycast(origin, direction, REACH);
     Cow* best = nullptr;
+    Monster* best_monster = nullptr;
     float best_d = ATTACK_REACH;
     for (const auto& cow : cows) {
         if (!cow->alive()) continue;
@@ -677,24 +747,40 @@ void Game::update_target() {
             best_d = *d;
         }
     }
-    if (best && target && target->distance < best_d) best = nullptr;
+    for (const auto& m : monsters) {
+        if (!m->alive()) continue;
+        auto d = m->ray_hit(origin, direction, ATTACK_REACH);
+        if (d && *d < best_d) {
+            best = nullptr;
+            best_monster = m.get();
+            best_d = *d;
+        }
+    }
+    if ((best || best_monster) && target && target->distance < best_d) best = nullptr, best_monster = nullptr;
     target_cow = best;
+    target_monster = best_monster;
 }
 
 // --- actions ------------------------------------------------------------------------------------
 
 void Game::try_attack() {
-    if (!target_cow || attack_cooldown > 0) return;
+    if (!targeting_mob() || attack_cooldown > 0) return;
     attack_cooldown = 0.35;
     const ItemId held = active_inventory().selected_item().value_or(AIR);
-    target_cow->hurt(creative ? 10 : attack_damage(held), player.x, player.z);
+    const int damage = creative ? 10 : attack_damage(held);
+    if (target_cow) {
+        target_cow->hurt(damage, player.x, player.z);
+    } else {
+        target_monster->hurt(damage, player.x, player.z);
+        target_monster->targeting = true;  // monsters turn on whoever hits them
+    }
     if (creative) return;
     vitals.exhaust(EXHAUST_ATTACK);
     wear_selected(wear_from_hit(held));
 }
 
 void Game::mine(double dt) {
-    if (!mouse_down(GLFW_MOUSE_BUTTON_LEFT) || !target || target_cow) {
+    if (!mouse_down(GLFW_MOUSE_BUTTON_LEFT) || !target || targeting_mob()) {
         mining_pos.reset();
         mining_progress = 0;
         hud->set_mining(std::nullopt);
@@ -745,6 +831,12 @@ void Game::break_block(glm::ivec3 pos, BlockId blk) {
             if (!creative) spawn_drop(TORCH, n.x + 0.5, n.y + 0.3, n.z + 0.5);
         }
     }
+    if (blk == TNT) {
+        // Breaking TNT lights it (Beta), whatever you hit it with.
+        prime_tnt(pos, TNT_FUSE_TICKS);
+        if (!creative) vitals.exhaust(EXHAUST_BREAK);
+        return;
+    }
     if (is_bed(blk)) {
         // Both halves go, and one bed drops.
         glm::ivec3 o = bed_other_half(pos, blk);
@@ -793,12 +885,12 @@ void Game::throw_stack(const Stack& stack) {
 
 void Game::use_item() {
     use_cooldown = 0.25;
-    if (target && !target_cow && world.get_block(target->block.x, target->block.y, target->block.z) == CRAFTING_TABLE) {
+    if (target && !targeting_mob() && world.get_block(target->block.x, target->block.y, target->block.z) == CRAFTING_TABLE) {
         mouse_buttons_.erase(GLFW_MOUSE_BUTTON_RIGHT);
         open_gui(InventoryScreen::Kind::CraftingTable);
         return;
     }
-    if (target && !target_cow && is_bed(world.get_block(target->block.x, target->block.y, target->block.z))) {
+    if (target && !targeting_mob() && is_bed(world.get_block(target->block.x, target->block.y, target->block.z))) {
         mouse_buttons_.erase(GLFW_MOUSE_BUTTON_RIGHT);
         try_sleep(target->block);
         return;
@@ -811,7 +903,12 @@ void Game::use_item() {
         return;
     }
     if (*item == FLINT_AND_STEEL) {
-        if (target && !target_cow && target->before && light_fire(*target->before)) wear_selected(1);
+        if (target && !targeting_mob() && world.get_block(target->block.x, target->block.y, target->block.z) == TNT) {
+            prime_tnt(target->block, TNT_FUSE_TICKS);  // the flame lights the TNT
+            wear_selected(1);
+        } else if (target && !targeting_mob() && target->before && light_fire(*target->before)) {
+            wear_selected(1);
+        }
         return;
     }
     if (*item == BUCKET && target_cow) {  // milking
@@ -834,11 +931,11 @@ void Game::use_item() {
         }
         return;
     }
-    if (*item >= FUTURE_BLOCKS && target && !target_cow && target->before) {
+    if (*item >= FUTURE_BLOCKS && target && !targeting_mob() && target->before) {
         hud->show_message(item_name(*item) + " can't be placed yet", 2);
         return;
     }
-    if (*item == BED && target && !target_cow && target->before) {
+    if (*item == BED && target && !targeting_mob() && target->before) {
         auto bed = bed_placement(world, target->block, *target->before - target->block, facing_from_yaw(yaw));
         if (!bed) return;
         for (glm::ivec3 c : {bed->foot, bed->head}) {
@@ -852,7 +949,7 @@ void Game::use_item() {
         if (!creative) inv.take_selected();
         return;
     }
-    if (!is_block(*item) || !target || target_cow || !target->before) return;
+    if (!is_block(*item) || !target || targeting_mob() || !target->before) return;
     glm::ivec3 c = *target->before;
     BlockId place = static_cast<BlockId>(*item);
     if (place == TORCH) {
@@ -863,6 +960,7 @@ void Game::use_item() {
     }
     std::vector<const Body*> bodies{&player};
     for (const auto& cow : cows) bodies.push_back(&cow->body);
+    for (const auto& m : monsters) bodies.push_back(&m->body);
     for (const Body* b : bodies)
         if (is_solid(place) && c.x + 1 > b->x - b->half && c.x < b->x + b->half && c.z + 1 > b->z - b->half && c.z < b->z + b->half &&
             c.y + 1 > b->y && c.y < b->y + b->height)
@@ -883,6 +981,24 @@ bool Game::hurt_player(int amount, bool ignore_cooldown) {
     hud->flash_damage();
     if (sleeping_in) wake_up(false);
     if (vitals.dead()) on_death();
+    return true;
+}
+
+bool Game::hurt_player_by_monster(int amount, double from_x, double from_z) {
+    const int scaled = scale_monster_damage(amount, difficulty());
+    const bool fresh = vitals.hurt_timer <= 0;
+    if (!hurt_player(scaled)) return false;
+    if (fresh) {
+        // Knocked back a little, like Beta.
+        double dx = player.x - from_x, dz = player.z - from_z, d = std::hypot(dx, dz);
+        if (d < 1e-6) {
+            dx = 0;
+            dz = d = 1;
+        }
+        player.vx = dx / d * 7;
+        player.vz = dz / d * 7;
+        if (player.on_ground && !flying) player.vy = 5.5;
+    }
     return true;
 }
 
@@ -916,7 +1032,7 @@ bool Game::use_bucket(ItemId held) {
         return true;
     }
     // A full bucket pours where a block would be placed. Water and lava don't flow yet (M6).
-    if (!target || target_cow || !target->before) return false;
+    if (!target || targeting_mob() || !target->before) return false;
     glm::ivec3 c = *target->before;
     BlockId here = world.get_block(c.x, c.y, c.z);
     if (here != AIR && !is_fluid(here) && here != FIRE) return false;
@@ -947,6 +1063,20 @@ void Game::shoot_arrow() {
 
 void Game::on_death() {
     close_gui();
+    // Everything you carry drops where you died (Beta).
+    auto scatter = [&](std::optional<Stack>& slot) {
+        if (!slot) return;
+        auto drop = std::make_unique<ItemDrop>(world, *slot, player.x, player.y + 1.0, player.z, rng);
+        const double a = rng.uniform(0, 2 * PI), f = rng.uniform(0, 4);
+        drop->body.vx = std::sin(a) * f;
+        drop->body.vz = std::cos(a) * f;
+        drop->body.vy = 4;
+        drop->pickup_delay = 2.0;
+        drops.push_back(std::move(drop));
+        slot.reset();
+    };
+    for (auto& slot : inventory.slots) scatter(slot);
+    for (auto& slot : inventory.armor) scatter(slot);
     hud->set_mining(std::nullopt);
     mouse_buttons_.clear();
     set_mouse_captured(false);
@@ -971,7 +1101,6 @@ void Game::respawn() {
     player.vx = player.vy = player.vz = 0;
     fall_peak = player.y;
     set_paused(false);
-    if (!hud->has_message()) hud->show_message("Respawned");
 }
 
 // --- weather and beds ----------------------------------------------------------------------------
@@ -1009,6 +1138,8 @@ void Game::tick_world() {
                         strike(*at);
                     }
     }
+    spawn_monsters();
+    tick_spawners();
     if (sleeping_in && !vitals.dead() && ++sleep_ticks >= SLEEP_TICKS) {
         // Asleep long enough: skip to the next morning and clear the sky, like Beta.
         level.time = next_morning(level.time);
@@ -1023,6 +1154,12 @@ void Game::strike(glm::dvec3 pos) {
     if (!creative && !vitals.dead() && near(player)) hurt_player(LIGHTNING_DAMAGE);
     for (const auto& cow : cows)
         if (cow->alive() && near(cow->body)) cow->hurt(LIGHTNING_DAMAGE, pos.x, pos.z);
+    for (const auto& m : monsters)
+        if (m->alive() && near(m->body)) {
+            if (m->kind == MobKind::Creeper) m->powered = true;  // a charged creeper
+            m->hurt(LIGHTNING_DAMAGE, pos.x, pos.z);
+            m->burning = std::max(m->burning, 8.0);
+        }
 }
 
 void Game::try_sleep(glm::ivec3 pos) {
@@ -1038,6 +1175,12 @@ void Game::try_sleep(glm::ivec3 pos) {
         hud->show_message("You can only sleep at night", 2.5f);
         return;
     }
+    for (const auto& m : monsters)
+        if (m->alive() && m->kind != MobKind::Slime && std::abs(m->body.x - (pos.x + 0.5)) < 8.5 &&
+            std::abs(m->body.y - pos.y) < 5.5 && std::abs(m->body.z - (pos.z + 0.5)) < 8.5) {
+            hud->show_message("You may not rest now, there are monsters nearby", 2.5f);
+            return;
+        }
     sleeping_in = pos;
     sleep_dir = bed_dir(b);
     hud->show_message("", 0);
@@ -1145,18 +1288,38 @@ void Game::update_drops(double dt) {
 
 void Game::update_arrows(double dt) {
     const double far_away = (renderer->render_distance + 3) * CHUNK;
+    // What arrows can hit: cows (kind 0), monsters (1) and, for monsters' arrows, the player (2).
+    std::vector<ArrowTarget> mobs;
+    for (size_t i = 0; i < cows.size(); ++i)
+        if (cows[i]->alive()) mobs.push_back(cows[i]->target(0, static_cast<int>(i)));
+    for (size_t i = 0; i < monsters.size(); ++i)
+        if (monsters[i]->alive()) mobs.push_back(monsters[i]->target(1, static_cast<int>(i)));
+    std::vector<ArrowTarget> with_player = mobs;
+    if (!creative && !vitals.dead())
+        with_player.push_back({glm::vec3(player.x - player.half, player.y, player.z - player.half),
+                               glm::vec3(player.x + player.half, player.y + player.height, player.z + player.half), 2, 0});
     for (auto it = arrows.begin(); it != arrows.end();) {
         Arrow& a = **it;
         bool remove = false;
+        std::optional<ArrowTarget> hit;
         if (!world.find(chunk_of(ifloor(a.pos.x)), chunk_of(ifloor(a.pos.z)))) {
             remove = true;  // flew off the loaded world (arrows aren't saved)
-        } else if (Cow* cow = a.tick(dt, world, cows)) {
-            cow->hurt(ARROW_DAMAGE, a.pos.x - a.vel.x, a.pos.z - a.vel.z);
+        } else if ((hit = a.tick(dt, world, a.from_player ? mobs : with_player))) {
+            const double fx = a.pos.x - a.vel.x, fz = a.pos.z - a.vel.z;
+            if (hit->kind == 0) {
+                cows[hit->index]->hurt(ARROW_DAMAGE, fx, fz);
+            } else if (hit->kind == 1) {
+                Monster& m = *monsters[hit->index];
+                m.hurt(ARROW_DAMAGE, fx, fz);
+                if (a.from_player) m.targeting = true;
+            } else {
+                hurt_player_by_monster(ARROW_DAMAGE, fx, fz);
+            }
             remove = true;
         } else if (a.expired() || a.age > 120 || a.pos.y < -16 ||
                    std::hypot(a.pos.x - player.x, a.pos.z - player.z) > far_away) {
             remove = true;
-        } else if (a.stuck && !vitals.dead() && std::hypot(a.pos.x - player.x, a.pos.z - player.z) < 1.2 &&
+        } else if (a.stuck && a.from_player && !vitals.dead() && std::hypot(a.pos.x - player.x, a.pos.z - player.z) < 1.2 &&
                    a.pos.y > player.y - 1 && a.pos.y < player.y + 2.5) {
             remove = inventory.add(ARROW, 1) == 0;  // walk over a stuck arrow to pick it up
         }
@@ -1189,4 +1352,348 @@ void Game::update_fires(double dt) {
             hurt_player(1);
         ++it;
     }
+}
+
+// --- monsters ---------------------------------------------------------------------------------------
+
+Monster* Game::spawn_monster(MobKind kind, double x, double y, double z, int size) {
+    monsters.push_back(std::make_unique<Monster>(world, kind, x, y, z, monster_rng_, size));
+    return monsters.back().get();
+}
+
+bool Game::can_spawn_monster(MobKind kind, double x, double y, double z, int size, bool natural) {
+    const int bx = ifloor(x), by = ifloor(y), bz = ifloor(z);
+    if (by < 1 || by >= HEIGHT - 2) return false;
+    if (natural) {
+        // Solid ground under it and room to stand, away from the player and the world spawn.
+        if (!is_opaque(world.get_block(bx, by - 1, bz))) return false;
+        for (int dy = 0; dy < 2; ++dy) {
+            const BlockId b = world.get_block(bx, by + dy, bz);
+            if (is_solid(b) || is_fluid(b)) return false;
+        }
+        const glm::dvec3 at(x, y, z);
+        if (glm::length(at - glm::dvec3(player.x, player.y, player.z)) < SPAWN_MIN_DISTANCE) return false;
+        if (glm::length(at - spawn) < SPAWN_MIN_DISTANCE) return false;
+    }
+    if (kind == MobKind::Slime) {
+        if (natural && (!is_slime_chunk(level.seed, chunk_of(bx), chunk_of(bz)) || by >= SLIME_MAX_Y)) return false;
+    } else {
+        // Thunderstorms make it dark enough for monsters to spawn in the day (Beta).
+        int darkness = static_cast<int>(current_sky().darkness);
+        if (weather.is_thundering()) darkness = std::max(darkness, 10);
+        if (!monster_spawn_light_ok(world.sky_light(bx, by, bz), light_at(world, bx, by, bz, darkness), monster_rng_))
+            return false;
+    }
+    const MobInfo info = mob_info(kind, size);
+    Body probe(world, x, y, z, info.half_width, info.height);
+    if (probe.collides() || probe.check_water()) return false;
+    // Not inside another mob.
+    auto overlaps = [&](const Body& b) {
+        return std::abs(b.x - x) < b.half + info.half_width && std::abs(b.z - z) < b.half + info.half_width &&
+               b.y < y + info.height && y < b.y + b.height;
+    };
+    for (const auto& m : monsters)
+        if (overlaps(m->body)) return false;
+    for (const auto& c : cows)
+        if (overlaps(c->body)) return false;
+    return !overlaps(player);
+}
+
+void Game::spawn_monsters() {
+    if (difficulty() == PEACEFUL) return;
+    const int r = std::min(MONSTER_SPAWN_CHUNKS, renderer->render_distance);
+    const int cap = monster_cap((2 * r + 1) * (2 * r + 1));
+    int count = static_cast<int>(std::count_if(monsters.begin(), monsters.end(), [](const auto& m) { return m->alive(); }));
+    if (count >= cap) return;
+    Rng& R = monster_rng_;
+    const int pcx = chunk_of(ifloor(player.x)), pcz = chunk_of(ifloor(player.z));
+    // Beta: one try in every chunk around the player, every tick, while there are too few monsters.
+    for (int cz = pcz - r; cz <= pcz + r; ++cz)
+        for (int cx = pcx - r; cx <= pcx + r; ++cx) {
+            Chunk* chunk = world.find(cx, cz);
+            if (!chunk) continue;
+            int x = cx * CHUNK + R.below(CHUNK), z = cz * CHUNK + R.below(CHUNK), y = R.below(std::min(HEIGHT - 2, chunk->max_y + 2));
+            if (world.get_block(x, y, z) != AIR) continue;
+            const MobKind kind = random_monster(R);
+            // A small group, each a few steps from the last.
+            for (int i = 0; i < 4; ++i) {
+                x += R.below(6) - R.below(6);
+                z += R.below(6) - R.below(6);
+                if (!world.find(chunk_of(x), chunk_of(z))) break;
+                const int size = kind == MobKind::Slime ? random_slime_size(R) : 1;
+                if (!can_spawn_monster(kind, x + 0.5, y, z + 0.5, size, true)) continue;
+                Monster* m = spawn_monster(kind, x + 0.5, y, z + 0.5, size);
+                if (kind == MobKind::Spider && spawns_as_jockey(R)) {
+                    Monster* rider = spawn_monster(MobKind::Skeleton, x + 0.5, y, z + 0.5);
+                    rider->mount = m;
+                    m->rider = rider;
+                }
+                if (++count >= cap) return;
+            }
+        }
+}
+
+void Game::tick_spawners() {
+    Rng& R = monster_rng_;
+    for (size_t i = 0; i < spawners.size();) {
+        Spawner& s = spawners[i];
+        if (!world.find(chunk_of(s.pos.x), chunk_of(s.pos.z))) {
+            ++i;
+            continue;
+        }
+        if (world.get_block(s.pos.x, s.pos.y, s.pos.z) != SPAWNER) {  // broken
+            spawners[i] = spawners.back();
+            spawners.pop_back();
+            continue;
+        }
+        ++i;
+        const glm::dvec3 c = glm::dvec3(s.pos) + 0.5;
+        if (difficulty() == PEACEFUL || glm::length(c - glm::dvec3(player.x, player.y + 1, player.z)) > SPAWNER_RANGE) continue;
+        if (--s.delay > 0) continue;
+        s.delay = spawner_delay(R);
+        const MobKind kind = spawner_mob(level.seed, s.pos);
+        for (int n = 0; n < 4; ++n) {
+            // Never more than six of its monsters around it.
+            const int near = static_cast<int>(std::count_if(monsters.begin(), monsters.end(), [&](const auto& m) {
+                return m->alive() && m->kind == kind && std::abs(m->body.x - c.x) < 8.5 && std::abs(m->body.y - c.y) < 4.5 &&
+                       std::abs(m->body.z - c.z) < 8.5;
+            }));
+            if (near >= SPAWNER_MAX_NEARBY) break;
+            const double x = c.x + (R.random() - R.random()) * 4, z = c.z + (R.random() - R.random()) * 4;
+            const double y = s.pos.y + R.below(3) - 1;
+            if (!can_spawn_monster(kind, x, y, z, 1, false)) continue;
+            spawn_monster(kind, x, y, z);
+            add_puffs(puffs, {x, y + 0.5, z}, 6, 0.4, 1.0, 0.25, R);
+        }
+    }
+}
+
+void Game::loot(Monster& m, std::vector<std::unique_ptr<Monster>>& born) {
+    m.looted = true;
+    if (m.exploded || m.vanish) return;
+    for (ItemId item : mob_drops(m.kind, m.size, monster_rng_)) spawn_drop(item, m.body.x, m.body.y + 0.5, m.body.z);
+    // A big slime breaks into smaller ones.
+    for (int n = slime_split_count(m.size, monster_rng_); n > 0; --n) {
+        const double ox = (monster_rng_.random() - 0.5) * m.size * 0.5, oz = (monster_rng_.random() - 0.5) * m.size * 0.5;
+        auto child = std::make_unique<Monster>(world, MobKind::Slime, m.body.x + ox, m.body.y + 0.5, m.body.z + oz, monster_rng_,
+                                               m.size / 2);
+        if (child->body.collides()) {
+            child->body.x = m.body.x;
+            child->body.z = m.body.z;
+        }
+        child->targeting = m.targeting;
+        born.push_back(std::move(child));
+    }
+}
+
+void Game::update_monsters(double dt) {
+    auto remove_at = [&](size_t i) {
+        Monster& m = *monsters[i];
+        if (m.rider) m.rider->mount = nullptr;
+        if (m.mount) m.mount->rider = nullptr;
+        if (target_monster == &m) target_monster = nullptr;
+        monsters.erase(monsters.begin() + static_cast<std::ptrdiff_t>(i));
+    };
+    if (difficulty() == PEACEFUL) {
+        // Peaceful: monsters vanish (Beta).
+        while (!monsters.empty()) remove_at(monsters.size() - 1);
+        return;
+    }
+    MonsterSenses senses;
+    senses.player = {player.x, player.y, player.z};
+    senses.player_height = player.height;
+    senses.player_targetable = !creative && !vitals.dead();
+    senses.sky_darkness = static_cast<int>(current_sky().darkness);
+    senses.raining = weather.is_raining();
+    const double far_away = (renderer->render_distance + 3) * CHUNK;
+    std::vector<std::unique_ptr<Monster>> born;
+    for (size_t i = 0; i < monsters.size();) {
+        Monster& m = *monsters[i];
+        if (m.vanish) {
+            remove_at(i);
+            continue;
+        }
+        // Monsters on chunks that aren't generated yet wait, so they don't fall through the world.
+        if (!world.find(chunk_of(ifloor(m.body.x)), chunk_of(ifloor(m.body.z)))) {
+            ++i;
+            continue;
+        }
+        const double dist = std::hypot(m.body.x - player.x, m.body.z - player.z);
+        // Beta's despawning: at once when very far, now and then when out of sight range a while.
+        if (dist < DESPAWN_SAFE_DISTANCE) m.age = 0;
+        const bool despawn =
+            dist > DESPAWN_DISTANCE || (m.age > 30 && m.alive() && monster_rng_.random() < dt * 20 / 800);
+        if (despawn && !m.mount) {
+            if (m.rider) m.rider->vanish = true;
+            remove_at(i);
+            continue;
+        }
+        if (dist > far_away && !m.mount) {
+            // Too far to simulate: keep it with its chunk until the player comes back.
+            if (m.alive()) stash_entity(monster_record(m));
+            if (m.rider) m.rider->vanish = true;
+            remove_at(i);
+            continue;
+        }
+        MonsterActions act;
+        const bool done = m.tick(dt, world, senses, monster_rng_, act);
+        if (act.melee > 0) hurt_player_by_monster(act.melee, m.body.x, m.body.z);
+        if (act.arrow_from) {
+            auto arrow = std::make_unique<Arrow>(*act.arrow_from, act.arrow_vel);
+            arrow->shooter = &m;
+            arrow->from_player = false;
+            arrows.push_back(std::move(arrow));
+        }
+        if (act.hiss) play_sound(Sound::Fuse, {m.body.x, m.body.y + 1, m.body.z});
+        if (act.explode) {
+            // The creeper is gone in its own blast.
+            m.exploded = true;
+            m.health = 0;
+            m.looted = true;
+            const glm::dvec3 at(m.body.x, m.body.y, m.body.z);
+            const double power = m.powered ? CHARGED_CREEPER_POWER : CREEPER_POWER;
+            remove_at(i);
+            explode(at, power, true);
+            continue;
+        }
+        if (!m.alive() && !m.looted) loot(m, born);
+        if (done) {
+            add_puffs(puffs, {m.body.x, m.body.y + m.body.height * 0.5, m.body.z}, 8, m.body.half + 0.2, 1.2, 0.25, monster_rng_);
+            remove_at(i);
+            continue;
+        }
+        ++i;
+    }
+    for (auto& b : born) monsters.push_back(std::move(b));
+}
+
+void Game::prime_tnt(glm::ivec3 pos, int fuse_ticks) {
+    if (world.get_block(pos.x, pos.y, pos.z) == TNT) renderer->rebuild(world.set_block(pos.x, pos.y, pos.z, AIR));
+    tnts.push_back(std::make_unique<PrimedTnt>(world, pos.x + 0.5, pos.y, pos.z + 0.5, fuse_ticks, rng));
+    play_sound(Sound::Fuse, glm::dvec3(pos) + 0.5);
+}
+
+void Game::play_sound(Sound sound, glm::dvec3 pos, float pitch) {
+    sounds.push_back({sound, pos, pitch});
+    ++sounds_started[static_cast<int>(sound)];
+}
+
+void Game::update_tnts(double dt) {
+    for (size_t i = 0; i < tnts.size();) {
+        PrimedTnt& t = *tnts[i];
+        if (!world.find(chunk_of(ifloor(t.body.x)), chunk_of(ifloor(t.body.z))) || !t.tick(dt)) {
+            ++i;
+            continue;
+        }
+        const glm::dvec3 at(t.body.x, t.body.y + 0.49, t.body.z);
+        tnts.erase(tnts.begin() + static_cast<std::ptrdiff_t>(i));
+        explode(at, TNT_POWER, false);
+    }
+}
+
+void Game::explode(glm::dvec3 center, double power, bool from_monster) {
+    // Beta pitches each blast a little differently (picked from the frame number, so random
+    // numbers the rest of the game uses stay the same).
+    play_sound(Sound::Explosion, center, static_cast<float>(0.75 + std::fmod(frame * 0.618034, 1.0) * 0.25));
+    add_puffs(puffs, center, static_cast<int>(power * 8), power * 0.6, power * 1.6, 0.5 + power * 0.15, rng);
+    const double reach = power * 2;
+
+    // First everything near is hurt and pushed, with the blocks still standing (Beta's order).
+    auto hit = [&](glm::dvec3 at, glm::dvec3 lo, glm::dvec3 hi, glm::dvec3& push) {
+        const glm::dvec3 d = at - center;
+        const double dist = glm::length(d);
+        if (dist > reach) return 0;
+        const double exposure = explosion_exposure(world, center, lo, hi);
+        const double p = explosion_push(power, dist, exposure);
+        push = (dist > 1e-6 ? d / dist : glm::dvec3(0, 1, 0)) * p * 16.0;
+        return explosion_damage(power, dist, exposure);
+    };
+    glm::dvec3 push(0);
+    if (!creative && !vitals.dead()) {
+        const Body& b = player;
+        // Beta measures to the player's eyes.
+        const int dmg = hit({b.x, b.y + EYE_HEIGHT, b.z}, {b.x - b.half, b.y, b.z - b.half}, {b.x + b.half, b.y + b.height, b.z + b.half}, push);
+        if (dmg > 0) {
+            if (from_monster) hurt_player_by_monster(dmg, center.x, center.z);
+            else hurt_player(dmg);
+            player.vx += push.x;
+            player.vy += push.y;
+            player.vz += push.z;
+        }
+    }
+    for (const auto& cow : cows) {
+        if (!cow->alive()) continue;
+        const Body& b = cow->body;
+        if (int dmg = hit({b.x, b.y, b.z}, {b.x - b.half, b.y, b.z - b.half}, {b.x + b.half, b.y + b.height, b.z + b.half}, push))
+            cow->hurt(dmg, center.x, center.z);
+    }
+    for (const auto& m : monsters) {
+        if (!m->alive()) continue;
+        Body& b = m->body;
+        const int dmg = hit({b.x, b.y, b.z}, {b.x - b.half, b.y, b.z - b.half}, {b.x + b.half, b.y + b.height, b.z + b.half}, push);
+        if (dmg <= 0) continue;
+        m->hurt(dmg, center.x, center.z, false);
+        m->knock_x += push.x;
+        m->knock_z += push.z;
+        b.vy += push.y;
+    }
+    for (const auto& t : tnts) {
+        Body& b = t->body;
+        if (hit({b.x, b.y, b.z}, {b.x - b.half, b.y, b.z - b.half}, {b.x + b.half, b.y + b.height, b.z + b.half}, push)) {
+            b.vx += push.x;
+            b.vy += push.y;
+            b.vz += push.z;
+        }
+    }
+    // Dropped items caught in a blast are destroyed (Beta's items have 5 health).
+    drops.erase(std::remove_if(drops.begin(), drops.end(),
+                               [&](const auto& d) {
+                                   const Body& b = d->body;
+                                   return hit({b.x, b.y, b.z}, {b.x - b.half, b.y, b.z - b.half},
+                                              {b.x + b.half, b.y + b.height, b.z + b.half}, push) >= 5;
+                               }),
+                drops.end());
+
+    // Then the blocks go. 30% of them drop; TNT in the blast is lit with a short fuse.
+    std::vector<glm::ivec3> cells = explosion_blocks(world, center, power, rng);
+    std::vector<ChunkPos> dirty;
+    auto clear = [&](glm::ivec3 c) {
+        for (ChunkPos p : world.set_block(c.x, c.y, c.z, AIR))
+            if (std::find(dirty.begin(), dirty.end(), p) == dirty.end()) dirty.push_back(p);
+    };
+    std::vector<glm::ivec3> tnt_cells;
+    for (glm::ivec3 c : cells) {
+        const BlockId b = world.get_block(c.x, c.y, c.z);
+        if (b == AIR) continue;
+        if (b == TNT) {
+            tnt_cells.push_back(c);
+            continue;
+        }
+        if (is_bed(b)) {
+            const glm::ivec3 o = bed_other_half(c, b);
+            if (sleeping_in && (*sleeping_in == c || *sleeping_in == o)) wake_up(false);
+            if (is_bed(world.get_block(o.x, o.y, o.z))) clear(o);
+            if (bed_is_head(b) && rng.random() < EXPLOSION_DROP_CHANCE) spawn_drop(BED, c.x + 0.5, c.y + 0.3, c.z + 0.5);
+            clear(c);
+            continue;
+        }
+        clear(c);
+        const BlockInfo* info = block_info(b);
+        if (info && info->drop && rng.random() < EXPLOSION_DROP_CHANCE) {
+            const int n = *info->drop == b ? 1 : rng.randint(info->drop_min, info->drop_max);
+            for (int i = 0; i < n; ++i) spawn_drop(*info->drop, c.x + 0.5, c.y + 0.3, c.z + 0.5);
+        }
+    }
+    // Torches left hanging on nothing fall off.
+    for (glm::ivec3 c : cells)
+        for (const FaceDef& f : face_defs()) {
+            const glm::ivec3 n = c + f.normal;
+            const BlockId b = world.get_block(n.x, n.y, n.z);
+            if (is_torch(b) && world.get_block(n.x + torch_support(b).x, n.y + torch_support(b).y, n.z + torch_support(b).z) == AIR) {
+                clear(n);
+                spawn_drop(TORCH, n.x + 0.5, n.y + 0.3, n.z + 0.5);
+            }
+        }
+    if (!dirty.empty()) renderer->rebuild(dirty);
+    for (glm::ivec3 c : tnt_cells) prime_tnt(c, rng.below(TNT_FUSE_TICKS / 4) + TNT_FUSE_TICKS / 8);
 }

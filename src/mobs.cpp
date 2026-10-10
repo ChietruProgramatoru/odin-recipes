@@ -5,6 +5,7 @@
 
 #include <glm/gtc/matrix_transform.hpp>
 
+#include "monsters.h"
 #include "textures.h"
 
 namespace {
@@ -28,8 +29,11 @@ glm::mat4 rot_z(double deg) { return rot(deg, {0, 0, 1}); }
 double pymod(double a, double b) { return a - b * std::floor(a / b); }
 double angle_diff(double a, double b) { return pymod(b - a + 180, 360) - 180; }
 
-// Add a textured box of `size` centred at `center` (in the frame of matrix m).
-void add_box(MeshData& mesh, const glm::mat4& m, glm::vec3 size, glm::vec3 center, int tile, float brightness = 1.0f) {
+const double LEGS[4][2] = {{-0.22, 0.4}, {0.22, 0.4}, {-0.22, -0.4}, {0.22, -0.4}};
+
+}  // namespace
+
+void add_box(MeshData& mesh, const glm::mat4& m, glm::vec3 size, glm::vec3 center, int tile, float brightness) {
     auto uv = tile_uv(tile);
     for (const FaceDef& f : face_defs()) {
         std::array<glm::vec3, 4> pts;
@@ -41,9 +45,22 @@ void add_box(MeshData& mesh, const glm::mat4& m, glm::vec3 size, glm::vec3 cente
     }
 }
 
-const double LEGS[4][2] = {{-0.22, 0.4}, {0.22, 0.4}, {-0.22, -0.4}, {0.22, -0.4}};
-
-}  // namespace
+std::optional<float> ray_box(glm::vec3 origin, glm::vec3 direction, float max_dist, glm::vec3 lo, glm::vec3 hi) {
+    float t0 = 0.0f, t1 = max_dist;
+    for (int a = 0; a < 3; ++a) {
+        float o = origin[a], d = direction[a];
+        if (std::abs(d) < 1e-9f) {
+            if (o < lo[a] || o > hi[a]) return std::nullopt;
+            continue;
+        }
+        float t_a = (lo[a] - o) / d, t_c = (hi[a] - o) / d;
+        if (t_a > t_c) std::swap(t_a, t_c);
+        t0 = std::max(t0, t_a);
+        t1 = std::min(t1, t_c);
+        if (t0 > t1) return std::nullopt;
+    }
+    return t0;
+}
 
 // --- Cow --------------------------------------------------------------------------------
 
@@ -70,24 +87,14 @@ void Cow::hurt(int amount, double from_x, double from_z) {
     if (!alive()) dying = 0.0001;
 }
 
-std::optional<float> Cow::ray_hit(glm::vec3 origin, glm::vec3 direction, float max_dist) const {
+ArrowTarget Cow::target(int kind, int index) const {
     const float h = 0.6f;
-    glm::vec3 lo(body.x - h, body.y, body.z - h);
-    glm::vec3 hi(body.x + h, body.y + 1.5, body.z + h);
-    float t0 = 0.0f, t1 = max_dist;
-    for (int a = 0; a < 3; ++a) {
-        float o = origin[a], d = direction[a];
-        if (std::abs(d) < 1e-9f) {
-            if (o < lo[a] || o > hi[a]) return std::nullopt;
-            continue;
-        }
-        float t_a = (lo[a] - o) / d, t_c = (hi[a] - o) / d;
-        if (t_a > t_c) std::swap(t_a, t_c);
-        t0 = std::max(t0, t_a);
-        t1 = std::min(t1, t_c);
-        if (t0 > t1) return std::nullopt;
-    }
-    return t0;
+    return {glm::vec3(body.x - h, body.y, body.z - h), glm::vec3(body.x + h, body.y + 1.5, body.z + h), kind, index, this};
+}
+
+std::optional<float> Cow::ray_hit(glm::vec3 origin, glm::vec3 direction, float max_dist) const {
+    const ArrowTarget t = target(0, 0);
+    return ray_box(origin, direction, max_dist, t.lo, t.hi);
 }
 
 bool Cow::tick(double dt, double player_x, double player_z, Rng& rng) {
@@ -245,12 +252,12 @@ void Arrow::aim() {
     pitch = degrees(std::atan2(-vel.y, std::hypot(vel.x, vel.z)));
 }
 
-Cow* Arrow::tick(double dt, World& world, const std::vector<std::unique_ptr<Cow>>& cows) {
+std::optional<ArrowTarget> Arrow::tick(double dt, World& world, const std::vector<ArrowTarget>& targets) {
     age += dt;
     if (stuck) {
         if (is_solid(world.get_block(stuck_in.x, stuck_in.y, stuck_in.z))) {
             stuck_time += dt;
-            return nullptr;
+            return std::nullopt;
         }
         // The block it was stuck in is gone: drop out of the hole.
         stuck = false;
@@ -263,13 +270,13 @@ Cow* Arrow::tick(double dt, World& world, const std::vector<std::unique_ptr<Cow>
         const glm::vec3 origin(pos), dir(step / length);
         auto block = world.raycast(origin, dir, static_cast<float>(length), is_solid);
         float nearest = block ? block->distance : static_cast<float>(length);
-        Cow* hit = nullptr;
-        for (const auto& cow : cows) {
-            if (!cow->alive()) continue;
-            auto t = cow->ray_hit(origin, dir, nearest);
+        std::optional<ArrowTarget> hit;
+        for (const ArrowTarget& target : targets) {
+            if (target.who && target.who == shooter) continue;
+            auto t = ray_box(origin, dir, nearest, target.lo, target.hi);
             if (t && *t <= nearest) {
                 nearest = *t;
-                hit = cow.get();
+                hit = target;
             }
         }
         if (hit) return hit;
@@ -279,7 +286,7 @@ Cow* Arrow::tick(double dt, World& world, const std::vector<std::unique_ptr<Cow>
             stuck = true;
             stuck_in = block->block;
             vel = {0, 0, 0};
-            return nullptr;
+            return std::nullopt;
         }
         pos += step;
     }
@@ -289,7 +296,7 @@ Cow* Arrow::tick(double dt, World& world, const std::vector<std::unique_ptr<Cow>
     vel *= std::pow(in_water ? 0.8 : 0.99, dt * 20);  // Beta's drag per tick
     vel.y -= GRAVITY * dt;
     aim();
-    return nullptr;
+    return std::nullopt;
 }
 
 std::vector<ModelPart> Arrow::parts() const {
@@ -357,6 +364,8 @@ std::map<int, MeshData> build_models() {
     add_box(arrow, ident, {0.08f, 0.08f, 0.1f}, {0, 0, -0.04f}, T_SHOE);
     add_box(arrow, ident, {0.16f, 0.015f, 0.12f}, {0, 0, -0.5f}, T_WHITE);
     add_box(arrow, ident, {0.015f, 0.16f, 0.12f}, {0, 0, -0.5f}, T_WHITE);
+
+    add_monster_models(models);
 
     for (ItemId item : all_items()) {
         glm::vec3 size = looks_like_block(item) ? glm::vec3(0.25f) : glm::vec3(0.4f, 0.4f, 0.03f);

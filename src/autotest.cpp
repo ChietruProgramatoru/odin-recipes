@@ -283,12 +283,13 @@ void AutoTest::play(App& app, Game& g) {
         g.flying = false;
     }
     if (f >= 627 && f < 700) weather_and_beds(app, g);
-    if (f == 700) {
+    if (f >= 700 && f < 1200) monsters(app, g);
+    if (f == 1200) {
         app.pause();
         check("Escape menu pauses the game", g.paused && app.screen());
         shot(app, "7_pause.png");
     }
-    if (f == 710) {
+    if (f == 1210) {
         // Change something, then save and quit to the title.
         marker_ = {static_cast<int>(std::floor(p.x)) + 2, static_cast<int>(std::floor(p.y)) + 1, static_cast<int>(std::floor(p.z))};
         g.renderer->rebuild(g.world.set_block(marker_.x, marker_.y, marker_.z, BRICK));
@@ -296,6 +297,10 @@ void AutoTest::play(App& app, Game& g) {
         saved_player_ = g.player_data();
         saved_raining_ = g.weather.state.raining;
         saved_cows_ = g.cows.size();
+        // A zombie next to the player, to see it again after loading.
+        g.monsters.clear();
+        g.target_monster = nullptr;
+        g.spawn_monster(MobKind::Zombie, p.x + 3, p.y + 1, p.z);
         app.save_and_quit_to_title();
         check("Save and Quit to Title closes the world", !app.game);
         phase_ = 2;
@@ -452,6 +457,337 @@ void AutoTest::weather_and_beds(App& app, Game& g) {
         p.x = tour_start_.x;
         p.z = tour_start_.z;
         p.y = ground_y_;
+    }
+}
+
+void AutoTest::monsters(App& app, Game& g) {
+    const long f = g.frame;
+    Body& p = g.player;
+    World& w = g.world;
+    auto set = [&](int x, int y, int z, BlockId b) { g.renderer->rebuild(w.set_block(x, y, z, b)); };
+    auto exists = [&](const Monster* m) {
+        return m && std::any_of(g.monsters.begin(), g.monsters.end(), [&](const auto& o) { return o.get() == m && o->alive(); });
+    };
+    auto place = [&](double dx, double dz) {
+        p.x = arena_.x + 0.5 + dx;
+        p.y = arena_.y;
+        p.z = arena_.z + 0.5 + dz;
+        p.vx = p.vy = p.vz = 0;
+        g.fall_peak = p.y;
+    };
+    auto spawn = [&](MobKind kind, double dx, double dz, int size = 1) {
+        Monster* m = g.spawn_monster(kind, arena_.x + 0.5 + dx, arena_.y, arena_.z + 0.5 + dz, size);
+        m->yaw = m->target_yaw = 180;  // facing the player
+        return m;
+    };
+    auto clear_mobs = [&] {
+        g.monsters.clear();
+        g.target_monster = nullptr;
+        g.arrows.clear();
+        mob_ = nullptr;
+    };
+    auto heal = [&] {
+        g.vitals.reset();
+        g.armor_remainder = 0;
+    };
+    const glm::ivec3 a = arena_;
+
+    if (f == 700) {
+        // A flat arena of grass in front of the player (facing +z), at noon in clear weather.
+        g.weather.clear();
+        g.creative = true;  // monsters leave a creative player alone, so they stand for the picture
+        g.flying = false;
+        g.level.time = 6000 + (g.level.time / DAY_TICKS) * DAY_TICKS;
+        app.options.difficulty = NORMAL;
+        clear_mobs();
+        g.inventory.armor = {};
+        heal();
+        arena_ = {static_cast<int>(std::floor(p.x)), static_cast<int>(std::floor(p.y)), static_cast<int>(std::floor(p.z))};
+        for (int dx = -9; dx <= 9; ++dx)
+            for (int dz = -4; dz <= 13; ++dz) {
+                set(arena_.x + dx, arena_.y - 1, arena_.z + dz, GRASS);
+                for (int dy = 0; dy <= 5; ++dy) set(arena_.x + dx, arena_.y + dy, arena_.z + dz, AIR);
+            }
+        place(0, 0);
+        g.yaw = 0;
+        g.pitch = 12;
+        // Cows in the arena walk behind the player, out of the pictures.
+        for (auto& c : g.cows)
+            if (std::hypot(c->body.x - p.x, c->body.z - p.z) < 24) {
+                c->body.x = p.x + (c->body.x - p.x) * 0.3;
+                c->body.z = p.z - 26;
+                c->body.y = w.surface_y(static_cast<int>(std::floor(c->body.x)), static_cast<int>(std::floor(c->body.z)));
+                c->body.vx = c->body.vy = c->body.vz = 0;
+            }
+        g.target_cow = nullptr;
+        g.hud->show_message("", 0);
+        spawn(MobKind::Zombie, -4, 6);
+        spawn(MobKind::Skeleton, -2, 6);
+        spawn(MobKind::Creeper, 0, 6);
+        spawn(MobKind::Spider, 2.2, 6);
+        spawn(MobKind::Slime, 4.6, 6, 2);
+        Monster* spider = spawn(MobKind::Spider, 7, 8);
+        Monster* rider = spawn(MobKind::Skeleton, 7, 8);
+        rider->mount = spider;
+        spider->rider = rider;
+    }
+    if (f == 702) {
+        for (auto& m : g.monsters) m->burning = 0;
+        shot(app, "m10_monsters.png");
+        check("zombie, skeleton, creeper, spider, slime and a spider jockey stand in the arena", g.monsters.size() == 7);
+        check("the jockey's skeleton rides on its spider",
+              g.monsters[6]->mount == g.monsters[5].get() && g.monsters[6]->body.y > g.monsters[5]->body.y + 0.2);
+    }
+    if (f == 704) {
+        // A zombie right in front of a survival player hits them.
+        clear_mobs();
+        g.creative = false;
+        heal();
+        place(0, 0);
+        mob_ = spawn(MobKind::Zombie, 0, 1.4);
+        mob_->targeting = true;
+    }
+    if (f == 714) {
+        check("a zombie hits for 5 on Normal (health " + std::to_string(g.vitals.health) + ")", g.vitals.health == MAX_HEALTH - 5);
+        check("the hit knocks the player back", p.z < a.z + 0.4);
+        place(0, 0);
+        g.yaw = 0;
+        g.pitch = 25;
+        mob_->body.x = a.x + 0.5;
+        mob_->body.z = a.z + 2.2;
+        mob_->attack_timer = 100;  // it holds still for the next checks
+        g.inventory.slots[g.inventory.selected] = Stack{DIAMOND_SWORD, 1};
+        g.update_target();
+        check("the crosshair finds the zombie", g.target_monster == mob_);
+        g.attack_cooldown = 0;
+        g.try_attack();
+        check("a diamond sword hits the zombie for " + std::to_string(attack_damage(DIAMOND_SWORD)),
+              exists(mob_) && mob_->health == 20 - attack_damage(DIAMOND_SWORD) && mob_->flash > 0);
+        int before = mob_->health;
+        g.attack_cooldown = 0;
+        g.try_attack();
+        check("hitting it again straight away does nothing (it's invulnerable for half a second)", mob_->health == before);
+    }
+    if (f == 716) shot(app, "m10_zombie_hurt.png");
+    if (f == 718 && exists(mob_)) {
+        drops_before_death_ = g.drops.size();
+        mob_->hurt(100, p.x, p.z);
+    }
+    if (f == 719 && mob_) {
+        // Its drops come the moment it dies.
+        check("a killed zombie starts its death animation", !mob_->alive() && mob_->dying > 0 && mob_->looted);
+        log("the zombie dropped " + std::to_string(g.drops.size() - drops_before_death_) + " feather(s)");
+    }
+    if (f == 730) shot(app, "m10_zombie_dying.png");
+    if (f == 785) {
+        check("the dead zombie is gone after its death animation", std::none_of(g.monsters.begin(), g.monsters.end(), [&](const auto& m) {
+                  return m->kind == MobKind::Zombie && std::hypot(m->body.x - a.x, m->body.z - a.z) < 12;
+              }));
+        // A skeleton eight blocks off shoots at the player.
+        clear_mobs();
+        heal();
+        place(0, 0);
+        mob_ = spawn(MobKind::Skeleton, 0, 8);
+        mob_->targeting = true;
+        mob_->attack_timer = 0.3;
+    }
+    if (f > 785 && f < 840 && !skeleton_shot_) {
+        for (const auto& arrow : g.arrows)
+            if (!arrow->from_player && !arrow->stuck) {
+                skeleton_shot_ = true;
+                shot(app, "m10_skeleton_arrow.png");
+                break;
+            }
+    }
+    if (f == 840) {
+        check("a skeleton shoots arrows at the player", skeleton_shot_);
+        log("health after the skeleton's arrows: " + std::to_string(g.vitals.health));
+        // A creeper walks up, hisses and blows up. Diamond armor keeps the player alive.
+        clear_mobs();
+        heal();
+        place(0, 0);
+        g.inventory.armor = {Stack{DIAMOND_HELMET, 1}, Stack{DIAMOND_CHESTPLATE, 1}, Stack{DIAMOND_LEGGINGS, 1}, Stack{DIAMOND_BOOTS, 1}};
+        mob_ = spawn(MobKind::Creeper, 0, 2.6);
+        mob_->targeting = true;
+        blocks_before_ = 0;
+        for (int dx = -4; dx <= 4; ++dx)
+            for (int dy = -4; dy <= 2; ++dy)
+                for (int dz = -2; dz <= 6; ++dz) blocks_before_ += w.get_block(a.x + dx, a.y + dy, a.z + dz) != AIR;
+    }
+    if (f == 860) {
+        check("the creeper's fuse is burning", exists(mob_) && mob_->fuse > 0);
+        check("the creeper hisses", g.sounds_started[static_cast<int>(Sound::Fuse)] == 1);
+    }
+    if (f == 900 && exists(mob_)) shot(app, "m10_creeper_fuse.png");
+    if (f == 940) {
+        int after = 0;
+        for (int dx = -4; dx <= 4; ++dx)
+            for (int dy = -4; dy <= 2; ++dy)
+                for (int dz = -2; dz <= 6; ++dz) after += w.get_block(a.x + dx, a.y + dy, a.z + dz) != AIR;
+        check("the creeper blew up (it's gone)", std::none_of(g.monsters.begin(), g.monsters.end(), [&](const auto& m) {
+                  return m->kind == MobKind::Creeper && std::hypot(m->body.x - a.x, m->body.z - a.z) < 12;
+              }));
+        check("the creeper's blast is heard", g.sounds_started[static_cast<int>(Sound::Explosion)] == 1);
+        check("the blast destroyed blocks (" + std::to_string(blocks_before_ - after) + ")", after < blocks_before_ - 5);
+        check("the blast hurt the player through diamond armor (health " + std::to_string(g.vitals.health) + ")",
+              g.vitals.health < MAX_HEALTH && !g.vitals.dead());
+        g.inventory.armor = {};
+        heal();
+        place(-6, -2);
+        g.yaw = 20;
+        g.pitch = 30;
+    }
+    if (f == 942) shot(app, "m10_crater.png");
+    if (f == 944) {
+        // A spider climbs a wall to get at a player on top of it, at night.
+        clear_mobs();
+        heal();
+        g.level.time += 12000;
+        for (int dx = -2; dx <= 2; ++dx)
+            for (int dy = -1; dy <= 3; ++dy) set(a.x + dx - 6, a.y + dy, a.z + 9, STONE);
+        p.x = a.x - 5.5;
+        p.y = a.y + 4;
+        p.z = a.z + 9.5;
+        p.vx = p.vy = p.vz = 0;
+        g.fall_peak = p.y;
+        g.creative = false;
+        mob_ = spawn(MobKind::Spider, -6, 7.2);
+        mob_->yaw = mob_->target_yaw = 0;
+        spider_top_ = mob_->body.y;
+    }
+    if (f > 944 && f < 1040 && exists(mob_)) spider_top_ = std::max(spider_top_, mob_->body.y);
+    if (f == 975) {
+        g.yaw = 180;
+        g.pitch = 60;
+        shot(app, "m10_spider_climb.png");
+    }
+    if (f == 1040) {
+        check("a spider climbs straight up a wall (rose " + std::to_string(spider_top_ - a.y) + " blocks)",
+              spider_top_ >= a.y + 2.5);
+        // A big slime splits in two to four smaller ones when it dies.
+        clear_mobs();
+        heal();
+        g.creative = true;
+        g.level.time -= 12000;
+        place(0, 0);
+        g.yaw = 0;
+        g.pitch = 15;
+        mob_ = spawn(MobKind::Slime, 0, 6, 4);
+        mob_->hurt(100, p.x, p.z);
+    }
+    if (f == 1042) {
+        int smaller = static_cast<int>(std::count_if(g.monsters.begin(), g.monsters.end(), [](const auto& m) {
+            return m->alive() && m->kind == MobKind::Slime && m->size == 2;
+        }));
+        check("a size 4 slime splits into " + std::to_string(smaller) + " size 2 slimes", smaller >= 2 && smaller <= 4);
+    }
+    if (f == 1044) shot(app, "m10_slimes.png");
+    if (f == 1050) {
+        // A zombie burning in the sun, and the fire hurting it.
+        clear_mobs();
+        mob_ = spawn(MobKind::Zombie, 0, 5);
+        mob_->burning = 5;
+    }
+    if (f == 1054) shot(app, "m10_burning.png");
+    if (f == 1130) {
+        check("a burning zombie takes damage (health " + std::to_string(exists(mob_) ? mob_->health : 0) + ")",
+              !exists(mob_) || mob_->health < 20);
+        // TNT: breaking it lights it; its blast lights the TNT next to it.
+        clear_mobs();
+        place(0, -3);
+        g.yaw = 0;
+        g.pitch = 20;
+        set(a.x, a.y, a.z + 5, TNT);
+        set(a.x, a.y, a.z + 6, TNT);
+        g.break_block({a.x, a.y, a.z + 5}, TNT);
+        check("breaking TNT lights it", g.tnts.size() == 1 && w.get_block(a.x, a.y, a.z + 5) == AIR);
+        if (!g.tnts.empty()) g.tnts[0]->fuse = 0.5;
+    }
+    if (f == 1136) shot(app, "m10_tnt.png");
+    if (f == 1170) {
+        check("the TNT went off and lit the TNT next to it", g.tnts.size() == 1 && w.get_block(a.x, a.y, a.z + 6) == AIR);
+        check("the blast left a crater", w.get_block(a.x, a.y - 1, a.z + 5) == AIR);
+        if (!g.tnts.empty()) g.tnts[0]->fuse = 0.05;
+    }
+    if (f == 1176) {
+        check("the second TNT went off too", g.tnts.empty());
+        check("lit TNT hisses and both blasts are heard", g.sounds_started[static_cast<int>(Sound::Fuse)] == 3 &&
+                                                              g.sounds_started[static_cast<int>(Sound::Explosion)] == 3);
+        shot(app, "m10_tnt_crater.png");
+        // A mob spawner in a dark room underground makes its monster.
+        glm::ivec3 c(a.x, 20, a.z);
+        for (int dx = -4; dx <= 4; ++dx)
+            for (int dy = -1; dy <= 4; ++dy)
+                for (int dz = -4; dz <= 4; ++dz) {
+                    bool shell = std::abs(dx) == 4 || std::abs(dz) == 4 || dy == -1 || dy == 4;
+                    set(c.x + dx, c.y + dy, c.z + dz, shell ? MOSSY_COBBLE : AIR);
+                }
+        set(c.x, c.y, c.z, SPAWNER);
+        g.spawners.push_back({c, 1});
+        p.x = c.x + 2.5;
+        p.y = c.y;
+        p.z = c.z - 2.5;
+        p.vx = p.vy = p.vz = 0;
+        g.fall_peak = p.y;
+        mob_ = nullptr;
+    }
+    if (f == 1180) {
+        const glm::ivec3 c(a.x, 20, a.z);
+        const MobKind kind = spawner_mob(g.level.seed, c);
+        int made = static_cast<int>(std::count_if(g.monsters.begin(), g.monsters.end(), [&](const auto& m) { return m->kind == kind; }));
+        check("a mob spawner in the dark makes " + std::string(mob_name(kind)) + "s (" + std::to_string(made) + ")", made > 0);
+        set(c.x - 3, c.y, c.z - 3, TORCH);
+        face(g, c.x + 0.5, c.z + 0.5, 20);
+    }
+    if (f == 1182) shot(app, "m10_spawner.png");
+    if (f == 1184) {
+        // Peaceful: every monster vanishes and none spawn.
+        app.options.difficulty = PEACEFUL;
+        place(0, 0);
+    }
+    if (f == 1186) {
+        g.spawn_monsters();
+        check("on Peaceful the monsters vanish", g.monsters.empty() && g.vitals.peaceful);
+        app.options.difficulty = NORMAL;
+        // Dying: everything carried drops, and the death screen comes up.
+        g.creative = false;
+        g.inventory.add(COBBLE, 10);
+        g.inventory.add(IRON_SWORD, 1);
+        drops_before_death_ = g.drops.size();
+        g.vitals.health = 3;
+        g.vitals.hurt_timer = 0;
+        g.hurt_player(10);
+    }
+    if (f == 1188) {
+        bool empty = std::none_of(g.inventory.slots.begin(), g.inventory.slots.end(), [](const auto& s) { return s.has_value(); });
+        check("dying drops everything carried (" + std::to_string(g.drops.size() - drops_before_death_) + " stacks)",
+              g.vitals.dead() && empty && g.drops.size() > drops_before_death_);
+        check("the death screen comes up", app.screen() != nullptr && !g.paused);
+        shot(app, "m10_death.png");
+        if (app.screen()) app.screen()->on_button(0);  // Respawn
+    }
+    if (f == 1190) {
+        // (The bed itself was broken earlier, so it's the world spawn.)
+        check("Respawn brings the player back to life at the spawn point",
+              !g.vitals.dead() && !app.screen() && std::hypot(p.x - g.spawn.x, p.z - g.spawn.z) < 0.01);
+        g.bed_spawn = bed_head_;  // kept for the save and reload check
+        // Natural spawning: at midnight monsters appear in the dark around the player.
+        clear_mobs();
+        g.creative = true;
+        g.level.time = 18000 + (g.level.time / DAY_TICKS) * DAY_TICKS;
+        for (int i = 0; i < 40; ++i) g.spawn_monsters();
+        bool far = std::all_of(g.monsters.begin(), g.monsters.end(), [&](const auto& m) {
+            return std::hypot(m->body.x - p.x, m->body.y - p.y, m->body.z - p.z) >= SPAWN_MIN_DISTANCE - 0.01;
+        });
+        check("monsters spawn in the dark around the player (" + std::to_string(g.monsters.size()) + "), never close by",
+              !g.monsters.empty() && far);
+        g.debug_screen = true;
+    }
+    if (f == 1192) {
+        shot(app, "m10_debug.png");
+        g.debug_screen = false;
+        g.level.time = day_time_;
+        g.weather = Weather(WeatherState{true, false, 100000, 100000});  // the rain the save check looks for
     }
 }
 
@@ -839,6 +1175,10 @@ void AutoTest::reload(App& app) {
               now.bed == saved_player_.bed && now.bed && g.weather.state.raining == saved_raining_ && saved_raining_);
         check("cows near the player are back (" + std::to_string(g.cows.size()) + " of " + std::to_string(saved_cows_) + ")",
               !g.cows.empty());
+        check("the zombie saved next to the player is back",
+              std::any_of(g.monsters.begin(), g.monsters.end(), [&](const auto& m) {
+                  return m->kind == MobKind::Zombie && std::hypot(m->body.x - g.player.x, m->body.z - g.player.z) < 6;
+              }));
         shot(app, "9_reloaded.png");
         finish(app);
     }

@@ -12,6 +12,7 @@
 #include <sstream>
 #include <system_error>
 
+#include "combat.h"
 #include "json.h"
 #include "zlib.h"
 
@@ -237,6 +238,9 @@ std::vector<uint8_t> encode_chunk(const Chunk& c) {
         w.f32(e.age);
         w.i32(e.count);
         w.i32(e.damage);
+        w.u8(static_cast<uint8_t>(e.mob));
+        w.u8(static_cast<uint8_t>(e.size));
+        w.u8(static_cast<uint8_t>(e.flags));
     }
     return w.out;
 }
@@ -266,9 +270,18 @@ std::unique_ptr<Chunk> decode_chunk(const std::vector<uint8_t>& bytes, int cx, i
             e.count = r.i32();
             e.damage = r.i32();
         }
+        if (version >= 3) {
+            e.mob = r.u8();
+            e.size = r.u8();
+            e.flags = r.u8();
+        }
         bool finite = std::isfinite(e.x) && std::isfinite(e.y) && std::isfinite(e.z);
         if (kind == EntityRecord::COW && finite && e.health > 0) {
             e.kind = EntityRecord::COW;
+            c->entities.push_back(e);
+        } else if (kind == EntityRecord::MONSTER && finite && e.health > 0 && e.mob < MOB_KIND_COUNT) {
+            e.kind = EntityRecord::MONSTER;
+            e.size = e.mob == static_cast<int>(MobKind::Slime) ? (e.size >= 4 ? 4 : e.size >= 2 ? 2 : 1) : 1;
             c->entities.push_back(e);
         } else if (kind == EntityRecord::ITEM && finite && valid_item(e.item) && e.count >= 1) {
             e.count = std::min(e.count, max_stack(e.item));
