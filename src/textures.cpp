@@ -452,13 +452,131 @@ Image bed_end(Rng& rng, bool head) {
     return img;
 }
 
+using Palette = std::vector<std::pair<char, Rgba>>;
+Image sprite(const std::vector<const char*>& rows, const Palette& palette);
+
+// --- Farming ---------------------------------------------------------------------
+// Plants are drawn as crossed or # shaped sheets (see world.cpp), so their tiles stand on the
+// bottom row and are see-through around them.
+
+// Farmland: tilled dirt with furrows across it, darker when wet.
+Image farmland(Rng& rng, bool wet) {
+    const Rgb base = wet ? Rgb{88, 58, 36} : Rgb{128, 92, 62};
+    Image img(TILE, TILE);
+    for (int y = 0; y < TILE; ++y)
+        for (int x = 0; x < TILE; ++x) {
+            double f = rng.uniform(0.9, 1.1);
+            if (y % 4 == 0) f *= 0.7;  // the furrow between two ridges
+            if (y % 4 == 1) f *= 1.12;
+            img.at(x, y) = shade(base, f);
+        }
+    return img;
+}
+
+// Wheat at stage 0-7: stalks that grow taller and turn from green to gold, with ears at stage 7.
+Image wheat(Rng& rng, int stage) {
+    Image img(TILE, TILE);
+    const int height = 2 + stage * 2 - (stage == 7 ? 1 : 0);
+    const double ripe = stage / 7.0;
+    const Rgb green{70, 150, 40}, gold{200, 175, 70};
+    auto mix = [&](double t) {
+        return Rgb{green.r + (gold.r - green.r) * t, green.g + (gold.g - green.g) * t, green.b + (gold.b - green.b) * t};
+    };
+    for (int x = 1; x < TILE; x += 3) {
+        int h = std::max(1, height - rng.below(3));
+        int lean = rng.below(3) - 1;
+        for (int k = 0; k < h; ++k) {
+            int px = std::clamp(x + (k > h / 2 ? lean : 0), 0, TILE - 1);
+            img.at(px, TILE - 1 - k) = shade(mix(ripe * (0.6 + 0.4 * k / std::max(1, h))), rng.uniform(0.85, 1.1));
+        }
+        if (stage == 7)  // the ear: a fat golden head on top of each stalk
+            for (int k = h - 4; k < h; ++k)
+                for (int dx = 0; dx <= 1; ++dx) {
+                    int px = std::clamp(x + lean + dx, 0, TILE - 1);
+                    if (k >= 0) img.at(px, TILE - 1 - k) = shade({215, 185, 80}, rng.uniform(0.8, 1.1));
+                }
+    }
+    return img;
+}
+
+// Sugar cane: three pale green stalks with darker joints, from the bottom to the top.
+Image sugar_cane(Rng& rng) {
+    Image img(TILE, TILE);
+    for (int x : {3, 7, 12})
+        for (int y = 0; y < TILE; ++y)
+            for (int dx = 0; dx <= 1; ++dx) {
+                bool joint = (y + x) % 5 == 0;
+                img.at(x + dx, y) = shade(joint ? Rgb{110, 160, 70} : Rgb{150, 205, 105}, (dx ? 0.85 : 1.0) * rng.uniform(0.93, 1.07));
+            }
+    return img;
+}
+
+// Tall grass and ferns are grey and coloured by the biome, like grass.
+Image tall_grass(Rng& rng) {
+    Image img(TILE, TILE);
+    for (int x = 0; x < TILE; ++x) {
+        if (rng.below(3) == 0) continue;
+        int h = rng.below(8) + 5 + (x > 3 && x < 12 ? 3 : 0);
+        for (int k = 0; k < h && k < TILE; ++k) img.at(x, TILE - 1 - k) = shade(GREY, rng.uniform(0.75, 1.1), TINTED);
+    }
+    return img;
+}
+
+Image fern(Rng& rng) {
+    Image img(TILE, TILE);
+    for (int side : {-1, 1})
+        for (int k = 0; k < 12; ++k) {
+            int y = TILE - 1 - k, x = 7 + (side > 0 ? 1 : 0) + side * (k / 3);
+            img.at(x, y) = shade(GREY, 0.8, TINTED);
+            for (int f = 1; f <= 2 && k % 2 == 0; ++f)  // the leaflets
+                if (x + side * f >= 0 && x + side * f < TILE) img.at(x + side * f, y - 1 + f / 2) = shade(GREY, rng.uniform(0.85, 1.1), TINTED);
+        }
+    return img;
+}
+
+// A flower or mushroom: a stem from the bottom row with a head of `rows`, drawn from the top.
+Image small_plant(const std::vector<const char*>& rows, const Palette& palette) {
+    Image img(TILE, TILE);
+    Image spr = sprite(rows, palette);
+    img.paste(spr, (TILE - spr.width) / 2, TILE - spr.height);
+    return img;
+}
+
+// h head, c its spots or centre, s stem.
+const std::vector<const char*> FLOWER_ROWS = {
+    ".hhh.", "hhchh", "hcccc", "hhchh", ".hhh.", "..s..", ".ss..", "..s..", "..ss.", "..s..",
+};
+const std::vector<const char*> MUSHROOM_ROWS = {
+    ".hhhh.", "hhchch", "hhhhhh", "..ss..", "..ss..", "..ss..",
+};
+
+// Cake: white icing on top with red dots, a sponge side with icing dripping over its top.
+Image cake_top(Rng& rng) {
+    Image img(TILE, TILE);
+    for (int y = 1; y < 15; ++y)
+        for (int x = 1; x < 15; ++x) img.at(x, y) = shade({245, 245, 240}, rng.uniform(0.95, 1.03));
+    for (int i = 0; i < 6; ++i) img.at(2 + rng.below(12), 2 + rng.below(12)) = shade({220, 40, 40}, 1);
+    return img;
+}
+
+Image cake_side(Rng& rng, bool inside) {
+    Image img(TILE, TILE);
+    for (int y = 8; y < TILE; ++y)
+        for (int x = 1; x < 15; ++x) {
+            bool icing = y <= 9 || (y == 10 && (x * 7) % 3 == 0);
+            Rgb c = icing && !inside ? Rgb{245, 245, 240} : inside ? Rgb{215, 170, 110} : Rgb{180, 115, 60};
+            if (inside && y <= 8) c = {245, 245, 240};
+            img.at(x, y) = shade(c, rng.uniform(0.93, 1.05));
+        }
+    return img;
+}
+
 std::function<Image(Rng&)> solid(Rgb c, double spread = 0.04) {
     return [=](Rng& rng) { return noise_tile(rng, c, spread); };
 }
 
 // --- Pixel-art sprites --------------------------------------------------------
 
-using Palette = std::vector<std::pair<char, Rgba>>;
 
 Image sprite(const std::vector<const char*>& rows, const Palette& palette) {
     int h = static_cast<int>(rows.size()), w = static_cast<int>(std::char_traits<char>::length(rows[0]));
@@ -563,7 +681,7 @@ std::array<float, 4> tile_uv(int index) {
 }
 
 std::map<int, Image> make_tiles(int seed) {
-    const std::map<int, std::function<Image(Rng&)>> generators = {
+    std::map<int, std::function<Image(Rng&)>> generators = {
         {T_GRASS_TOP, grass_top}, {T_GRASS_SIDE, grass_side}, {T_DIRT, dirt}, {T_STONE, stone},
         {T_COBBLE, cobble}, {T_SAND, sand}, {T_LOG_SIDE, log_side}, {T_LOG_TOP, log_top},
         {T_LEAVES, leaves}, {T_PLANKS, planks}, {T_TORCH, torch}, {T_BEDROCK, bedrock}, {T_WATER, water}, {T_BRICK, brick},
@@ -600,8 +718,22 @@ std::map<int, Image> make_tiles(int seed) {
         {T_BED_SIDE_HEAD, [](Rng& rng) { return bed_side(rng, true, false); }},
         {T_BED_END_FOOT, [](Rng& rng) { return bed_end(rng, false); }},
         {T_BED_END_HEAD, [](Rng& rng) { return bed_end(rng, true); }},
+        {T_FARMLAND_DRY, [](Rng& rng) { return farmland(rng, false); }},
+        {T_FARMLAND_WET, [](Rng& rng) { return farmland(rng, true); }},
+        {T_SUGAR_CANE, sugar_cane}, {T_TALL_GRASS, tall_grass}, {T_FERN, fern},
+        {T_DANDELION, [](Rng&) { return small_plant(FLOWER_ROWS, {{'h', {245, 220, 40, 255}}, {'c', {200, 160, 20, 255}},
+                                                                  {'s', {70, 140, 40, 255}}}); }},
+        {T_ROSE, [](Rng&) { return small_plant(FLOWER_ROWS, {{'h', {205, 30, 30, 255}}, {'c', {150, 15, 15, 255}},
+                                                             {'s', {70, 140, 40, 255}}}); }},
+        {T_BROWN_MUSHROOM, [](Rng&) { return small_plant(MUSHROOM_ROWS, {{'h', {150, 110, 80, 255}}, {'c', {120, 85, 60, 255}},
+                                                                         {'s', {225, 215, 195, 255}}}); }},
+        {T_RED_MUSHROOM, [](Rng&) { return small_plant(MUSHROOM_ROWS, {{'h', {210, 40, 40, 255}}, {'c', {245, 245, 245, 255}},
+                                                                       {'s', {225, 215, 195, 255}}}); }},
+        {T_CAKE_TOP, cake_top}, {T_CAKE_SIDE, [](Rng& rng) { return cake_side(rng, false); }},
+        {T_CAKE_INSIDE, [](Rng& rng) { return cake_side(rng, true); }},
     };
     std::map<int, Image> tiles;
+    for (int k = 0; k < 8; ++k) generators.emplace(T_WHEAT_0 + k, [k](Rng& rng) { return wheat(rng, k); });
     for (const auto& [index, gen] : generators) {
         Rng rng(static_cast<uint64_t>(seed) * 100 + index);
         tiles[index] = gen(rng);

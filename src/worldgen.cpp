@@ -25,7 +25,7 @@ constexpr int LAVA_LEVEL = 10;          // caves below this fill with lava
 int ifloor(double v) { return static_cast<int>(std::floor(v)); }
 
 // Salts so each kind of feature gets its own random numbers.
-enum Salt : uint64_t { CAVES = 1, LAKES, DUNGEONS, ORE_VEINS, CLAY_SALT, TREES };
+enum Salt : uint64_t { CAVES = 1, LAKES, DUNGEONS, ORE_VEINS, CLAY_SALT, TREES, PLANTS };
 
 uint64_t chunk_seed(uint64_t seed, int sx, int sz, uint64_t salt) {
     Rng mix(seed ^ (static_cast<uint64_t>(static_cast<uint32_t>(sx)) * 0x9E3779B97F4A7C15ull) ^
@@ -431,6 +431,72 @@ void tree(Region& r, Rng& rng, Biome b, int x, int z) {
 
 }  // namespace
 
+namespace {
+
+// --- Plants (M8) ------------------------------------------------------------------------------
+// Beta's plant generators: each tries many spots around its anchor and keeps those where the
+// plant can live. They reach 7 blocks across from the anchor, so they stay in the region.
+
+bool open_above(const Region& r, int x, int y, int z) {
+    for (int k = y; k < HEIGHT; ++k)
+        if (r.get(x, k, z) != AIR) return false;
+    return true;
+}
+
+bool next_to_water(const Region& r, int x, int y, int z) {
+    return r.get(x - 1, y, z) == WATER || r.get(x + 1, y, z) == WATER || r.get(x, y, z - 1) == WATER ||
+           r.get(x, y, z + 1) == WATER;
+}
+
+// Tall grass or ferns: starts at the ground under the anchor and scatters 128 tries around it.
+void tall_grass(Region& r, Rng& rng, int x, int z, BlockId plant) {
+    int y = rng.below(HEIGHT);
+    while (y > 0 && (r.get(x, y, z) == AIR || is_leaves(r.get(x, y, z)))) --y;
+    for (int i = 0; i < 128; ++i) {
+        int px = x + rng.below(8) - rng.below(8), py = y + rng.below(4) - rng.below(4), pz = z + rng.below(8) - rng.below(8);
+        BlockId under = r.get(px, py - 1, pz);
+        if (r.get(px, py, pz) == AIR && (under == GRASS || under == DIRT)) r.set(px, py, pz, plant);
+    }
+}
+
+// Flowers and mushrooms: 64 tries around an anchor at a random height (so most land nowhere,
+// like Beta). Flowers want open sky, mushrooms something over them.
+void flowers(Region& r, Rng& rng, int x, int y, int z, BlockId plant) {
+    const bool mushroom = plant == BROWN_MUSHROOM || plant == RED_MUSHROOM;
+    for (int i = 0; i < 64; ++i) {
+        int px = x + rng.below(8) - rng.below(8), py = y + rng.below(4) - rng.below(4), pz = z + rng.below(8) - rng.below(8);
+        if (py <= 0 || r.get(px, py, pz) != AIR) continue;
+        BlockId under = r.get(px, py - 1, pz);
+        bool ok = mushroom ? is_opaque(under) && !open_above(r, px, py + 1, pz)
+                           : (under == GRASS || under == DIRT) && open_above(r, px, py + 1, pz);
+        if (ok) r.set(px, py, pz, plant);
+    }
+}
+
+// Sugar cane: 20 tries on grass, dirt or sand next to water, 1 to 3 tall.
+void sugar_cane(Region& r, Rng& rng, int x, int y, int z) {
+    for (int i = 0; i < 20; ++i) {
+        int px = x + rng.below(4) - rng.below(4), pz = z + rng.below(4) - rng.below(4);
+        BlockId under = r.get(px, y - 1, pz);
+        if (r.get(px, y, pz) != AIR || (under != GRASS && under != DIRT && under != SAND) || !next_to_water(r, px, y - 1, pz))
+            continue;
+        int height = 1 + rng.below(rng.below(3) + 1);
+        for (int k = 0; k < height && r.get(px, y + k, pz) == AIR; ++k) r.set(px, y + k, pz, SUGAR_CANE_PLANT);
+    }
+}
+
+// Beta's tall grass patches per chunk by biome.
+int biome_grass(Biome b) {
+    switch (b) {
+        case Biome::RAINFOREST: case Biome::PLAINS: return 10;
+        case Biome::FOREST: case Biome::SEASONAL_FOREST: return 2;
+        case Biome::TAIGA: return 1;
+        default: return 0;
+    }
+}
+
+}  // namespace
+
 double hash01(int x, int z, int salt, uint64_t seed) {
     uint32_t h = (static_cast<uint32_t>(x) * 73856093u) ^ (static_cast<uint32_t>(z) * 19349663u) ^
                  (static_cast<uint32_t>(salt) * 83492791u) ^ (static_cast<uint32_t>(seed) * 2654435761u);
@@ -624,6 +690,36 @@ std::unique_ptr<Chunk> TerrainGenerator::generate(int cx, int cz) const {
         for (int i = 0; i < n; ++i) {
             int tx = x + rng.below(16), tz = z + rng.below(16);
             tree(r, rng, r.biome(tx, tz), tx, tz);
+        }
+    });
+
+    // Plants after the trees, like Beta: tall grass, flowers, mushrooms and sugar cane.
+    sources(PLANTS, [&](Rng& rng, int x, int z) {
+        auto at = [&] { return glm::ivec3(x + rng.below(16), rng.below(HEIGHT), z + rng.below(16)); };
+        const Biome b = r.biome(x + 8, z + 8);
+        for (int i = 0, n = biome_grass(b); i < n; ++i) {
+            const bool fern = b == Biome::RAINFOREST && rng.below(3) != 0;
+            tall_grass(r, rng, x + rng.below(16), z + rng.below(16), fern ? FERN : TALL_GRASS);
+        }
+        for (int i = 0; i < 2; ++i) {
+            glm::ivec3 p = at();
+            flowers(r, rng, p.x, p.y, p.z, YELLOW_FLOWER);
+        }
+        if (rng.below(2) == 0) {
+            glm::ivec3 p = at();
+            flowers(r, rng, p.x, p.y, p.z, RED_ROSE);
+        }
+        if (rng.below(4) == 0) {
+            glm::ivec3 p = at();
+            flowers(r, rng, p.x, p.y, p.z, BROWN_MUSHROOM);
+        }
+        if (rng.below(8) == 0) {
+            glm::ivec3 p = at();
+            flowers(r, rng, p.x, p.y, p.z, RED_MUSHROOM);
+        }
+        for (int i = 0; i < 10; ++i) {
+            glm::ivec3 p = at();
+            sugar_cane(r, rng, p.x, p.y, p.z);
         }
     });
 

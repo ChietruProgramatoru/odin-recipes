@@ -33,6 +33,11 @@ enum Block : BlockId {
     GLASS,
     // Fluids (M6): where flowing lava meets water. Needs a diamond pickaxe.
     OBSIDIAN,
+    // Farming (M8). The data value (see World::get_data) holds farmland wetness (0 dry .. 7 wet),
+    // the wheat stage (0 .. 7 ripe), how many slices of a cake are eaten (0 .. 5) and the age of
+    // the top of a sugar cane (0 .. 15). Plants are drawn as crossed sheets (is_plant).
+    FARMLAND, WHEAT_CROP, CAKE_BLOCK, SUGAR_CANE_PLANT, TALL_GRASS, FERN,
+    YELLOW_FLOWER, RED_ROSE, BROWN_MUSHROOM, RED_MUSHROOM,
     BLOCK_COUNT
 };
 
@@ -66,6 +71,9 @@ enum Tile : int {
     T_ZOMBIE_SKIN, T_ZOMBIE_SHIRT, T_ZOMBIE_PANTS, T_BONE, T_CREEPER, T_SPIDER, T_SPIDER_EYE, T_SLIME, T_SMOKE,
     // Fluids (M6).
     T_OBSIDIAN,
+    // Farming (M8): farmland, wheat in its 8 stages, plants (drawn as crossed sheets) and cake.
+    T_FARMLAND_DRY, T_FARMLAND_WET, T_WHEAT_0, T_WHEAT_7 = T_WHEAT_0 + 7, T_SUGAR_CANE, T_TALL_GRASS, T_FERN,
+    T_DANDELION, T_ROSE, T_BROWN_MUSHROOM, T_RED_MUSHROOM, T_CAKE_TOP, T_CAKE_SIDE, T_CAKE_INSIDE,
     TILE_COUNT
 };
 
@@ -105,6 +113,8 @@ bool is_torch(BlockId id);  // floor or wall torch (drawn as a thin stick, not a
 // Not a cube and nothing to bump into: torches and fire. Faces next to them are drawn.
 bool is_thin(BlockId id);
 bool is_bed(BlockId id);    // either half of a bed
+// Drawn as crossed sheets and nothing to bump into: wheat, sugar cane, tall grass, ferns, flowers, mushrooms.
+bool is_plant(BlockId id);
 // Furnaces: any facing, lit or not. The facing is Beta's (0 south, 1 west, 2 north, 3 east, see
 // FACING_DIRS in bed.h) and says which way the front points.
 bool is_furnace(BlockId id);
@@ -112,7 +122,7 @@ bool is_lit_furnace(BlockId id);
 int furnace_dir(BlockId furnace);
 BlockId furnace_block(int dir, bool lit);
 bool falls(BlockId id);     // sand and gravel fall when nothing holds them up
-// How tall a solid block is for walking on it: 1, or 9/16 for a bed.
+// How tall a solid block is for walking on it: 1, 9/16 for a bed, 15/16 for farmland, 1/2 for cake.
 float block_height(BlockId id);
 // Light (0-15): how much a block dims light passing into it, and how much it gives off.
 int light_opacity(BlockId id);

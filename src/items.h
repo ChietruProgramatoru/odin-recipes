@@ -40,12 +40,14 @@ enum Item : ItemId {
     MINECART, STORAGE_MINECART, POWERED_MINECART, REPEATER, SADDLE,
     // Smelting (M7): cooked beef. Not in Beta, which had no beef; this game keeps beef from cows.
     STEAK,
+    SEEDS,  // M8
 
     // Blocks that later milestones make placeable. Until then they are items.
     FUTURE_BLOCKS = 512,
     WHITE_WOOL = FUTURE_BLOCKS, ORANGE_WOOL, MAGENTA_WOOL, LIGHT_BLUE_WOOL, YELLOW_WOOL, LIME_WOOL, PINK_WOOL,
     GRAY_WOOL, LIGHT_GRAY_WOOL, CYAN_WOOL, PURPLE_WOOL, BLUE_WOOL, BROWN_WOOL, GREEN_WOOL, RED_WOOL, BLACK_WOOL,
-    // Torches and glowstone became real blocks in M5, sandstone and clay in M4, TNT in M10 (see blocks.h).
+    // Torches and glowstone became real blocks in M5, sandstone and clay in M4, TNT in M10, flowers and
+    // mushrooms in M8 (see blocks.h).
     // Their old ids stay reserved so the ids after them don't move; saves from M2 have them
     // turned into the blocks on load.
     OLD_TORCH_ITEM, REDSTONE_TORCH, OLD_GLOWSTONE_ITEM, JACK_O_LANTERN, PUMPKIN,
@@ -54,7 +56,8 @@ enum Item : ItemId {
     STONE_SLAB, SANDSTONE_SLAB, WOOD_SLAB, COBBLE_SLAB, WOOD_STAIRS, COBBLE_STAIRS,
     FENCE, LADDER, TRAPDOOR, LEVER, STONE_BUTTON, STONE_PLATE, WOOD_PLATE,
     RAIL, POWERED_RAIL, DETECTOR_RAIL,
-    YELLOW_FLOWER, RED_ROSE, BROWN_MUSHROOM, RED_MUSHROOM,
+    // Flowers and mushrooms became blocks in M8.
+    OLD_YELLOW_FLOWER_ITEM, OLD_RED_ROSE_ITEM, OLD_BROWN_MUSHROOM_ITEM, OLD_RED_MUSHROOM_ITEM,
     ITEM_END
 };
 

@@ -12,6 +12,7 @@
 
 #include "hand.h"
 #include "blockupdate.h"
+#include "farming.h"
 #include "hud.h"
 #include "inventory_screen.h"
 #include "mobs.h"
@@ -177,6 +178,10 @@ public:
     void wake_up(bool set_spawn);
     // One game tick (20 a second) of the world: weather, lightning and sleeping.
     void tick_world();
+    // Beta's random block ticks in the chunks around the player: crops grow, farmland dries out.
+    void random_ticks();
+    // Apply what a farming rule did: mesh the changed chunks again and drop its items.
+    void apply(const FarmEvents& events);
     // The sky for this frame, weather included.
     SkyState current_sky() const;
     // Block ticks, random ticks and what they set off; the player breathing and burning.
@@ -232,6 +237,8 @@ private:
     // Replace one of the selected stack with `item` (filling or emptying a bucket).
     void swap_selected(ItemId item);
     bool use_bucket(ItemId held);
+    // Right click with seeds, sugar cane, a flower or cake: plant or place it. False if it can't go there.
+    bool plant(BlockId block);
     void set_mouse_captured(bool captured);
     void show_gui(std::unique_ptr<InventoryScreen> screen);
     bool key_down(int key) const;
@@ -254,4 +261,5 @@ private:
     double ticks_ = 0;  // fraction of a game tick not yet added to level.time
     Rng weather_rng_;   // its own random numbers, so weather doesn't change what cows do
     Rng monster_rng_;   // and its own for monsters, so they don't change what the rest does
+    Rng farm_rng_;      // and for random block ticks (crops growing, farmland drying)
 };

@@ -476,6 +476,57 @@ void add_bed(MeshData& mesh, float wx, float wy, float wz, BlockId blk, uint8_t 
         face({{{0, 0, 0}, {1, 0, 0}, {1, H, 0}, {0, H, 0}}}, {0, 0, -1}, sub_uv(T_BED_END_FOOT, 0, 7, 16, 16));
 }
 
+// A box inside a block, from `lo` to `hi` (0..1), every face drawn with the part of `tiles[slot]`
+// (top, side, bottom) the box covers; `cut` replaces the -x side's tile (a cake with slices gone).
+void add_box(MeshData& mesh, glm::vec3 o, glm::vec3 lo, glm::vec3 hi, const int tiles[3], int cut, uint8_t light) {
+    for (const FaceDef& f : face_defs()) {
+        std::array<glm::vec3, 4> pts;
+        for (int c = 0; c < 4; ++c) pts[c] = o + lo + glm::vec3(f.corners[c]) * (hi - lo);
+        const glm::ivec3 n = f.normal;
+        float u0, u1, v0, v1;  // the box's extent across the face, in pixels
+        if (n.y != 0) {
+            u0 = lo.x, u1 = hi.x, v0 = lo.z, v1 = hi.z;
+        } else if (n.x != 0) {
+            u0 = lo.z, u1 = hi.z, v0 = 1 - hi.y, v1 = 1 - lo.y;
+        } else {
+            u0 = lo.x, u1 = hi.x, v0 = 1 - hi.y, v1 = 1 - lo.y;
+        }
+        const int tile = (n.x < 0 && cut >= 0) ? cut : tiles[f.slot];
+        mesh.quad_points(pts, sub_uv(tile, u0 * 16, v0 * 16, u1 * 16, v1 * 16), f.light, sky_of(light), block_of(light));
+    }
+}
+
+// Cake: 14/16 wide and half a block tall, losing 2/16 from its -x side for every slice eaten.
+void add_cake(MeshData& mesh, float wx, float wy, float wz, int eaten, uint8_t light) {
+    const BlockInfo* info = block_info(CAKE_BLOCK);
+    const float x0 = (1.0f + 2.0f * eaten) / 16;
+    add_box(mesh, {wx, wy, wz}, {x0, 0, 1.0f / 16}, {15.0f / 16, 0.5f, 15.0f / 16}, info->tiles, eaten ? T_CAKE_INSIDE : -1,
+            light);
+}
+
+// Plants: two sheets crossing corner to corner, or wheat's four sheets in a # shape. Drawn from both
+// sides. Tall grass and ferns take the biome's grass colour.
+void add_plant(MeshData& mesh, float wx, float wy, float wz, BlockId blk, int data, uint8_t light, Rgb8 tint) {
+    const int tile = blk == WHEAT_CROP ? T_WHEAT_0 + std::min(data, 7) : block_info(blk)->tiles[1];
+    const auto uv = tile_uv(tile);
+    const glm::vec3 o(wx, wy, wz), up(0, 1, 0);
+    auto sheet = [&](glm::vec3 a, glm::vec3 b) {
+        a += o;
+        b += o;
+        mesh.quad_points({a, b, b + up, a + up}, uv, 1.0f, sky_of(light), block_of(light), tint);
+        mesh.quad_points({b, a, a + up, b + up}, uv, 1.0f, sky_of(light), block_of(light), tint);
+    };
+    if (blk == WHEAT_CROP) {
+        for (float k : {0.25f, 0.75f}) {
+            sheet({k, 0, 0}, {k, 0, 1});
+            sheet({0, 0, k}, {1, 0, k});
+        }
+        return;
+    }
+    sheet({0.15f, 0, 0.15f}, {0.85f, 0, 0.85f});
+    sheet({0.15f, 0, 0.85f}, {0.85f, 0, 0.15f});
+}
+
 // Water or lava: the top slopes between the heights at its four corners, which come from how far
 // the fluid around each corner has flowed (Beta's RenderBlocks.getFluidHeight). Sides are drawn
 // up to the corner heights where the next cell isn't the same fluid.
@@ -535,6 +586,8 @@ ChunkMesh build_mesh(const Padded& P, const PaddedLight& L, int cx, int cz, int 
     const int ox = cx * CHUNK, oz = cz * CHUNK;
     const int top = std::min(HEIGHT, max_y + 1);
     const Rgb8 white{255, 255, 255};
+    auto D = [&](int j) { return data ? static_cast<int>((*data)[j]) : 0; };
+    static const std::array<float, 4> FARMLAND_WET_UV = tile_uv(T_FARMLAND_WET);
     // Grass and leaf colours per column.
     std::array<Rgb8, CHUNK * CHUNK> grass, foliage;
     for (int i = 0; i < CHUNK * CHUNK; ++i) {
@@ -560,6 +613,15 @@ ChunkMesh build_mesh(const Padded& P, const PaddedLight& L, int cx, int cz, int 
                 }
                 if (is_bed(blk)) {
                     add_bed(mesh.solid, wx, wy, wz, blk, L[i]);
+                    continue;
+                }
+                if (is_plant(blk)) {
+                    Rgb8 tint = block_tint(blk) == BlockTint::GRASS ? grass[(z << 4) | x] : white;
+                    add_plant(mesh.solid, wx, wy, wz, blk, D(i), L[i], tint);
+                    continue;
+                }
+                if (blk == CAKE_BLOCK) {
+                    add_cake(mesh.solid, wx, wy, wz, D(i), L[i]);
                     continue;
                 }
                 if (blk == WATER || blk == LAVA) {
@@ -589,6 +651,9 @@ ChunkMesh build_mesh(const Padded& P, const PaddedLight& L, int cx, int cz, int 
                     case BlockTint::SPRUCE: tint = SPRUCE_COLOR; break;
                     case BlockTint::NONE: break;
                 }
+                // Farmland is 15/16 tall, darker on top when wet.
+                const float h = blk == FARMLAND ? 15.0f / 16 : 1.0f;
+                const bool wet_farmland = blk == FARMLAND && D(i) > 0;
                 const bool furnace = is_furnace(blk);
                 const glm::ivec3 facing = furnace ? FACING_DIRS[furnace_dir(blk)] : glm::ivec3(0);
                 for (const Face& f : FACES) {
@@ -623,8 +688,9 @@ ChunkMesh build_mesh(const Padded& P, const PaddedLight& L, int cx, int cz, int 
                     }
                     const auto& uv = furnace && f.def->normal == facing
                                          ? (is_lit_furnace(blk) ? LIT_FURNACE_FRONT_UV : FURNACE_FRONT_UV)
-                                         : uvs[f.def->slot];
-                    mesh.solid.quad(wx, wy, wz, f.def->corners, 1.0f, uv, shades, sky, block, tint);
+                                     : (wet_farmland && f.def->slot == 0) ? FARMLAND_WET_UV
+                                                                          : uvs[f.def->slot];
+                    mesh.solid.quad(wx, wy, wz, f.def->corners, h, uv, shades, sky, block, tint);
                 }
             }
         }
@@ -657,10 +723,11 @@ void MeshData::quad(float x, float y, float z, const std::array<glm::ivec3, 4>& 
 }
 
 void MeshData::quad_points(const std::array<glm::vec3, 4>& pts, const std::array<float, 4>& uv, float shade,
-                           float sky, float block) {
+                           float sky, float block, Rgb8 tint) {
     const float us[4] = {uv[0], uv[2], uv[2], uv[0]};
     const float vs[4] = {uv[1], uv[1], uv[3], uv[3]};
+    const float r = tint.r / 255.0f, g = tint.g / 255.0f, b = tint.b / 255.0f;
     uint32_t n = static_cast<uint32_t>(vertices.size());
-    for (int c = 0; c < 4; ++c) vertices.push_back({pts[c].x, pts[c].y, pts[c].z, shade, us[c], vs[c], sky, block});
+    for (int c = 0; c < 4; ++c) vertices.push_back({pts[c].x, pts[c].y, pts[c].z, shade, us[c], vs[c], sky, block, r, g, b});
     indices.insert(indices.end(), {n, n + 1, n + 2, n, n + 2, n + 3});
 }

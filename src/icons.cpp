@@ -356,6 +356,15 @@ const Rows WHEAT_ROWS = {
     ".g..........",
     "g...........",
 };
+const Rows SEEDS_ROWS = {
+    "..g....",
+    ".....g.",
+    "g..g...",
+    "....d..",
+    ".d....g",
+    "...g...",
+    "g....d.",
+};
 const Rows EGG_ROWS = {
     "...kkk...",
     "..kwwwk..",
@@ -1043,6 +1052,7 @@ Image flat_icon(ItemId id) {
     case PAPER: return sprite(PAPER_ROWS, ink + Palette{{'k', {150, 150, 140, 255}}});
     case BOOK: return sprite(BOOK_ROWS, Palette{{'w', {240, 235, 220, 255}}} + mat({120, 70, 40}));
     case BONE: return sprite(BONE_ROWS, {{'w', {240, 235, 220, 255}}, {'k', {120, 115, 100, 255}}});
+    case SEEDS: return sprite(SEEDS_ROWS, {{'g', {90, 160, 50, 255}}, {'d', {60, 110, 35, 255}}});
     case WHEAT: return sprite(WHEAT_ROWS, {{'y', {210, 180, 70, 255}}, {'g', {120, 140, 50, 255}}});
     case EGG: return sprite(EGG_ROWS, {{'w', {240, 225, 190, 255}}, {'m', {215, 195, 150, 255}}, {'k', {120, 100, 70, 255}}});
     case SUGAR_CANE: return sprite(CANE_ROWS, {{'g', {140, 200, 90, 255}}, {'k', {90, 140, 60, 255}}});

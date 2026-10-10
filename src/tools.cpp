@@ -15,7 +15,7 @@ bool pickaxe_block(BlockId b) {
         default: return false;
     }
 }
-bool shovel_block(BlockId b) { return b == GRASS || b == DIRT || b == SAND || b == GRAVEL || b == CLAY_BLOCK; }
+bool shovel_block(BlockId b) { return b == GRASS || b == DIRT || b == SAND || b == GRAVEL || b == CLAY_BLOCK || b == FARMLAND; }
 bool axe_block(BlockId b) { return b == PLANKS || b == LOG || b == BIRCH_LOG || b == SPRUCE_LOG || b == CHEST; }
 
 // Stone-like blocks drop nothing unless mined with a pickaxe of at least this level.

@@ -80,6 +80,7 @@ public:
     // Returns true if damage was applied.
     bool damage(int amount, bool ignore_cooldown = false);
     bool eat(ItemId item);
+    bool eat(const FoodInfo& food);  // false (and nothing eaten) when not hungry
     // Advance timers. Returns damage taken this tick (for the screen flash).
     int tick(double dt);
     // One game tick of breathing. Returns the drowning damage to deal this tick (0 or DROWN_DAMAGE).

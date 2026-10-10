@@ -67,6 +67,17 @@ const BlockInfo BLOCKS[BLOCK_COUNT] = {
     // Glass drops nothing when broken (Beta).
     {"Glass", {IT_GLASS, IT_GLASS, IT_GLASS}, 0.3f, std::nullopt},
     {"Obsidian", {T_OBSIDIAN, T_OBSIDIAN, T_OBSIDIAN}, 10.0f, OBSIDIAN},
+    // Farming. Crops, tall grass and cake work out their drops themselves (farming.h).
+    {"Farmland", {T_FARMLAND_DRY, T_DIRT, T_DIRT}, 0.6f, DIRT},
+    {"Crops", {T_WHEAT_0, T_WHEAT_0, T_WHEAT_0}, 0.0f, std::nullopt},
+    {"Cake", {T_CAKE_TOP, T_CAKE_SIDE, T_CAKE_TOP}, 0.5f, std::nullopt},
+    {"Sugar Canes", {T_SUGAR_CANE, T_SUGAR_CANE, T_SUGAR_CANE}, 0.0f, SUGAR_CANE},
+    {"Grass", {T_TALL_GRASS, T_TALL_GRASS, T_TALL_GRASS}, 0.0f, std::nullopt},
+    {"Fern", {T_FERN, T_FERN, T_FERN}, 0.0f, std::nullopt},
+    {"Dandelion", {T_DANDELION, T_DANDELION, T_DANDELION}, 0.0f, YELLOW_FLOWER},
+    {"Rose", {T_ROSE, T_ROSE, T_ROSE}, 0.0f, RED_ROSE},
+    {"Brown Mushroom", {T_BROWN_MUSHROOM, T_BROWN_MUSHROOM, T_BROWN_MUSHROOM}, 0.0f, BROWN_MUSHROOM},
+    {"Red Mushroom", {T_RED_MUSHROOM, T_RED_MUSHROOM, T_RED_MUSHROOM}, 0.0f, RED_MUSHROOM},
 };
 
 }  // namespace
@@ -81,6 +92,7 @@ bool is_leaves(BlockId id) { return id == LEAVES || id == BIRCH_LEAVES || id == 
 bool is_cutout(BlockId id) { return id == SPAWNER || id == GLASS; }
 bool is_torch(BlockId id) { return id >= TORCH && id <= TORCH_WALL_SOUTH; }
 bool is_bed(BlockId id) { return id >= BED_FOOT_SOUTH && id <= BED_HEAD_EAST; }
+bool is_plant(BlockId id) { return id == WHEAT_CROP || (id >= SUGAR_CANE_PLANT && id <= RED_MUSHROOM); }
 bool is_furnace(BlockId id) { return id == FURNACE || (id >= FURNACE_WEST && id <= LIT_FURNACE_EAST); }
 bool is_lit_furnace(BlockId id) { return id >= LIT_FURNACE_SOUTH && id <= LIT_FURNACE_EAST; }
 int furnace_dir(BlockId id) {
@@ -93,18 +105,24 @@ BlockId furnace_block(int dir, bool lit) {
     if (lit) return static_cast<BlockId>(LIT_FURNACE_SOUTH + dir);
     return dir == 0 ? static_cast<BlockId>(FURNACE) : static_cast<BlockId>(FURNACE_WEST + dir - 1);
 }
-float block_height(BlockId id) { return is_bed(id) ? 9.0f / 16 : 1.0f; }
+float block_height(BlockId id) {
+    if (is_bed(id)) return 9.0f / 16;
+    if (id == FARMLAND) return 15.0f / 16;
+    if (id == CAKE_BLOCK) return 0.5f;
+    return 1.0f;
+}
 bool falls(BlockId id) { return id == SAND || id == GRAVEL; }
-bool is_thin(BlockId id) { return is_torch(id) || id == FIRE; }
+bool is_thin(BlockId id) { return is_torch(id) || id == FIRE || is_plant(id); }
 bool is_solid(BlockId id) { return id != AIR && !is_fluid(id) && !is_thin(id); }
 bool is_opaque(BlockId id) {
-    return id != AIR && !is_fluid(id) && id != ICE && !is_cutout(id) && !is_thin(id) && !is_bed(id);
+    return id != AIR && !is_fluid(id) && id != ICE && !is_cutout(id) && !is_thin(id) && !is_bed(id) && id != CAKE_BLOCK &&
+           id != FARMLAND;
 }
 bool is_block(ItemId id) { return block_info(id) != nullptr; }
 
 BlockTint block_tint(BlockId id) {
     switch (id) {
-        case GRASS: return BlockTint::GRASS;
+        case GRASS: case TALL_GRASS: case FERN: return BlockTint::GRASS;
         case LEAVES: return BlockTint::FOLIAGE;
         case BIRCH_LEAVES: return BlockTint::BIRCH;
         case SPRUCE_LEAVES: return BlockTint::SPRUCE;
@@ -114,7 +132,7 @@ BlockTint block_tint(BlockId id) {
 
 // Beta's values: leaves dim light by 1, water and ice by 3, solid blocks stop it.
 int light_opacity(BlockId id) {
-    if (id == AIR || is_thin(id) || is_bed(id) || id == SPAWNER || id == GLASS) return 0;
+    if (id == AIR || is_thin(id) || is_bed(id) || id == SPAWNER || id == GLASS || id == CAKE_BLOCK) return 0;
     if (is_leaves(id)) return 1;
     if (id == WATER || id == ICE) return 3;
     return 15;
@@ -123,6 +141,7 @@ int light_opacity(BlockId id) {
 int light_emission(BlockId id) {
     if (id == GLOWSTONE || id == LAVA || id == FIRE) return 15;
     if (is_torch(id)) return 14;
+    if (id == BROWN_MUSHROOM) return 1;  // Beta's brown mushrooms glow very faintly
     if (is_lit_furnace(id)) return 13;
     return 0;
 }

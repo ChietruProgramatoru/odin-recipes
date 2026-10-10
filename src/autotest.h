@@ -1,7 +1,8 @@
 // Scripted smoke test: `PetrutzCraft --seed 7 --autotest OUT_DIR`.
 // Drives the real program for a few hundred frames: the menus, creating a world, mining, building,
 // cows, eating, fall damage, furnaces, tools, armor, the bow, fire and buckets, a tour of the biomes and caves, the F3 and F5 views,
-// monsters, explosions and dying, the first-person hand, flowing water and lava, falling sand and fire, the pause menu,
+// monsters, explosions and dying, the first-person hand, flowing water and lava, falling sand and fire, farming,
+// the pause menu,
 // then saving, quitting to the
 // title and loading the world again. Saves screenshots to OUT_DIR and writes OUT_DIR/report.txt.
 // The world and options.txt go to OUT_DIR too, so the real saves are never touched.
@@ -46,6 +47,7 @@ private:
     void monsters(App& app, Game& g);  // each monster, fighting, creepers and TNT, spawners, difficulty, dying
     void hand(App& app, Game& g);      // the first-person hand, held items and the swing
     void fluids_and_fire(App& app, Game& g);  // flowing water and lava, falling sand, fire, drowning, burning
+    void farming(App& app, Game& g);   // tilling, planting, bone meal, harvesting, cake and the wild plants
     void reload(App& app);      // quit to the title and load the world again
 
     std::string out_;

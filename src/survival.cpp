@@ -117,9 +117,13 @@ bool Vitals::damage(int amount, bool ignore_cooldown) {
 
 bool Vitals::eat(ItemId item) {
     const FoodInfo* food = food_info(item);
-    if (!food || hunger >= MAX_HUNGER) return false;
-    hunger = std::min(MAX_HUNGER, hunger + food->hunger);
-    saturation = std::min(static_cast<double>(hunger), saturation + food->saturation);
+    return food && eat(*food);
+}
+
+bool Vitals::eat(const FoodInfo& food) {
+    if (hunger >= MAX_HUNGER) return false;
+    hunger = std::min(MAX_HUNGER, hunger + food.hunger);
+    saturation = std::min(static_cast<double>(hunger), saturation + food.saturation);
     return true;
 }
 

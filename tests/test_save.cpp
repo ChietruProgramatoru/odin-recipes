@@ -167,6 +167,9 @@ TEST_CASE("chunks keep their blocks, cow flag and entities") {
     World w(11);
     Chunk& c = w.chunk(3, -2);
     c.blocks[Chunk::index(4, 100, 5)] = BRICK;
+    c.blocks[Chunk::index(5, 100, 5)] = WHEAT_CROP;
+    c.data[Chunk::index(5, 100, 5)] = 6;
+    c.data[Chunk::index(6, 100, 5)] = 15;
     c.mob_spawned = true;
     c.entities.push_back({EntityRecord::COW, 50.5, 70, -30.25, 90, 8, 0, 0});
     c.entities.push_back({EntityRecord::ITEM, 51.5, 70.5, -29.75, 0, 0, BEEF, 12.5f});
@@ -178,6 +181,7 @@ TEST_CASE("chunks keep their blocks, cow flag and entities") {
     auto back = decode_chunk(encode_chunk(c), 3, -2);
     REQUIRE(back);
     CHECK(back->blocks == c.blocks);
+    CHECK(back->data == c.data);
     CHECK(back->mob_spawned);
     CHECK(back->entities == c.entities);
     CHECK(back->max_y == 101);

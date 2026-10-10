@@ -47,7 +47,10 @@ Table build() {
     // below; grass and leaves use coloured-in copies of their grey (biome-tinted) tiles.
     for (int b = GRASS; b < BLOCK_COUNT; ++b) {
         // The torch is a flat icon, added below; beds are placed from the BED item.
-        if (b == WATER || b == LAVA || b == FIRE || is_torch(b) || is_bed(b) || (is_furnace(b) && b != FURNACE)) continue;
+        // Farmland, crops, sugar cane and cake come from other items; flowers are flat icons below.
+        if (b == WATER || b == LAVA || b == FIRE || is_torch(b) || is_bed(b) || (is_furnace(b) && b != FURNACE) ||
+            is_plant(b) || b == FARMLAND || b == CAKE_BLOCK)
+            continue;
         const BlockInfo* info = block_info(b);
         t.cube(b, info->name, info->tiles[0], info->tiles[1], info->tiles[1]);
     }
@@ -180,6 +183,7 @@ Table build() {
     t.flat(POWERED_MINECART, "Minecart with Furnace", 1);
     t.flat(REPEATER, "Redstone Repeater");
     t.flat(SADDLE, "Saddle", 1);
+    t.flat(SEEDS, "Seeds");
     return t;
 }
 
@@ -235,6 +239,10 @@ ItemId current_item_id(ItemId id) {
     if (id == OLD_SANDSTONE_ITEM) return SANDSTONE;
     if (id == OLD_CLAY_ITEM) return CLAY_BLOCK;
     if (id == OLD_TNT_ITEM) return TNT;
+    if (id == OLD_YELLOW_FLOWER_ITEM) return YELLOW_FLOWER;
+    if (id == OLD_RED_ROSE_ITEM) return RED_ROSE;
+    if (id == OLD_BROWN_MUSHROOM_ITEM) return BROWN_MUSHROOM;
+    if (id == OLD_RED_MUSHROOM_ITEM) return RED_MUSHROOM;
     return id;
 }
 

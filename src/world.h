@@ -168,7 +168,7 @@ struct MeshData {
               const std::array<float, 4>& sky, const std::array<float, 4>& block, Rgb8 tint = {255, 255, 255});
     // Quad from four absolute corner points (BL, BR, TR, TL) with one shade.
     void quad_points(const std::array<glm::vec3, 4>& pts, const std::array<float, 4>& uv, float shade,
-                     float sky = 1, float block = 0);
+                     float sky = 1, float block = 0, Rgb8 tint = {255, 255, 255});
 };
 
 struct ChunkMesh {

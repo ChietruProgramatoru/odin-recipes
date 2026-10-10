@@ -32,7 +32,8 @@ Game::Game(GLFWwindow* win, GLuint atlas, Painter& painter, const Options& opts,
       painter_(painter),
       scripted_(setup.scripted),
       weather_rng_(setup.scripted ? 1 : std::random_device{}()),
-      monster_rng_(setup.scripted ? 2 : std::random_device{}()) {
+      monster_rng_(setup.scripted ? 2 : std::random_device{}()),
+      farm_rng_(setup.scripted ? 3 : std::random_device{}()) {
     weather = Weather(level.weather);
     world.set_store(&saver->store());
     renderer = std::make_unique<WorldRenderer>(world, atlas, view_distance_chunks(options.view_distance));
@@ -782,6 +783,8 @@ void Game::move(double dt) {
         if (!was_on_ground) {
             int dmg = fall_damage(fall_peak - p.y);
             if (dmg) hurt_player(dmg, true);
+            FarmEvents ev;
+            if (trample(world, {ifloor(p.x), ifloor(p.y - 0.2), ifloor(p.z)}, fall_peak - p.y, farm_rng_, ev)) apply(ev);
         }
         fall_peak = p.y;
     }
@@ -811,7 +814,10 @@ void Game::update_target() {
             best_d = *d;
         }
     }
-    if ((best || best_monster) && target && target->distance < best_d) best = nullptr, best_monster = nullptr;
+    // A block in front hides the mob, except plants: you can hit a cow standing in tall grass.
+    if ((best || best_monster) && target && target->distance < best_d &&
+        !is_plant(world.get_block(target->block.x, target->block.y, target->block.z)))
+        best = nullptr, best_monster = nullptr;
     target_cow = best;
     target_monster = best_monster;
 }
@@ -876,7 +882,15 @@ void Game::mine(double dt) {
 }
 
 void Game::break_block(glm::ivec3 pos, BlockId blk) {
+    const int data = world.get_data(pos.x, pos.y, pos.z);
     renderer->rebuild(world.set_block(pos.x, pos.y, pos.z, AIR));
+    {
+        // Plants and cake standing on this block fall off.
+        FarmEvents ev;
+        break_unsupported(world, pos, farm_rng_, ev);
+        if (creative) ev.drops.clear();
+        apply(ev);
+    }
     // Torches that hung on this block fall off.
     for (const FaceDef& f : face_defs()) {
         glm::ivec3 n = pos + f.normal;
@@ -906,6 +920,10 @@ void Game::break_block(glm::ivec3 pos, BlockId blk) {
     wear_selected(wear_from_breaking(held, blk));
     if (blk == LEAVES && held != SHEARS && rng.random() < 0.1) {
         spawn_drop(APPLE, pos.x + 0.5, pos.y + 0.3, pos.z + 0.5);
+        return;
+    }
+    if (blk == WHEAT_CROP || blk == TALL_GRASS || blk == FERN) {
+        for (ItemId item : farm_drops(blk, data, farm_rng_)) spawn_drop(item, pos.x + 0.5, pos.y + 0.3, pos.z + 0.5);
         return;
     }
     auto drop = harvest_drop(held, blk);
@@ -964,9 +982,40 @@ void Game::use_item() {
         try_sleep(target->block);
         return;
     }
+    if (target && !targeting_mob() && world.get_block(target->block.x, target->block.y, target->block.z) == CAKE_BLOCK) {
+        // Eat a slice of cake (Beta: right click the cake). The last slice takes the cake away.
+        const glm::ivec3 c = target->block;
+        if (!creative && vitals.eat(CAKE_SLICE)) {
+            const int eaten = world.get_data(c.x, c.y, c.z) + 1;
+            renderer->rebuild(eaten >= CAKE_SLICES ? world.set_block(c.x, c.y, c.z, AIR)
+                                                   : world.set_block(c.x, c.y, c.z, CAKE_BLOCK, eaten));
+            hud->show_message("Yum!", 1);
+        }
+        return;
+    }
     Inventory& inv = active_inventory();
     auto item = inv.selected_item();
     if (!item) return;
+    if (tool_kind(*item) == ToolKind::Hoe) {
+        FarmEvents ev;
+        if (target && !targeting_mob() && till(world, target->block, ev)) {
+            apply(ev);
+            wear_selected(1);
+        }
+        return;
+    }
+    if (*item == BONE_MEAL) {
+        FarmEvents ev;
+        if (target && !targeting_mob() && bone_meal(world, target->block, farm_rng_, ev)) {
+            apply(ev);
+            if (!creative) inv.take_selected();
+        }
+        return;
+    }
+    if (BlockId p = planted_block(*item); p != AIR) {
+        plant(p);
+        return;
+    }
     if (*item == BOW) {
         shoot_arrow();
         return;
@@ -1038,6 +1087,8 @@ void Game::use_item() {
     BlockId here = world.get_block(c.x, c.y, c.z);
     if (here != AIR && !is_fluid(here)) return;
     renderer->rebuild(world.set_block(c.x, c.y, c.z, place));
+    if (is_solid(place) && world.get_block(c.x, c.y - 1, c.z) == FARMLAND)
+        renderer->rebuild(world.set_block(c.x, c.y - 1, c.z, DIRT));  // Beta: farmland under a block turns to dirt
     if (!creative) inv.take_selected();
 }
 
@@ -1212,6 +1263,7 @@ void Game::tick_world() {
     }
     spawn_monsters();
     tick_spawners();
+    random_ticks();
     tick_furnaces();
     tick_blocks();
     tick_player_fire_and_air();
@@ -1263,6 +1315,36 @@ void Game::drop_furnace_contents(glm::ivec3 pos) {
     if (!f) return;
     for (const auto& s : {f->input, f->fuel, f->output})
         if (s) drops.push_back(std::make_unique<ItemDrop>(world, *s, pos.x + 0.5, pos.y + 0.5, pos.z + 0.5, rng));
+}
+
+void Game::random_ticks() {
+    const TickContext ctx{static_cast<int>(current_sky().darkness), weather.is_raining()};
+    FarmEvents ev;
+    const int pcx = chunk_of(ifloor(player.x)), pcz = chunk_of(ifloor(player.z));
+    for (int cz = pcz - RANDOM_TICK_RADIUS; cz <= pcz + RANDOM_TICK_RADIUS; ++cz)
+        for (int cx = pcx - RANDOM_TICK_RADIUS; cx <= pcx + RANDOM_TICK_RADIUS; ++cx)
+            if (const Chunk* c = world.find(cx, cz)) tick_chunk(world, *c, farm_rng_, ctx, ev);
+    apply(ev);
+}
+
+void Game::apply(const FarmEvents& events) {
+    if (!events.rebuild.empty()) renderer->rebuild(events.rebuild);
+    for (const auto& [pos, item] : events.drops) spawn_drop(item, pos.x + 0.5, pos.y + 0.3, pos.z + 0.5);
+}
+
+bool Game::plant(BlockId block) {
+    if (!target || targeting_mob() || !target->before) return false;
+    const glm::ivec3 c = *target->before;
+    if (world.get_block(c.x, c.y, c.z) != AIR || !can_stay(world, c, block)) return false;
+    if (block == CAKE_BLOCK) {  // a cake is solid: not on top of the player
+        const Body& b = player;
+        if (c.x + 1 > b.x - b.half && c.x < b.x + b.half && c.z + 1 > b.z - b.half && c.z < b.z + b.half &&
+            c.y + 1 > b.y && c.y < b.y + b.height)
+            return false;
+    }
+    renderer->rebuild(world.set_block(c.x, c.y, c.z, block));
+    if (!creative) active_inventory().take_selected();
+    return true;
 }
 
 void Game::strike(glm::dvec3 pos) {
