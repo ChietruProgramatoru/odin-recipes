@@ -34,9 +34,18 @@ It runs on Windows (the main target) and Linux.
 
   ![Armor in third person](screenshots/armor.png)
 
-- **Flint and steel** lights a fire on top of a block. Fire gives light 15, burns you if you stand in it, and goes out by itself after 8 to 30 seconds (or when punched). Fire doesn't spread or burn blocks yet (M6).
-- **Buckets**: an empty bucket scoops up water or lava, a full one pours it out again. Right-click a cow with an empty bucket to milk it; drinking milk just gives the bucket back, as in Beta.
+- **Flint and steel** lights a fire on top of a block, or next to anything that burns.
+- **Buckets**: an empty bucket scoops up a water or lava source (it looks straight through flowing water, like Beta), a full one pours a source out again, and it flows from there. Right-click a cow with an empty bucket to milk it; drinking milk just gives the bucket back, as in Beta.
 - **Shears** cut leaves quickly and keep them as leaf blocks.
+- **Flowing water and lava** work like Beta 1.7.3. Water spreads 7 blocks from a source on flat ground and lava 3 (and much more slowly), each step a little lower, and both pour over edges and down holes, taking the shortest way to the nearest drop. Two water sources next to an empty block make a new source, so a 2x2 pool never runs dry. The surface slopes down the way the water runs. Water washes torches away. Where flowing lava meets water it turns to cobblestone, a lava source turns to **obsidian** (it needs a diamond pickaxe), and lava pouring onto water makes stone. Generated lakes and seas stand still until something next to them changes.
+- **Currents** carry you, cows, monsters and dropped items along the way the water flows. Lava slows you down even more than water, and you can swim up in it, slowly.
+- **Drowning**: with your head under water you have 15 seconds of air, shown as bubbles above the hunger bar; then you lose a heart every second until you come up.
+- **Lava** burns you for 2 hearts at a time and sets you on fire for 30 seconds; standing in fire also sets you alight. Burning hurts half a heart a second and shows flames over the screen. Water and rain put you out. Items that fall in lava or fire burn up.
+- **Falling sand and gravel**: sand and gravel fall when the block under them goes, and land as blocks again (or drop as an item if they land on a torch). Gravel drops flint 1 time in 10.
+- **Fire** spreads like Beta's: it burns up planks, logs, leaves and TNT (setting it off), jumps across gaps and climbs upwards, and burns out on bare stone. Lava lights fires in the air next to wood or leaves above it. Rain puts fires out, and on Normal and Hard lightning starts fires where it strikes.
+
+  ![Water falling off a pillar, obsidian where it met lava, and a burning hut](screenshots/fluids_fire.png)
+
 - **Health and hunger**: you have 10 hearts and 10 drumsticks. Walking, sprinting, jumping, mining and fighting use up hunger. When you are well fed you slowly heal. When you are starving you slowly lose health, down to half a heart. Falls of more than 3 blocks hurt, and a big enough fall kills you.
 - **Cows** wander, graze and hop up ledges. Punch one and it panics and runs away. Each cow drops 1 to 3 beef, which you eat with a right click to restore 6 hunger.
 - Apples sometimes drop from leaves.
@@ -175,7 +184,7 @@ These are the defaults. Every key except the F keys, Esc, H and 1–9 can be cha
 | --- | --- |
 | Mouse | Look around |
 | W A S D | Move |
-| Space | Jump, or swim up in water |
+| Space | Jump, or swim up in water or lava |
 | Left Shift | Sneak: walk slowly without falling off edges |
 | Double-tap W (and hold) | Sprint (not possible when hunger is 3 drumsticks or less; stops when you let go, sneak or hit a wall) |
 | Left mouse (hold) | Mine a block, or hit a cow or monster (with the selected tool or weapon) |
@@ -216,6 +225,7 @@ In the inventory, crafting table and furnace screens (Beta's mouse rules):
 - Keep at least 9 drumsticks of hunger to regenerate health.
 - Light up your home with torches before night: monsters spawn in the dark. Back away from a hissing creeper.
 - Set the difficulty to Peaceful under Options if you just want to build.
+- On fire? Jump in water. Dig carefully next to the sea or a lava lake: they pour into the hole you make.
 
 ## Tests
 
@@ -224,7 +234,7 @@ ctest --test-dir build --output-on-failure        # logic tests (add -C Release 
 xvfb-run -a -s "-screen 0 1280x720x24" ./build/PetrutzCraft --seed 7 --autotest OUT_DIR
 ```
 
-The second command plays a scripted game and saves screenshots plus `report.txt` to `OUT_DIR`: it opens the title and options screens, creates a world from the Create New World screen, finds a cow, kills it, picks up and eats the beef, mines and places a block, crafts planks and a crafting table in the inventory screen, puts on a chestplate, crafts a pickaxe on a placed crafting table, takes a stack from the creative item picker, falls, mines stone by hand and with a pickaxe, takes a hit in full armor, shoots arrows into a wall, lights a fire, pours and scoops up water, flies, visits a desert, hills, a taiga and a torch-lit cave (checking for sandstone, spruces, frozen water and every ore), takes F5 (in armor) and F3 pictures, places a torch and glowstone and checks their light, takes pictures at night and at sunset, makes it rain, snow and thunder (checking that lightning hurts), places a bed, sleeps through the night in it and respawns by it, tills a field next to water, plants seeds, ripens wheat with bone meal and harvests it, eats a slice of cake, counts the wild plants and visits a meadow, fights every monster in a flat arena (a zombie's hit and knockback, a sword's hits and the invulnerability after them, a skeleton's arrow, a creeper's fuse and crater, a spider climbing a wall, a slime splitting, a zombie burning in the sun, a chain of TNT, a mob spawner, Peaceful, the death screen and natural spawning at midnight), opens the pause menu, changes a block, saves and quits to the title, and loads the world again to check that everything came back. Its world and `options.txt` go in `OUT_DIR`, so your own saves are never touched. It exits with an error if any check fails. On Windows or a Linux desktop, run it without `xvfb-run`. GitHub runs both on every push (the screenshot test on Linux only, since GitHub's Windows machines have no graphics card).
+The second command plays a scripted game and saves screenshots plus `report.txt` to `OUT_DIR`: it opens the title and options screens, creates a world from the Create New World screen, finds a cow, kills it, picks up and eats the beef, mines and places a block, crafts planks and a crafting table in the inventory screen, puts on a chestplate, crafts a pickaxe on a placed crafting table, takes a stack from the creative item picker, falls, mines stone by hand and with a pickaxe, takes a hit in full armor, shoots arrows into a wall, lights a fire, pours and scoops up water, flies, visits a desert, hills, a taiga and a torch-lit cave (checking for sandstone, spruces, frozen water and every ore), takes F5 (in armor) and F3 pictures, places a torch and glowstone and checks their light, takes pictures at night and at sunset, makes it rain, snow and thunder (checking that lightning hurts), places a bed, sleeps through the night in it and respawns by it, fights every monster in a flat arena (a zombie's hit and knockback, a sword's hits and the invulnerability after them, a skeleton's arrow, a creeper's fuse and crater, a spider climbing a wall, a slime splitting, a zombie burning in the sun, a chain of TNT, a mob spawner, Peaceful, the death screen and natural spawning at midnight), builds a platform in the sky to try water falling off a pillar and spreading, lava turning to obsidian, sand and gravel falling, a plank hut burning, drowning, lava setting the player on fire, water putting them out, a current carrying them and lightning starting a fire, tills a field next to water, plants seeds, ripens wheat with bone meal and harvests it, eats a slice of cake, counts the wild plants and visits a meadow, opens the pause menu, changes a block, saves and quits to the title, and loads the world again to check that everything came back. Its world and `options.txt` go in `OUT_DIR`, so your own saves are never touched. It exits with an error if any check fails. On Windows or a Linux desktop, run it without `xvfb-run`. GitHub runs both on every push (the screenshot test on Linux only, since GitHub's Windows machines have no graphics card).
 
 ## Project layout
 
@@ -247,6 +257,7 @@ src/
   sky.cpp          time of day: sun position, sky, fog and cloud colours, how dark the night is, the cloud map
   weather.cpp      rain and thunder timers, where rain and snow fall, lightning, when you can sleep
   bed.cpp          placing beds and finding a free spot next to one
+  blockupdate.cpp  blocks that change by themselves: flowing water and lava, falling sand and gravel, fire; block ticks
   streamer.cpp     background threads that generate and mesh chunks
   renderer.cpp     OpenGL shaders and drawing the sky, sun, moon, stars, clouds, rain, snow, lightning, chunks, cows, items and the block outline
   hud.cpp          crosshair, hotbar, hearts, hunger, text and overlays
@@ -280,15 +291,14 @@ tests/             doctest logic tests (no window needed)
 - Monsters have no pathfinding: they walk straight at you and hop up single blocks, so a wall or a ditch stops them.
 - Lit TNT isn't saved. The death screen has no score yet.
 - The only sounds so far are the hiss and the blast; footsteps, hurt sounds, music and volume settings come in M16.
-- There is no obsidian yet (it comes with flowing lava in M6), so the diamond-pickaxe rule for it waits until then.
 - The fishing rod is only an item until fishing arrives in M15.
-- Flying arrows, and arrows stuck in blocks, aren't saved: they're gone when you load the world. Fires go on burning after loading.
-- Lava and water stand still and lava doesn't burn you yet (M6). Lava, water and ice are see-through for the crosshair, and ice drops nothing (like Beta).
-- No cacti, pumpkins, dead bushes or snow layers yet (M6 and M11). Bone meal doesn't grow saplings yet (saplings come in M6). Plants only grow in chunks within 9 chunks of you, like Beta.
-- Raw porkchops and fish come with pigs (M9) and fishing (M15), cooked food with furnaces (M7), cocoa beans for cookies with dungeon chests, and eggs for cake with chickens (M9).
+- Flying arrows, and arrows stuck in blocks, aren't saved: they're gone when you load the world. Fires and flowing water go on after loading; a water source that was just about to spread when you saved waits until something next to it changes.
+- Lava, water and ice are see-through for the crosshair, and ice drops nothing (like Beta). Water and lava have no flowing animation yet. Water washes crops away without dropping seeds.
+- No cacti, pumpkins, dead bushes or snow layers yet (M6 part 2 and M11). Bone meal doesn't grow saplings yet (saplings come in the second part of M6). Plants only grow in chunks within 9 chunks of you, like Beta.
+- Raw porkchops and fish come with pigs (M9) and fishing (M15), cocoa beans for cookies with dungeon chests, and eggs for cake with chickens (M9).
 - Worlds saved before world generation changed keep the chunks you visited, so there is a visible cliff where the old terrain meets the new.
 - No music, thunder or other sounds yet (M16).
-- Lightning doesn't start fires and rain doesn't put them out yet (M6). Snow doesn't pile up on the ground yet (snow layers come in M6).
+- Snow doesn't pile up on the ground yet, and leaves don't decay, saplings don't exist and ice doesn't melt: those come in the second part of M6.
 - Wool only comes from the creative item picker until sheep arrive (M10), so that's where beds start.
 - Cactus (to cactus green) and saplings (as fuel) go into the furnace once they exist (M6).
 - Doors and most other crafted things don't do anything yet; they arrive with M11 and the other milestones. Chests are plain blocks for now.

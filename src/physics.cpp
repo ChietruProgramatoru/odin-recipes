@@ -3,6 +3,9 @@
 #include <algorithm>
 #include <cmath>
 
+#include <glm/geometric.hpp>
+
+#include "blockupdate.h"
 #include "world.h"
 
 namespace {
@@ -17,7 +20,18 @@ bool Body::collides() const {
 }
 
 bool Body::check_water() {
-    in_water = world->box_in_water(x - half, y + 0.1, z - half, x + half - E, y + height * 0.5, z + half - E);
+    const double x0 = x - half, y0 = y + 0.1, z0 = z - half, x1 = x + half - E, y1 = y + height * 0.5, z1 = z + half - E;
+    in_water = world->box_in_water(x0, y0, z0, x1, y1, z1);
+    in_lava = world->box_in(LAVA, x0, y0, z0, x1, y1, z1);
+    current = glm::dvec3(0);
+    if (in_water) {
+        // Beta's handleMaterialAcceleration: the flow of every water cell the body touches.
+        for (int bx = static_cast<int>(std::floor(x0)); bx <= static_cast<int>(std::floor(x1)); ++bx)
+            for (int by = static_cast<int>(std::floor(y0)); by <= static_cast<int>(std::floor(y1)); ++by)
+                for (int bz = static_cast<int>(std::floor(z0)); bz <= static_cast<int>(std::floor(z1)); ++bz)
+                    if (world->get_block(bx, by, bz) == WATER) current += flow_vector(*world, {bx, by, bz});
+        if (glm::length(current) > 0) current = glm::normalize(current);
+    }
     return in_water;
 }
 
@@ -73,8 +87,8 @@ void Body::clamp_to_edges(double& dx, double& dz) const {
 }
 
 void Body::apply_gravity(double dt, double gravity) {
-    if (in_water) {
-        vy = std::max(vy - gravity * 0.25 * dt, -3.0);
+    if (in_liquid()) {
+        vy = std::max(vy - gravity * 0.25 * dt, in_lava ? -1.5 : -3.0);
         vy *= 1 - std::min(1.0, 2.0 * dt);
     } else {
         vy = std::max(vy - gravity * dt, -TERMINAL_VELOCITY);

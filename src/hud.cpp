@@ -34,6 +34,11 @@ void Hud::draw(int width, int height, const HudState& st) {
     const float x0 = w / 2 - slot * 4.5f, y0 = 8;
 
     if (st.underwater) p_.rect(0, 0, w, h, 25 / 255.f, 64 / 255.f, 180 / 255.f, 110 / 255.f);
+    if (st.burning) {
+        // Flames licking up from the bottom of the screen.
+        for (int i = 0; i < 4; ++i)
+            p_.rect(0, 0, w, h * (0.12f + 0.06f * i), 1.0f, 0.45f + 0.12f * i, 0.05f, 0.16f);
+    }
     if (damage_alpha_ > 0) p_.rect(0, 0, w, h, 200 / 255.f, 0, 0, damage_alpha_);
 
     const float ca = 220 / 255.f;
@@ -67,6 +72,8 @@ void Hud::draw(int width, int height, const HudState& st) {
             if (st.armor > 0)
                 p_.icon(ar >= 2 ? "armor_full" : ar == 1 ? "armor_half" : "armor_empty", x0 + i * size * 1.05f,
                         row_y + size * 1.15f, size);
+            // Air bubbles under water, above the hunger bar (Beta).
+            if (i < st.bubbles) p_.icon("bubble", x0 + slot * 9 - (i + 1) * size * 1.05f, row_y + size * 1.15f, size);
         }
 
     if (item_name_timer_ > 0) p_.text(item_name_, w / 2, row_y + size * (st.armor > 0 && !st.creative ? 2.15f : 1.0f) + 16, font_scale(14), 0.5f, 0);

@@ -300,13 +300,14 @@ void AutoTest::play(App& app, Game& g) {
     if (f >= 627 && f < 700) weather_and_beds(app, g);
     if (f >= 700 && f < 1194) monsters(app, g);
     if (f >= 1194 && f < 1200) hand(app, g);
-    if (f >= 1200 && f < 1300) farming(app, g);
-    if (f == 1300) {
+    if (f >= 1200 && f < 1350) fluids_and_fire(app, g);
+    if (f >= 1350 && f < 1450) farming(app, g);
+    if (f == 1450) {
         app.pause();
         check("Escape menu pauses the game", g.paused && app.screen());
         shot(app, "7_pause.png");
     }
-    if (f == 1310) {
+    if (f == 1460) {
         // Change something, then save and quit to the title.
         marker_ = {static_cast<int>(std::floor(p.x)) + 2, static_cast<int>(std::floor(p.y)) + 1, static_cast<int>(std::floor(p.z))};
         g.renderer->rebuild(g.world.set_block(marker_.x, marker_.y, marker_.z, BRICK));
@@ -813,7 +814,7 @@ void AutoTest::monsters(App& app, Game& g) {
 }
 
 void AutoTest::farming(App& app, Game& g) {
-    const long f = g.frame;
+    const long f = g.frame - 150;  // written for frames 1200..1299, runs after fluids and fire
     Body& p = g.player;
     World& w = g.world;
     const glm::ivec3 a = arena_;
@@ -1353,7 +1354,7 @@ void AutoTest::tools(App& app, Game& g) {
         g.pitch = degrees(std::atan2(e.y - (floor.y + 1), std::hypot(floor.x + 0.5 - e.x, floor.z + 0.5 - e.z)));
         g.update_target();
         g.use_item();
-        check("flint and steel lights a fire", w.get_block(floor.x, floor.y + 1, floor.z) == FIRE && g.fires.size() == 1);
+        check("flint and steel lights a fire", w.get_block(floor.x, floor.y + 1, floor.z) == FIRE);
         check("fire gives light 15", w.block_light(floor.x, floor.y + 1, floor.z) == 15);
 
         // A water bucket pours water next to it; an empty bucket scoops it up again.
@@ -1387,8 +1388,165 @@ void AutoTest::tools(App& app, Game& g) {
         range_blocks_.clear();
         for (const auto& a : g.arrows) inv.add(ARROW, 1);  // picked up, as if walked over
         g.arrows.clear();
-        g.fires.clear();
         g.pitch = 0;
+    }
+}
+
+void AutoTest::fluids_and_fire(App& app, Game& g) {
+    const long f = g.frame;
+    Body& p = g.player;
+    World& w = g.world;
+    auto set = [&](glm::ivec3 c, BlockId b) { g.renderer->rebuild(w.set_block(c.x, c.y, c.z, b)); };
+    auto at = [&](glm::ivec3 c) { return w.get_block(c.x, c.y, c.z); };
+    auto run_ticks = [&](int n) {
+        for (int i = 0; i < n; ++i) g.tick_blocks();
+    };
+    const glm::ivec3& o = pad_;
+    auto stand = [&](double dx, double dz) {
+        p.x = o.x + 0.5 + dx;
+        p.y = o.y;
+        p.z = o.z + 0.5 + dz;
+        p.vx = p.vy = p.vz = 0;
+        g.fall_peak = p.y;
+    };
+    // The scene, relative to the middle of the platform's near edge (the player looks along +z).
+    const glm::ivec3 spring = o + glm::ivec3(-4, 3, 7);  // water on top of a 3-high pillar
+    const glm::ivec3 lava = o + glm::ivec3(4, 0, 6), lava_water = lava + glm::ivec3(1, 0, 0);
+    const glm::ivec3 sand_top = o + glm::ivec3(0, 4, 5);  // sand and gravel held up by one stone
+    const glm::ivec3 hut = o + glm::ivec3(3, 0, 11);      // a little plank hut that catches fire
+
+    if (f == 1200) {
+        // A stone platform at y = 99 with nothing around it, so nothing else flows in, and wide
+        // enough that the water never runs off its edge.
+        // Fire spreading is down to chance: start from a fixed random state so what happened
+        // earlier in the test doesn't change how far it gets.
+        g.rng = Rng(1);
+        g.monsters.clear();
+        g.target_monster = nullptr;
+        g.weather.clear();
+        g.creative = true;
+        g.flying = false;
+        g.vitals.reset();
+        g.burn_ticks = 0;
+        g.level.time = 6000 + (g.level.time / DAY_TICKS) * DAY_TICKS;
+        // Somewhere the ground is well below it (not inside a mountain).
+        pad_ = {static_cast<int>(std::floor(p.x)) + 40, 100, static_cast<int>(std::floor(p.z))};
+        for (int tries = 0; tries < 20; ++tries) {
+            int top = 0;
+            for (int dx = -14; dx <= 14; dx += 2)
+                for (int dz = -6; dz <= 20; dz += 2) top = std::max(top, w.surface_y(pad_.x + dx, pad_.z + dz));
+            if (top < 92) break;
+            pad_.x += 48;
+        }
+        const glm::ivec3 q = pad_;
+        for (int dx = -14; dx <= 14; ++dx)
+            for (int dz = -6; dz <= 20; ++dz) set(q + glm::ivec3(dx, -1, dz), STONE);
+        for (int dy = 0; dy < 3; ++dy) set(q + glm::ivec3(-4, dy, 7), STONE);
+        set(q + glm::ivec3(-4, 3, 7), WATER);
+        set(q + glm::ivec3(4, 0, 6), LAVA);
+        set(q + glm::ivec3(0, 3, 5), STONE);
+        for (int dy = 4; dy < 7; ++dy) set(q + glm::ivec3(0, dy, 5), dy == 6 ? GRAVEL : SAND);
+        for (int dx = 0; dx < 3; ++dx)
+            for (int dz = 0; dz < 3; ++dz) {
+                set(q + glm::ivec3(3 + dx, 0, 11 + dz), PLANKS);
+                if (dx != 1 || dz != 1) set(q + glm::ivec3(3 + dx, 1, 11 + dz), dz == 2 ? LOG : PLANKS);
+            }
+        stand(0, -3);
+        g.yaw = 0;
+        g.pitch = 25;
+        g.hud->show_message("", 0);
+    }
+    if (f == 1202) {
+        // Pour water beside the lava, knock out the stone under the sand, light the hut.
+        set(lava_water, WATER);
+        set(sand_top - glm::ivec3(0, 1, 0), AIR);
+        set(hut + glm::ivec3(1, 1, 1), FIRE);
+        run_ticks(12);  // each block of the column lets go 3 ticks after the one under it
+        check("lava touching water turns to obsidian", at(lava) == OBSIDIAN);
+        check("the sand and gravel start falling", g.falling.size() == 3 && at(sand_top) == AIR);
+        g.pitch = 0;
+    }
+    if (f == 1204) shot(app, "m6_sand_falling.png");
+    if (f >= 1205 && f < 1230) run_ticks(12);  // fast-forward the water and the fire (300 game ticks)
+    if (f == 1230) {
+        check("water falls off its pillar", at(spring + glm::ivec3(1, 0, 0)) == WATER && at(spring + glm::ivec3(1, -2, 0)) == WATER &&
+                                                 w.get_data(spring.x + 1, spring.y - 2, spring.z) >= 8);
+        check("and spreads out over the floor", at(spring + glm::ivec3(5, -3, 0)) == WATER && at(spring + glm::ivec3(1, -3, 4)) == WATER);
+        int fire = 0, burnt = 0;
+        for (int dx = -1; dx <= 3; ++dx)
+            for (int dz = -1; dz <= 3; ++dz)
+                for (int dy = 0; dy <= 3; ++dy) {
+                    const BlockId b = at(hut + glm::ivec3(dx, dy, dz));
+                    fire += b == FIRE;
+                    burnt += dy <= 1 && dx >= 0 && dx < 3 && dz >= 0 && dz < 3 && !(dx == 1 && dz == 1 && dy == 1) && b != PLANKS &&
+                             b != LOG;
+                }
+        check("the fire spread through the hut (" + std::to_string(fire) + " fires, " + std::to_string(burnt) + " blocks burnt)",
+              fire > 1 && burnt > 0);
+        g.yaw = -12;
+        g.pitch = 22;
+        shot(app, "m6_water_lava_fire.png");
+    }
+    if (f == 1232) {
+        // Drowning: a survival player with their head under water loses air, then health.
+        g.creative = false;
+        g.vitals.reset();
+        for (int dy = 0; dy < 3; ++dy) set(o + glm::ivec3(-8, dy, 12), WATER);
+        stand(-8, 12);
+        g.vitals.air = 20;
+        for (int i = 0; i < 45; ++i) g.tick_player_fire_and_air();
+        check("under water the air runs out and the player drowns (health " + std::to_string(g.vitals.health) + ")",
+              g.head_under_water() && g.vitals.air <= 0 && g.vitals.health == MAX_HEALTH - DROWN_DAMAGE);
+        g.vitals.air = 160;
+        g.yaw = 90;
+        g.pitch = 0;
+    }
+    if (f == 1256) shot(app, "m6_underwater.png");  // once the red flash of the hurt has faded
+    if (f == 1258) {
+        for (int dy = 0; dy < 3; ++dy) set(o + glm::ivec3(-8, dy, 12), AIR);
+        // Lava burns 4 at a time and sets the player alight; water puts the fire out.
+        g.vitals.reset();
+        const glm::ivec3 pool = o + glm::ivec3(-7, 0, 0);
+        set(pool, LAVA);
+        set(pool + glm::ivec3(0, 1, 0), LAVA);
+        stand(-7, 0);
+        p.check_water();
+        g.tick_player_fire_and_air();
+        check("lava burns the player and sets them on fire", g.vitals.health == MAX_HEALTH - LAVA_DAMAGE && g.burn_ticks > 0);
+        set(pool, STONE);
+        set(pool + glm::ivec3(0, 1, 0), AIR);
+        stand(-3, -3);
+        g.vitals.hurt_timer = 0;
+        g.yaw = 0;
+        g.pitch = 25;
+    }
+    if (f == 1284) shot(app, "m6_burning.png");
+    if (f == 1286) {
+        check("burning keeps hurting after leaving the lava (health " + std::to_string(g.vitals.health) + ")",
+              g.burn_ticks > 0 && g.vitals.health <= MAX_HEALTH - LAVA_DAMAGE);
+        p.in_water = true;
+        g.tick_player_fire_and_air();
+        check("water puts the burning player out", g.burn_ticks == 0);
+        g.vitals.reset();
+        // A current: stand still in the stream running away from the pillar.
+        stand(-1.5, 7);
+        current_start_x_ = p.x;
+    }
+    if (f == 1316) {
+        check("the falling sand and gravel land as blocks",
+              g.falling.empty() && at(o + glm::ivec3(0, 0, 5)) == SAND && at(o + glm::ivec3(0, 1, 5)) == SAND &&
+                  at(o + glm::ivec3(0, 2, 5)) == GRAVEL);
+        check("the current carries the player downstream (" + std::to_string(p.x - current_start_x_) + " blocks)",
+              p.x - current_start_x_ > 0.3);
+        // Lightning on Normal sets fire where it strikes.
+        const glm::ivec3 bolt = o + glm::ivec3(8, 0, 0);
+        g.strike(glm::dvec3(bolt) + glm::dvec3(0.5, 0, 0.5));
+        check("lightning sets a fire where it strikes", at(bolt) == FIRE);
+        g.creative = true;
+        g.vitals.reset();
+        g.burn_ticks = 0;
+        stand(0, -3);
+        g.weather = Weather(WeatherState{true, false, 100000, 100000});  // the rain the save check looks for
     }
 }
 

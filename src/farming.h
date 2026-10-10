@@ -6,11 +6,11 @@
 
 #include <glm/vec3.hpp>
 
+#include "blockupdate.h"  // RANDOM_TICKS_PER_CHUNK
 #include "rng.h"
 #include "survival.h"
 #include "world.h"
 
-constexpr int RANDOM_TICKS_PER_CHUNK = 80;  // Beta: blocks picked at random in each chunk every tick
 constexpr int RANDOM_TICK_RADIUS = 9;       // chunks around the player that get random ticks (Beta)
 constexpr int FARMLAND_WET = 7;             // farmland data: 7 next to water, drying down to 0
 constexpr int WHEAT_RIPE = 7;               // wheat data: stage 0 (just planted) .. 7 (ripe)

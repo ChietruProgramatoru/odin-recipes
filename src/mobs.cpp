@@ -138,8 +138,10 @@ bool Cow::tick(double dt, double player_x, double player_z, Rng& rng) {
     knock_z *= decay;
 
     b.check_water();
+    b.vx += b.current.x * CURRENT_SPEED;  // carried along by water
+    b.vz += b.current.z * CURRENT_SPEED;
     b.apply_gravity(dt);
-    if (b.in_water) b.vy = std::max(b.vy, 2.0);
+    if (b.in_liquid()) b.vy = std::max(b.vy, 2.0);
     HitAxes hit = b.move(b.vx * dt, b.vy * dt, b.vz * dt);
     if ((hit.x || hit.z) && speed > 0.3) {
         if (b.on_ground && blocked < 3) {
@@ -187,8 +189,14 @@ void ItemDrop::tick(double dt) {
     Body& b = body;
     age += dt;
     b.check_water();
+    b.vx += b.current.x * CURRENT_PUSH * dt;
+    b.vz += b.current.z * CURRENT_PUSH * dt;
     b.apply_gravity(dt);
     if (b.in_water) b.vy = std::max(b.vy, 1.0);
+    if (b.in_water && !b.on_ground) {  // water slows drifting items, so currents carry them at a steady speed
+        b.vx *= std::max(0.0, 1 - dt * 4);
+        b.vz *= std::max(0.0, 1 - dt * 4);
+    }
     b.move(b.vx * dt, b.vy * dt, b.vz * dt);
     if (b.on_ground) {
         b.vx *= std::max(0.0, 1 - dt * 8);

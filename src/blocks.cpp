@@ -66,6 +66,7 @@ const BlockInfo BLOCKS[BLOCK_COUNT] = {
     {"Furnace", {IT_FURNACE_TOP, IT_FURNACE_SIDE, IT_FURNACE_TOP}, 3.5f, FURNACE},
     // Glass drops nothing when broken (Beta).
     {"Glass", {IT_GLASS, IT_GLASS, IT_GLASS}, 0.3f, std::nullopt},
+    {"Obsidian", {T_OBSIDIAN, T_OBSIDIAN, T_OBSIDIAN}, 10.0f, OBSIDIAN},
     // Farming. Crops, tall grass and cake work out their drops themselves (farming.h).
     {"Farmland", {T_FARMLAND_DRY, T_DIRT, T_DIRT}, 0.6f, DIRT},
     {"Crops", {T_WHEAT_0, T_WHEAT_0, T_WHEAT_0}, 0.0f, std::nullopt},
@@ -110,6 +111,7 @@ float block_height(BlockId id) {
     if (id == CAKE_BLOCK) return 0.5f;
     return 1.0f;
 }
+bool falls(BlockId id) { return id == SAND || id == GRAVEL; }
 bool is_thin(BlockId id) { return is_torch(id) || id == FIRE || is_plant(id); }
 bool is_solid(BlockId id) { return id != AIR && !is_fluid(id) && !is_thin(id); }
 bool is_opaque(BlockId id) {

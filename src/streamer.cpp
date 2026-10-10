@@ -121,7 +121,7 @@ void ChunkStreamer::update(double px, double pz, int radius) {
         Climate climate = chunk->climate;
         MeshOptions options = options_;
         pool_.submit([this, key, ticket, padded, light, data, max_y, options, climate] {
-            ChunkMesh mesh = build_mesh(*padded, *light, *data, key.cx, key.cz, max_y, options, &climate);
+            ChunkMesh mesh = build_mesh(*padded, *light, key.cx, key.cz, max_y, options, &climate, data.get());
             std::lock_guard lock(done_mutex_);
             mesh_done_.push_back({key, ticket, std::move(mesh)});
             done_cv_.notify_all();

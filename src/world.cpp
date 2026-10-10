@@ -88,9 +88,6 @@ const std::array<bool, 256> LEAVES_TABLE = [] {
     return o;
 }();
 
-// Liquids and ice: the top is lowered when nothing of the same kind sits on it.
-constexpr float LIQUID_SURFACE = 0.875f;
-
 const std::array<bool, 256> OPAQUE = [] {
     std::array<bool, 256> o{};
     for (int b = 0; b < 256; ++b) o[b] = is_opaque(static_cast<BlockId>(b));
@@ -196,16 +193,27 @@ int World::get_data(int x, int y, int z) {
     return c->data[Chunk::index(x & 15, y, z & 15)];
 }
 
-std::vector<ChunkPos> World::set_block(int x, int y, int z, BlockId block, int data) {
+std::vector<glm::ivec3> World::take_changes() {
+    std::vector<glm::ivec3> out;
+    out.swap(changes_);
+    return out;
+}
+
+std::vector<ChunkPos> World::set_data(int x, int y, int z, int data, bool notify) {
     if (y < 0 || y >= HEIGHT) return {};
-    int cx = chunk_of(x), cz = chunk_of(z);
-    Chunk& c = chunk(cx, cz);
-    int lx = x & 15, lz = z & 15;
-    c.blocks[Chunk::index(lx, y, lz)] = block;
-    c.data[Chunk::index(lx, y, lz)] = static_cast<uint8_t>(data & 15);
+    Chunk& c = chunk(chunk_of(x), chunk_of(z));
+    c.data[Chunk::index(x & 15, y, z & 15)] = static_cast<uint8_t>(data & 15);
     c.dirty = true;
-    if (block != AIR) c.max_y = std::max(c.max_y, std::min(HEIGHT - 1, y + 1));
+    if (!notify) return {};
+    changes_.push_back({x, y, z});
+    auto dirty = neighbours_to_rebuild(x, y, z);
+    std::erase_if(dirty, [&](ChunkPos p) { return !find(p.cx, p.cz); });
+    return dirty;
+}
+
+std::vector<ChunkPos> World::neighbours_to_rebuild(int x, int y, int z) {
     // Faces and ambient occlusion reach one block into neighbouring chunks.
+    const int cx = chunk_of(x), cz = chunk_of(z), lx = x & 15, lz = z & 15;
     std::vector<int> xs{cx}, zs{cz};
     if (lx == 0) xs.push_back(cx - 1);
     if (lx == 15) xs.push_back(cx + 1);
@@ -214,6 +222,20 @@ std::vector<ChunkPos> World::set_block(int x, int y, int z, BlockId block, int d
     std::vector<ChunkPos> dirty;
     for (int a : xs)
         for (int b : zs) dirty.push_back({a, b});
+    return dirty;
+}
+
+std::vector<ChunkPos> World::set_block(int x, int y, int z, BlockId block, int data) {
+    if (y < 0 || y >= HEIGHT) return {};
+    int cx = chunk_of(x), cz = chunk_of(z);
+    Chunk& c = chunk(cx, cz);
+    int lx = x & 15, lz = z & 15;
+    c.blocks[Chunk::index(lx, y, lz)] = block;
+    c.data[Chunk::index(lx, y, lz)] = static_cast<uint8_t>(data & 15);
+    c.dirty = true;
+    changes_.push_back({x, y, z});
+    if (block != AIR) c.max_y = std::max(c.max_y, std::min(HEIGHT - 1, y + 1));
+    std::vector<ChunkPos> dirty = neighbours_to_rebuild(x, y, z);
     relight(x, y, z, dirty);
     std::erase_if(dirty, [&](ChunkPos p) { return !find(p.cx, p.cz); });
     return dirty;
@@ -261,15 +283,21 @@ double World::box_top(double x0, double y0, double z0, double x1, double y1, dou
     return top;
 }
 
-bool World::box_in_water(double x0, double y0, double z0, double x1, double y1, double z1) {
+bool World::box_in(BlockId block, double x0, double y0, double z0, double x1, double y1, double z1) {
     for (int bx = ifloor(x0); bx <= ifloor(x1); ++bx)
         for (int by = ifloor(y0); by <= ifloor(y1); ++by)
             for (int bz = ifloor(z0); bz <= ifloor(z1); ++bz)
-                if (get_block(bx, by, bz) == WATER) return true;
+                if (get_block(bx, by, bz) == block) return true;
     return false;
 }
 
 std::optional<RayHit> World::raycast(glm::vec3 origin, glm::vec3 direction, float max_dist, bool (*stops)(BlockId)) {
+    if (stops) return raycast(origin, direction, max_dist, [stops](glm::ivec3, BlockId b) { return stops(b); });
+    return raycast(origin, direction, max_dist, [](glm::ivec3, BlockId b) { return b != AIR && !is_fluid(b); });
+}
+
+std::optional<RayHit> World::raycast(glm::vec3 origin, glm::vec3 direction, float max_dist,
+                                     const std::function<bool(glm::ivec3, BlockId)>& stops) {
     const float inf = std::numeric_limits<float>::infinity();
     glm::ivec3 pos(ifloor(origin.x), ifloor(origin.y), ifloor(origin.z));
     glm::ivec3 step;
@@ -290,7 +318,7 @@ std::optional<RayHit> World::raycast(glm::vec3 origin, glm::vec3 direction, floa
     float t = 0.0f;
     while (t <= max_dist) {
         BlockId blk = get_block(pos.x, pos.y, pos.z);
-        if (stops ? stops(blk) : blk != AIR && !is_fluid(blk)) return RayHit{pos, prev, t};
+        if (stops(pos, blk)) return RayHit{pos, prev, t};
         prev = pos;
         int axis = 0;
         if (t_max[1] < t_max[axis]) axis = 1;
@@ -362,7 +390,7 @@ ChunkMesh World::build_mesh_now(int cx, int cz, MeshOptions options) {
     PaddedLight L = padded_light(cx, cz);
     Padded D = padded_data(cx, cz);
     const Chunk& c = chunk(cx, cz);
-    return build_mesh(P, L, D, cx, cz, c.max_y, options, &c.climate);
+    return build_mesh(P, L, cx, cz, c.max_y, options, &c.climate, &D);
 }
 
 namespace {
@@ -499,15 +527,66 @@ void add_plant(MeshData& mesh, float wx, float wy, float wz, BlockId blk, int da
     sheet({0.15f, 0, 0.85f}, {0.85f, 0, 0.15f});
 }
 
+// Water or lava: the top slopes between the heights at its four corners, which come from how far
+// the fluid around each corner has flowed (Beta's RenderBlocks.getFluidHeight). Sides are drawn
+// up to the corner heights where the next cell isn't the same fluid.
+void add_fluid(MeshData& mesh, const Padded& P, const Padded* D, const PaddedLight& L, int i, BlockId blk, float wx,
+               float wy, float wz) {
+    const int up = off(0, 1, 0);
+    auto level = [&](int j) { return D ? static_cast<int>((*D)[j]) : 0; };
+    // Height of the corner between cells (x-1..x, z-1..z) of the corner (cx, cz) of this block.
+    auto corner = [&](int cx, int cz) {
+        float sum = 0;
+        int n = 0;
+        for (int k = 0; k < 4; ++k) {
+            const int j = i + off(cx - (k & 1), 0, cz - ((k >> 1) & 1));
+            if (P[j + up] == blk) return 1.0f;
+            if (P[j] == blk) {
+                const int m = level(j);
+                const float pct = fluid_height_percent(m);
+                if (m >= 8 || m == 0) {
+                    sum += pct * 10;
+                    n += 10;
+                }
+                sum += pct;
+                ++n;
+            } else if (!is_solid(P[j])) {
+                sum += 1;
+                ++n;
+            }
+        }
+        return 1.0f - sum / static_cast<float>(n);
+    };
+    // Corner heights at (x, z) = (0,0), (1,0), (1,1), (0,1).
+    const float h[2][2] = {{corner(0, 0), corner(0, 1)}, {corner(1, 0), corner(1, 1)}};
+    const glm::vec3 o(wx, wy, wz);
+    for (const Face& f : FACES) {
+        const BlockId nb = P[i + f.offset];
+        if (nb == blk) continue;
+        const bool is_top = f.def->normal.y == 1, is_bottom = f.def->normal.y == -1;
+        if (!is_top) {
+            if (blk == WATER && (is_bottom || (nb != AIR && !is_thin(nb) && !is_cutout(nb)))) continue;
+            if (blk == LAVA && OPAQUE[nb]) continue;
+        }
+        std::array<glm::vec3, 4> pts;
+        for (int c = 0; c < 4; ++c) {
+            const glm::ivec3 k = f.def->corners[c];
+            pts[c] = o + glm::vec3(k.x, k.y ? h[k.x][k.z] : 0.0f, k.z);
+        }
+        const uint8_t light = L[i + f.offset];
+        mesh.quad_points(pts, BLOCK_UVS[blk].uv[f.def->slot], f.def->light, sky_of(light), block_of(light));
+    }
+}
+
 }  // namespace
 
-ChunkMesh build_mesh(const Padded& P, const PaddedLight& L, const Padded& D, int cx, int cz, int max_y,
-                     MeshOptions options, const Climate* climate) {
+ChunkMesh build_mesh(const Padded& P, const PaddedLight& L, int cx, int cz, int max_y, MeshOptions options,
+                     const Climate* climate, const Padded* data) {
     ChunkMesh mesh;
     const int ox = cx * CHUNK, oz = cz * CHUNK;
-    const int up = off(0, 1, 0);
     const int top = std::min(HEIGHT, max_y + 1);
     const Rgb8 white{255, 255, 255};
+    auto D = [&](int j) { return data ? static_cast<int>((*data)[j]) : 0; };
     static const std::array<float, 4> FARMLAND_WET_UV = tile_uv(T_FARMLAND_WET);
     // Grass and leaf colours per column.
     std::array<Rgb8, CHUNK * CHUNK> grass, foliage;
@@ -538,34 +617,25 @@ ChunkMesh build_mesh(const Padded& P, const PaddedLight& L, const Padded& D, int
                 }
                 if (is_plant(blk)) {
                     Rgb8 tint = block_tint(blk) == BlockTint::GRASS ? grass[(z << 4) | x] : white;
-                    add_plant(mesh.solid, wx, wy, wz, blk, D[i], L[i], tint);
+                    add_plant(mesh.solid, wx, wy, wz, blk, D(i), L[i], tint);
                     continue;
                 }
                 if (blk == CAKE_BLOCK) {
-                    add_cake(mesh.solid, wx, wy, wz, D[i], L[i]);
+                    add_cake(mesh.solid, wx, wy, wz, D(i), L[i]);
                     continue;
                 }
-                if (blk == WATER) {
-                    float h = P[i + up] == WATER ? 1.0f : LIQUID_SURFACE;
-                    const auto& uv = BLOCK_UVS[WATER].uv[0];
-                    for (const Face& f : FACES) {
-                        BlockId nb = P[i + f.offset];
-                        if (f.offset == -up || (nb != AIR && !is_thin(nb) && !is_cutout(nb))) continue;
-                        float l = f.def->light, s = sky_of(L[i + f.offset]), b = block_of(L[i + f.offset]);
-                        mesh.water.quad(wx, wy, wz, f.def->corners, h, uv, {l, l, l, l}, {s, s, s, s}, {b, b, b, b});
-                    }
+                if (blk == WATER || blk == LAVA) {
+                    add_fluid(blk == WATER ? mesh.water : mesh.solid, P, data, L, i, blk, wx, wy, wz);
                     continue;
                 }
-                if (blk == LAVA || blk == ICE) {
-                    // Lava is drawn solid, ice see-through with the water.
-                    float h = (blk == ICE || P[i + up] == blk) ? 1.0f : LIQUID_SURFACE;
-                    MeshData& out = blk == LAVA ? mesh.solid : mesh.water;
+                if (blk == ICE) {
+                    // Ice is drawn see-through with the water.
                     for (const Face& f : FACES) {
                         BlockId nb = P[i + f.offset];
-                        if (OPAQUE[nb] || nb == blk || (blk == ICE && nb == WATER)) continue;
+                        if (OPAQUE[nb] || nb == blk || nb == WATER) continue;
                         float l = f.def->light, s = sky_of(L[i + f.offset]), b = block_of(L[i + f.offset]);
-                        out.quad(wx, wy, wz, f.def->corners, h, BLOCK_UVS[blk].uv[f.def->slot], {l, l, l, l},
-                                 {s, s, s, s}, {b, b, b, b});
+                        mesh.water.quad(wx, wy, wz, f.def->corners, 1.0f, BLOCK_UVS[blk].uv[f.def->slot], {l, l, l, l},
+                                        {s, s, s, s}, {b, b, b, b});
                     }
                     continue;
                 }
@@ -583,7 +653,7 @@ ChunkMesh build_mesh(const Padded& P, const PaddedLight& L, const Padded& D, int
                 }
                 // Farmland is 15/16 tall, darker on top when wet.
                 const float h = blk == FARMLAND ? 15.0f / 16 : 1.0f;
-                const bool wet_farmland = blk == FARMLAND && D[i] > 0;
+                const bool wet_farmland = blk == FARMLAND && D(i) > 0;
                 const bool furnace = is_furnace(blk);
                 const glm::ivec3 facing = furnace ? FACING_DIRS[furnace_dir(blk)] : glm::ivec3(0);
                 for (const Face& f : FACES) {

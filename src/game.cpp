@@ -19,8 +19,6 @@ constexpr double PI = 3.14159265358979323846;
 double radians(double d) { return d * PI / 180.0; }
 int ifloor(double v) { return static_cast<int>(std::floor(v)); }
 ChunkPos chunk_at(double x, double z) { return {chunk_of(ifloor(x)), chunk_of(ifloor(z))}; }
-// How long a fire burns before going out by itself.
-constexpr double FIRE_MIN_SECONDS = 8, FIRE_MAX_SECONDS = 30;
 }  // namespace
 
 Game::Game(GLFWwindow* win, GLuint atlas, Painter& painter, const Options& opts, GameSetup setup)
@@ -137,15 +135,13 @@ bool Game::spawn_cow_near(double x, double z, double rmin, double rmax) {
 void Game::on_chunk_shown(ChunkPos pos) {
     Chunk* chunk = world.find(pos.cx, pos.cz);
     if (!chunk) return;
-    // Fires that were burning when the world was saved go on burning down.
-    // So do mob spawners (dungeons) start working.
+    // Fires and flowing water or lava that were busy when the world was saved carry on.
+    blocks.wake_chunk(*chunk);
+    // Mob spawners (dungeons) start working.
     for (int i = 0; i < static_cast<int>(chunk->blocks.size()); ++i) {
-        const BlockId b = chunk->blocks[i];
-        if (b != FIRE && b != SPAWNER) continue;
+        if (chunk->blocks[i] != SPAWNER) continue;
         glm::ivec3 at(chunk->cx * CHUNK + (i & 15), i >> 8, chunk->cz * CHUNK + ((i >> 4) & 15));
-        if (b == FIRE && std::none_of(fires.begin(), fires.end(), [&](const Fire& f) { return f.pos == at; }))
-            fires.push_back({at, rng.uniform(FIRE_MIN_SECONDS, FIRE_MAX_SECONDS)});
-        if (b == SPAWNER && std::none_of(spawners.begin(), spawners.end(), [&](const Spawner& s) { return s.pos == at; }))
+        if (std::none_of(spawners.begin(), spawners.end(), [&](const Spawner& s) { return s.pos == at; }))
             spawners.push_back({at});
     }
     // Cows, monsters and items that were saved here, or left behind when the player walked away.
@@ -179,6 +175,12 @@ void Game::spawn_entity(const EntityRecord& e) {
             spider->rider = rider.get();
             monsters.push_back(std::move(rider));
         }
+    } else if (e.kind == EntityRecord::FALLING) {
+        auto f = std::make_unique<FallingBlock>(world, static_cast<BlockId>(e.item), glm::ivec3(0));
+        f->body.x = e.x;
+        f->body.y = e.y;
+        f->body.z = e.z;
+        falling.push_back(std::move(f));
     } else if (e.kind == EntityRecord::COW) {
         auto cow = std::make_unique<Cow>(world, e.x, e.y, e.z, rng);
         cow->yaw = cow->target_yaw = e.yaw;
@@ -223,6 +225,15 @@ EntityRecord monster_record(const Monster& m) {
     e.flags = (m.powered ? EntityRecord::POWERED : 0) | (m.rider ? EntityRecord::JOCKEY : 0);
     return e;
 }
+EntityRecord falling_record(const FallingBlock& f) {
+    EntityRecord e;
+    e.kind = EntityRecord::FALLING;
+    e.x = f.body.x;
+    e.y = f.body.y;
+    e.z = f.body.z;
+    e.item = f.block;
+    return e;
+}
 EntityRecord drop_record(const ItemDrop& d) {
     EntityRecord e;
     e.kind = EntityRecord::ITEM;
@@ -247,6 +258,7 @@ bool Game::save(bool wait) {
     for (const auto& m : monsters)
         if (m->alive() && !m->mount && !m->vanish) live[chunk_at(m->body.x, m->body.z)].push_back(monster_record(*m));
     for (const auto& drop : drops) live[chunk_at(drop->body.x, drop->body.z)].push_back(drop_record(*drop));
+    for (const auto& f : falling) live[chunk_at(f->body.x, f->body.z)].push_back(falling_record(*f));
     for (const auto& [pos, list] : live) world.chunk(pos.cx, pos.cz);
 
     std::vector<std::unique_ptr<Chunk>> copies;
@@ -502,7 +514,7 @@ void Game::update(double dt) {
         update_drops(dt);
         update_arrows(dt);
         update_tnts(dt);
-        update_fires(dt);
+        update_falling(dt);
         for (size_t i = 0; i < puffs.size();) {
             if (puffs[i].tick(dt)) {
                 ++i;
@@ -542,6 +554,12 @@ void Game::update(double dt) {
     for (const auto& m : monsters)
         if (in_view(m->body)) add_lit(m->parts(), m->body);
     for (const auto& tnt : tnts) add_lit(tnt->parts(), tnt->body);
+    // Falling sand and gravel: the dropped-item cube, blown up to a whole block.
+    for (const auto& f : falling) {
+        const glm::mat4 m = glm::translate(glm::mat4(1.0f), glm::vec3(f->body.x, f->body.y + 0.49, f->body.z)) *
+                            glm::scale(glm::mat4(1.0f), glm::vec3(0.98f / 0.25f));
+        add_lit({{ITEM_MODEL_BASE + f->block, m}}, f->body);
+    }
     for (const Puff& puff : puffs)
         for (ModelPart part : puff.parts()) parts.push_back(part);
     // A little monster spins inside each mob spawner near the player.
@@ -662,10 +680,13 @@ void Game::draw(int w, int h) {
     }
 
     if (hud_hidden && !vitals.dead()) return;
-    bool underwater = world.get_block(ifloor(cam.x), ifloor(cam.y), ifloor(cam.z)) == WATER;
+    const bool underwater = under_fluid(world, cam, WATER);
     std::string info = debug_screen ? debug_text() : "PetrutzCraft M10";
     if (!debug_screen && creative) info += flying ? "\nCreative (flying)" : "\nCreative";
-    hud->draw(w, h, {&active_inventory(), &vitals, armor_value(inventory), creative, info, help_text(), underwater, vitals.dead()});
+    HudState hs{&active_inventory(), &vitals, armor_value(inventory), creative, info, help_text(), underwater, vitals.dead()};
+    hs.burning = burn_ticks > 0 && !creative;
+    if (head_under_water() && !creative) hs.bubbles = vitals.bubbles();
+    hud->draw(w, h, hs);
     if (gui && !vitals.dead()) {
         double mx, my;
         gui_mouse(mx, my);
@@ -713,10 +734,14 @@ void Game::move(double dt) {
     const bool sprint = sprint_.active;
     double speed = flying ? FLY_SPEED : sneaking ? SNEAK_SPEED : sprint ? SPRINT_SPEED : WALK_SPEED;
     if (p.in_water && !flying) speed *= 0.55;
+    if (p.in_lava && !flying) speed *= 0.25;  // Beta: lava drags you more than twice as hard as water
     double accel = (p.on_ground || flying) ? 14 : 5;
     double k = std::min(1.0, accel * dt);
-    p.vx += (wx * speed - p.vx) * k;
-    p.vz += (wz * speed - p.vz) * k;
+    // Water currents carry you along.
+    const glm::dvec3 drift = flying ? glm::dvec3(0) : p.current * CURRENT_SPEED;
+    p.vx += (wx * speed + drift.x - p.vx) * k;
+    p.vz += (wz * speed + drift.z - p.vz) * k;
+    if (!flying) p.vy += p.current.y * CURRENT_PUSH * dt;
 
     bool jumped = false;
     if (flying) {
@@ -724,8 +749,8 @@ void Game::move(double dt) {
     } else {
         p.apply_gravity(dt);
         if (action_down(KEY_JUMP)) {
-            if (p.in_water) {
-                p.vy = std::min(p.vy + 30 * dt, 4.0);
+            if (p.in_liquid()) {
+                p.vy = std::min(p.vy + 30 * dt, p.in_lava ? 2.0 : 4.0);
             } else if (p.on_ground) {
                 p.vy = JUMP_SPEED;
                 jumped = true;
@@ -736,7 +761,7 @@ void Game::move(double dt) {
     double ox = p.x, oz = p.z;
     double dx = p.vx * dt, dz = p.vz * dt;
     // Sneaking on the ground never walks off an edge.
-    if (sneaking && p.on_ground && !jumped && !p.in_water) p.clamp_to_edges(dx, dz);
+    if (sneaking && p.on_ground && !jumped && !p.in_liquid()) p.clamp_to_edges(dx, dz);
     HitAxes hit = p.move(dx, p.vy * dt, dz);
     if (hit.x || hit.z) sprint_.stop();  // running into a wall ends the sprint
     if (flying && p.on_ground && down) flying = false;
@@ -750,7 +775,7 @@ void Game::move(double dt) {
     }
 
     // Fall damage
-    if (p.in_water || flying || creative) {
+    if (p.in_liquid() || flying || creative) {
         fall_peak = p.y;
     } else if (!p.on_ground) {
         fall_peak = std::max(fall_peak, p.y);
@@ -845,7 +870,7 @@ void Game::mine(double dt) {
     }
     // Beta: digging is five times slower with your head under water, and again while off the ground.
     double slow = 1;
-    if (world.get_block(ifloor(eye().x), ifloor(eye().y), ifloor(eye().z)) == WATER) slow *= 5;
+    if (head_under_water()) slow *= 5;
     if (!player.on_ground && !flying) slow *= 5;
     mining_progress += *seconds <= 0 ? 1.0 : dt / (*seconds * slow);
     hud->set_mining(static_cast<float>(mining_progress));
@@ -901,8 +926,9 @@ void Game::break_block(glm::ivec3 pos, BlockId blk) {
         for (ItemId item : farm_drops(blk, data, farm_rng_)) spawn_drop(item, pos.x + 0.5, pos.y + 0.3, pos.z + 0.5);
         return;
     }
-    const auto drop = harvest_drop(held, blk);
+    auto drop = harvest_drop(held, blk);
     if (!drop) return;
+    if (blk == GRAVEL && rng.below(10) == 0) drop = FLINT;  // Beta: gravel drops flint 1 time in 10
     const BlockInfo* info = block_info(blk);
     int count = *drop == blk ? 1 : rng.randint(info->drop_min, info->drop_max);
     for (int i = 0; i < count; ++i) spawn_drop(*drop, pos.x + 0.5, pos.y + 0.3, pos.z + 0.5);
@@ -1117,8 +1143,11 @@ void Game::swap_selected(ItemId item) {
 
 bool Game::use_bucket(ItemId held) {
     if (held == BUCKET) {
-        // An empty bucket scoops up the first water or lava it points at.
-        auto hit = world.raycast(eye(), forward(), REACH, [](BlockId b) { return b != AIR; });
+        // An empty bucket scoops up the first water or lava source it points at (Beta looks
+        // straight through flowing water).
+        auto hit = world.raycast(eye(), forward(), REACH, [this](glm::ivec3 c, BlockId b) {
+            return b != AIR && (!is_fluid(b) || world.get_data(c.x, c.y, c.z) == 0);
+        });
         if (!hit) return false;
         BlockId b = world.get_block(hit->block.x, hit->block.y, hit->block.z);
         if (!is_fluid(b)) return false;
@@ -1126,7 +1155,7 @@ bool Game::use_bucket(ItemId held) {
         if (!creative) swap_selected(b == WATER ? WATER_BUCKET : LAVA_BUCKET);
         return true;
     }
-    // A full bucket pours where a block would be placed. Water and lava don't flow yet (M6).
+    // A full bucket pours a source where a block would be placed; it flows from there.
     if (!target || targeting_mob() || !target->before) return false;
     glm::ivec3 c = *target->before;
     BlockId here = world.get_block(c.x, c.y, c.z);
@@ -1137,10 +1166,9 @@ bool Game::use_bucket(ItemId held) {
 }
 
 bool Game::light_fire(glm::ivec3 pos) {
-    // Fire needs a solid block under it and an empty cell to burn in.
-    if (world.get_block(pos.x, pos.y, pos.z) != AIR || !is_opaque(world.get_block(pos.x, pos.y - 1, pos.z))) return false;
+    // Fire needs an empty cell, and solid ground under it or something next to it that burns.
+    if (world.get_block(pos.x, pos.y, pos.z) != AIR || !fire_can_stay(world, pos)) return false;
     renderer->rebuild(world.set_block(pos.x, pos.y, pos.z, FIRE));
-    fires.push_back({pos, rng.uniform(FIRE_MIN_SECONDS, FIRE_MAX_SECONDS)});
     return true;
 }
 
@@ -1237,6 +1265,8 @@ void Game::tick_world() {
     tick_spawners();
     random_ticks();
     tick_furnaces();
+    tick_blocks();
+    tick_player_fire_and_air();
     if (sleeping_in && !vitals.dead() && ++sleep_ticks >= SLEEP_TICKS) {
         // Asleep long enough: skip to the next morning and clear the sky, like Beta.
         level.time = next_morning(level.time);
@@ -1329,6 +1359,76 @@ void Game::strike(glm::dvec3 pos) {
             m->hurt(LIGHTNING_DAMAGE, pos.x, pos.z);
             m->burning = std::max(m->burning, 8.0);
         }
+    if (!creative && !vitals.dead() && near(player)) set_player_on_fire(FIRE_BURN_TICKS);
+    // On Normal and Hard the bolt sets fire where it lands and a few blocks around (Beta).
+    if (difficulty() >= NORMAL) {
+        const glm::ivec3 at(ifloor(pos.x), ifloor(pos.y), ifloor(pos.z));
+        auto ignite = [&](glm::ivec3 c) {
+            if (world.get_block(c.x, c.y, c.z) == AIR && fire_can_stay(world, c)) renderer->rebuild(world.set_block(c.x, c.y, c.z, FIRE));
+        };
+        ignite(at);
+        for (int i = 0; i < 4; ++i)
+            ignite(at + glm::ivec3(weather_rng_.below(3) - 1, weather_rng_.below(3) - 1, weather_rng_.below(3) - 1));
+    }
+}
+
+bool Game::rain_at(glm::ivec3 p) {
+    if (!weather.is_raining()) return false;
+    const auto top = world.rain_height(p.x, p.z);
+    const auto biome = world.biome_at(p.x, p.z);
+    return top && biome && *top <= p.y && precipitation(*biome) == Precipitation::RAIN;
+}
+
+bool Game::head_under_water() { return under_fluid(world, eye(), WATER); }
+
+void Game::set_player_on_fire(int ticks) {
+    // Beta: catching fire while already alight just keeps it going.
+    burn_ticks = burn_ticks > 0 ? burn_ticks + 1 : ticks;
+}
+
+void Game::tick_blocks() {
+    BlockEvents events;
+    RainCheck rain = [this](glm::ivec3 p) { return rain_at(p); };
+    blocks.tick(rng, rain, events);
+    const ChunkPos here = chunk_at(player.x, player.z);
+    blocks.random_ticks(here, std::min(9, renderer->render_distance), rng, rain, events);
+    apply_block_events(events);
+}
+
+void Game::apply_block_events(BlockEvents& events) {
+    if (!events.dirty.empty()) renderer->rebuild(events.dirty);
+    for (const auto& [p, item] : events.drops) spawn_drop(item, p.x + 0.5, p.y + 0.3, p.z + 0.5);
+    for (const auto& [p, block] : events.falling) falling.push_back(std::make_unique<FallingBlock>(world, block, p));
+    for (glm::ivec3 p : events.tnt) prime_tnt(p, TNT_FUSE_TICKS);
+    for (glm::ivec3 p : events.fizz) add_puffs(puffs, glm::dvec3(p) + 0.5, 6, 0.4, 1.0, 0.2, rng);
+}
+
+void Game::tick_player_fire_and_air() {
+    if (vitals.dead() || creative) {
+        burn_ticks = 0;
+        vitals.air = MAX_AIR;
+        return;
+    }
+    if (const int dmg = vitals.breathe(head_under_water())) hurt_player(dmg);
+    // Fire and lava the player touches (Beta's Entity.moveEntity and setOnFireFromLava).
+    const Body& p = player;
+    const double x0 = p.x - p.half, x1 = p.x + p.half - 1e-6, z0 = p.z - p.half, z1 = p.z + p.half - 1e-6;
+    const bool in_fire = world.box_in(FIRE, x0 + 0.001, p.y + 0.001, z0 + 0.001, x1 - 0.001, p.y + p.height - 0.001, z1 - 0.001);
+    const bool in_lava = world.box_in(LAVA, x0 + 0.1, p.y + 0.4, z0 + 0.1, x1 - 0.1, p.y + p.height - 0.4, z1 - 0.1);
+    const bool wet = player.in_water || rain_at({ifloor(p.x), ifloor(p.y), ifloor(p.z)});
+    if (in_lava) {
+        hurt_player(LAVA_DAMAGE);
+        burn_ticks = LAVA_BURN_TICKS;
+    }
+    if (in_fire) {
+        hurt_player(1);
+        if (!wet) set_player_on_fire(FIRE_BURN_TICKS);
+    }
+    if (wet) burn_ticks = 0;
+    if (burn_ticks > 0) {
+        if (burn_ticks % 20 == 0) hurt_player(1);
+        --burn_ticks;
+    }
 }
 
 void Game::try_sleep(glm::ivec3 pos) {
@@ -1397,6 +1497,8 @@ void Game::update_cows(double dt) {
             continue;
         }
         bool remove = false;
+        // Lava burns cows too (4 at a time, like everything else).
+        if (cow.alive() && cow.body.in_lava && cow.flash <= 0) cow.hurt(LAVA_DAMAGE, cow.body.x, cow.body.z);
         if (cow.tick(dt, player.x, player.z, rng)) {
             int n = drop_beef_count(rng);
             for (int i = 0; i < n; ++i) spawn_drop(BEEF, cow.body.x, cow.body.y + 0.5, cow.body.z);
@@ -1432,6 +1534,12 @@ void Game::update_drops(double dt) {
             continue;
         }
         drop.tick(dt);
+        // Items that fall in lava or fire burn up.
+        if (b.in_lava || world.box_in(FIRE, b.x - b.half, b.y, b.z - b.half, b.x + b.half, b.y + b.height, b.z + b.half)) {
+            add_puffs(puffs, {b.x, b.y + 0.2, b.z}, 3, 0.2, 0.8, 0.15, rng);
+            it = drops.erase(it);
+            continue;
+        }
         double dx = b.x - player.x, dz = b.z - player.z;
         double horiz = std::hypot(dx, dz);
         bool vert_ok = player.y - 1.2 < b.y && b.y < player.y + 2.2;
@@ -1496,30 +1604,18 @@ void Game::update_arrows(double dt) {
     }
 }
 
-void Game::update_fires(double dt) {
-    // Fire burns out after a while, or when the block under it goes. Spreading is M6.
-    for (auto it = fires.begin(); it != fires.end();) {
-        Fire& f = *it;
-        if (!world.find(chunk_of(f.pos.x), chunk_of(f.pos.z))) {
+void Game::update_falling(double dt) {
+    for (auto it = falling.begin(); it != falling.end();) {
+        FallingBlock& f = **it;
+        if (!world.find(chunk_of(ifloor(f.body.x)), chunk_of(ifloor(f.body.z))) || !f.tick(dt)) {
             ++it;
             continue;
         }
-        if (world.get_block(f.pos.x, f.pos.y, f.pos.z) != FIRE) {
-            it = fires.erase(it);
-            continue;
-        }
-        f.left -= dt;
-        if (f.left <= 0 || !is_opaque(world.get_block(f.pos.x, f.pos.y - 1, f.pos.z))) {
-            renderer->rebuild(world.set_block(f.pos.x, f.pos.y, f.pos.z, AIR));
-            it = fires.erase(it);
-            continue;
-        }
-        // Standing in fire burns.
-        const Body& p = player;
-        if (f.pos.x + 1 > p.x - p.half && f.pos.x < p.x + p.half && f.pos.z + 1 > p.z - p.half && f.pos.z < p.z + p.half &&
-            f.pos.y + 1 > p.y && f.pos.y < p.y + p.height)
-            hurt_player(1);
-        ++it;
+        // Landed: it becomes the block again, or drops as an item if it can't (on a torch, say).
+        const glm::ivec3 c = f.cell();
+        if (f.can_land(world)) renderer->rebuild(world.set_block(c.x, c.y, c.z, f.block));
+        else spawn_drop(f.block, f.body.x, f.body.y + 0.3, f.body.z);
+        it = falling.erase(it);
     }
 }
 
