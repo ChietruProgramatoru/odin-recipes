@@ -14,9 +14,9 @@
 #include "noise.h"
 
 constexpr int CHUNK = 16;
-constexpr int HEIGHT = 64;
-constexpr int SEA_LEVEL = 20;
-constexpr int SNOWLESS_PEAK = 44;  // above this height the surface is bare stone
+constexpr int HEIGHT = 128;
+constexpr int SEA_LEVEL = 64;
+constexpr int SNOWLESS_PEAK = 88;  // above this height the surface is bare stone
 
 // --- Padded chunk layout used while meshing ------------------------------------
 // An 18 x (HEIGHT + 2) x 18 copy of a chunk plus a one-block border from its neighbours,
