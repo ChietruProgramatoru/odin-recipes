@@ -134,12 +134,14 @@ void AutoTest::play(App& app, Game& g) {
         double d = dist_to(cow_);
         face(g, cow_->body.x, cow_->body.z, degrees(std::atan2(p.y + EYE_HEIGHT - (cow_->body.y + 0.8), d)));
     }
-    if (f == 155 && cow_) {
-        // Leaves or a hill between the player and the cow would hide it: clear the line of sight.
+    if ((f == 155 || f == 159) && cow_) {
+        // Leaves or a hill between the player and the cow would hide it: clear the line of sight,
+        // all the way to the middle of the cow (that point is inside the cow, so never in a block),
+        // and again just before the check in case the cow shuffled.
         glm::vec3 e = g.eye(), to(cow_->body.x, cow_->body.y + 0.8, cow_->body.z);
         float d = glm::length(to - e);
         glm::vec3 dir = (to - e) / d;
-        while (auto hit = g.world.raycast(e, dir, d - 0.7f)) {
+        while (auto hit = g.world.raycast(e, dir, d)) {
             log("cleared " + item_name(g.world.get_block(hit->block.x, hit->block.y, hit->block.z)) + " in front of the cow");
             g.renderer->rebuild(g.world.set_block(hit->block.x, hit->block.y, hit->block.z, AIR));
         }
