@@ -841,7 +841,7 @@ Image chest_face(Rng& rng, int kind) {  // 0 top, 1 side, 2 front
     return img;
 }
 
-Image furnace_face(Rng& rng, int kind) {  // 0 top, 1 side, 2 front, 3 dispenser front
+Image furnace_face(Rng& rng, int kind) {  // 0 top, 1 side, 2 front, 3 dispenser front, 4 lit front
     Image img = noise(rng, COBBLE_GREY, 0.15);
     for (int i = 0; i < 20; ++i) img.at(rng.below(TILE), rng.below(TILE)) = shade(COBBLE_GREY, 0.6);
     if (kind == 0) {
@@ -852,10 +852,33 @@ Image furnace_face(Rng& rng, int kind) {  // 0 top, 1 side, 2 front, 3 dispenser
         fill(img, 4, 8, 11, 13, {25, 25, 25, 255});
         fill(img, 3, 3, 12, 4, shade({80, 80, 80}, 1));
     }
+    if (kind == 4) {
+        // The mouth glows: embers at the bottom, flames licking up.
+        fill(img, 3, 3, 12, 4, shade({80, 80, 80}, 1));
+        fill(img, 4, 8, 11, 13, {60, 20, 5, 255});
+        for (int x = 4; x <= 11; ++x) {
+            int h = 2 + rng.below(4);
+            for (int y = 13; y > 13 - h; --y)
+                img.at(x, y) = y > 11 ? Rgba{255, 230, 90, 255} : Rgba{240, 120, 20, 255};
+        }
+    }
     if (kind == 3) {
         fill(img, 5, 5, 10, 10, {25, 25, 25, 255});
         fill(img, 6, 6, 9, 9, {60, 60, 60, 255});
     }
+    return img;
+}
+
+// Glass: a pale frame and a few glints on clear pixels (drawn alpha-tested, so see-through).
+Image glass(Rng& rng) {
+    Image img(TILE, TILE, {0, 0, 0, 0});
+    const Rgba edge{215, 235, 240, 255}, glint{240, 250, 255, 255};
+    for (int i = 0; i < TILE; ++i) {
+        img.at(i, 0) = img.at(i, TILE - 1) = img.at(0, i) = img.at(TILE - 1, i) = edge;
+    }
+    for (int i = 0; i < 4; ++i) img.at(3 + i, 6 - i) = glint;   // a streak up top
+    for (int i = 0; i < 3; ++i) img.at(9 + i, 12 - i) = glint;  // and a short one lower down
+    img.at(4 + rng.below(2), 11) = glint;
     return img;
 }
 
@@ -1082,6 +1105,7 @@ Image flat_icon(ItemId id) {
     case POWERED_MINECART: return sprite(CART_ROWS, Palette{{'c', {90, 90, 90, 255}}} + mat({150, 150, 155}));
     case REPEATER:
         return sprite(REPEATER_ROWS, HANDLE + Palette{{'r', {220, 30, 30, 255}}} + mat({160, 160, 160}));
+    case STEAK: return sprite(CHOP_ROWS, Palette{{'w', {235, 215, 175, 255}}} + mat({150, 85, 50}));
     case SADDLE: return sprite(SADDLE_ROWS, Palette{{'w', {190, 190, 190, 255}}} + mat({140, 80, 40}));
     case TORCH: return sprite(TORCH_ROWS, HANDLE + Palette{{'f', {255, 160, 40, 255}}, {'y', {255, 240, 150, 255}}});
     case REDSTONE_TORCH: return sprite(TORCH_ROWS, HANDLE + Palette{{'f', {150, 20, 20, 255}}, {'y', {255, 60, 40, 255}}});
@@ -1146,6 +1170,8 @@ std::map<int, Image> make_item_tiles() {
     add(IT_PISTON_SIDE, piston_side);
     add(IT_SLAB_TOP, [](Rng& r) { return slab_face(r, true); });
     add(IT_SLAB_SIDE, [](Rng& r) { return slab_face(r, false); });
+    add(IT_FURNACE_LIT_FRONT, [](Rng& r) { return furnace_face(r, 4); });
+    add(IT_GLASS, glass);
     for (ItemId id : all_items()) {
         const ItemInfo* info = item_info(id);
         if (info->icon.shape == ItemIcon::Flat) tiles[info->icon.top] = flat_icon(id);

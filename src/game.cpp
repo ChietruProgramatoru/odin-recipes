@@ -317,8 +317,12 @@ void Game::set_paused(bool p) {
 }
 
 void Game::open_gui(InventoryScreen::Kind kind) {
+    show_gui(std::make_unique<InventoryScreen>(kind, kind == InventoryScreen::Kind::Creative ? creative_inventory : active_inventory()));
+}
+
+void Game::show_gui(std::unique_ptr<InventoryScreen> screen) {
     if (gui) close_gui();
-    gui = std::make_unique<InventoryScreen>(kind, kind == InventoryScreen::Kind::Creative ? creative_inventory : active_inventory());
+    gui = std::move(screen);
     mouse_buttons_.clear();
     mining_pos.reset();
     hud->set_mining(std::nullopt);
@@ -333,10 +337,17 @@ void Game::open_gui(InventoryScreen::Kind kind) {
     }
 }
 
+void Game::open_furnace(glm::ivec3 pos) {
+    if (!is_furnace(world.get_block(pos.x, pos.y, pos.z))) return;
+    show_gui(std::make_unique<InventoryScreen>(active_inventory(), world.furnace(pos)));
+    furnace_open = pos;
+}
+
 void Game::close_gui() {
     if (!gui) return;
     for (const Stack& s : gui->close()) throw_stack(s);
     gui.reset();
+    furnace_open.reset();
     set_mouse_captured(!paused && !vitals.dead());
 }
 
@@ -845,6 +856,7 @@ void Game::break_block(glm::ivec3 pos, BlockId blk) {
             if (!creative) spawn_drop(TORCH, n.x + 0.5, n.y + 0.3, n.z + 0.5);
         }
     }
+    if (is_furnace(blk)) drop_furnace_contents(pos);
     if (blk == TNT) {
         // Breaking TNT lights it (Beta), whatever you hit it with.
         prime_tnt(pos, TNT_FUSE_TICKS);
@@ -906,6 +918,11 @@ void Game::use_item() {
     if (target && !targeting_mob() && world.get_block(target->block.x, target->block.y, target->block.z) == CRAFTING_TABLE) {
         mouse_buttons_.erase(GLFW_MOUSE_BUTTON_RIGHT);
         open_gui(InventoryScreen::Kind::CraftingTable);
+        return;
+    }
+    if (target && !targeting_mob() && is_furnace(world.get_block(target->block.x, target->block.y, target->block.z))) {
+        mouse_buttons_.erase(GLFW_MOUSE_BUTTON_RIGHT);
+        open_furnace(target->block);
         return;
     }
     if (target && !targeting_mob() && is_bed(world.get_block(target->block.x, target->block.y, target->block.z))) {
@@ -1001,6 +1018,7 @@ void Game::use_item() {
     if (!is_block(*item) || !target || targeting_mob() || !target->before) return;
     glm::ivec3 c = *target->before;
     BlockId place = static_cast<BlockId>(*item);
+    if (place == FURNACE) place = furnace_block(facing_from_yaw(yaw) + 2, false);  // its front towards the player
     if (place == TORCH) {
         // Torches go on top of or on the side of a solid block, and nothing stands in their way.
         auto torch = torch_for_face(c - target->block);
@@ -1192,12 +1210,55 @@ void Game::tick_world() {
     spawn_monsters();
     tick_spawners();
     random_ticks();
+    tick_furnaces();
     if (sleeping_in && !vitals.dead() && ++sleep_ticks >= SLEEP_TICKS) {
         // Asleep long enough: skip to the next morning and clear the sky, like Beta.
         level.time = next_morning(level.time);
         weather.clear();
         wake_up(true);
     }
+}
+
+void Game::tick_furnaces() {
+    const int pcx = chunk_of(ifloor(player.x)), pcz = chunk_of(ifloor(player.z)), r = renderer->render_distance;
+    for (int cz = pcz - r; cz <= pcz + r; ++cz)
+        for (int cx = pcx - r; cx <= pcx + r; ++cx) {
+            Chunk* chunk = world.find(cx, cz);
+            if (!chunk || chunk->furnaces.empty()) continue;
+            for (auto it = chunk->furnaces.begin(); it != chunk->furnaces.end();) {
+                const int i = it->first;
+                const BlockId b = chunk->blocks[i];
+                if (!is_furnace(b)) {  // the block was replaced some other way
+                    it = chunk->furnaces.erase(it);
+                    chunk->dirty = true;
+                    continue;
+                }
+                Furnace& f = it->second;
+                const bool was_burning = f.burning();
+                if (f.tick()) chunk->dirty = true;
+                if (f.burning() != was_burning) {
+                    // Lit and unlit furnaces are different blocks (the lit one glows); the contents stay.
+                    const glm::ivec3 at(cx * CHUNK + (i & 15), i >> 8, cz * CHUNK + ((i >> 4) & 15));
+                    renderer->rebuild(world.set_block(at.x, at.y, at.z, furnace_block(furnace_dir(b), f.burning())));
+                }
+                ++it;
+            }
+        }
+    // A furnace screen closes when its furnace goes or the player walks away from it (Beta: 8 blocks).
+    if (furnace_open) {
+        const glm::dvec3 c = glm::dvec3(*furnace_open) + 0.5;
+        if (!is_furnace(world.get_block(furnace_open->x, furnace_open->y, furnace_open->z)) ||
+            glm::length(c - glm::dvec3(player.x, player.y, player.z)) > 8)
+            close_gui();
+    }
+}
+
+void Game::drop_furnace_contents(glm::ivec3 pos) {
+    if (furnace_open == pos) close_gui();
+    auto f = world.take_furnace(pos);
+    if (!f) return;
+    for (const auto& s : {f->input, f->fuel, f->output})
+        if (s) drops.push_back(std::make_unique<ItemDrop>(world, *s, pos.x + 0.5, pos.y + 0.5, pos.z + 0.5, rng));
 }
 
 void Game::random_ticks() {
@@ -1759,6 +1820,7 @@ void Game::explode(glm::dvec3 center, double power, bool from_monster) {
             clear(c);
             continue;
         }
+        if (is_furnace(b)) drop_furnace_contents(c);
         clear(c);
         const BlockInfo* info = block_info(b);
         if (info && info->drop && rng.random() < EXPLOSION_DROP_CHANCE) {

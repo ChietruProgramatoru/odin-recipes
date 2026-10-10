@@ -3,6 +3,7 @@
 #pragma once
 #include <array>
 #include <cstdint>
+#include <map>
 #include <memory>
 #include <optional>
 #include <unordered_map>
@@ -12,6 +13,7 @@
 
 #include "biome.h"
 #include "blocks.h"
+#include "furnace.h"
 #include "noise.h"
 
 constexpr int CHUNK = 16;
@@ -77,6 +79,7 @@ struct Chunk {
     bool dirty = true;
     bool saved_entities = false;        // the last save of this chunk had entities in it
     std::vector<EntityRecord> entities;  // waiting to be spawned when the chunk is shown
+    std::map<int, Furnace> furnaces;     // what is in each furnace, by block index (saved)
     Climate climate;  // not saved: always recomputed from the seed
 
     Chunk(int x, int z) : cx(x), cz(z) {}
@@ -212,6 +215,12 @@ public:
     size_t chunk_count() const { return chunks_.size(); }
 
     BlockId get_block(int x, int y, int z);
+    // The furnace kept at a block: nullptr if there is none (or its chunk isn't loaded).
+    Furnace* furnace_at(glm::ivec3 pos);
+    // The one there, made empty if there wasn't one yet. Marks the chunk changed.
+    Furnace& furnace(glm::ivec3 pos);
+    // Take the furnace away from a block, returning what was in it.
+    std::optional<Furnace> take_furnace(glm::ivec3 pos);
     int get_data(int x, int y, int z);  // the block's 4-bit data value (0 outside the loaded world)
     // Set a block (and its data value) and update the light around it. Returns the chunks whose
     // meshes need rebuilding.

@@ -71,6 +71,7 @@ add_library(petrutz_core STATIC
   src/items.cpp
   src/icons.cpp
   src/crafting.cpp
+  src/furnace.cpp
   src/container.cpp
   src/noise.cpp
   src/world.cpp
@@ -141,6 +142,7 @@ add_executable(petrutz_tests
   tests/test_light.cpp
   tests/test_tools.cpp
   tests/test_weather.cpp
-  tests/test_monsters.cpp)
+  tests/test_monsters.cpp
+  tests/test_furnace.cpp)
 target_link_libraries(petrutz_tests PRIVATE petrutz_core doctest_header)
 add_test(NAME logic COMMAND petrutz_tests)

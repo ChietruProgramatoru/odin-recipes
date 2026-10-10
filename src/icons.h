@@ -20,6 +20,7 @@ enum ItemTile : int {
     IT_SANDSTONE_TOP, IT_SANDSTONE_SIDE, IT_SNOW, IT_CLAY,
     IT_NOTE_BLOCK, IT_JUKEBOX_TOP, IT_DISPENSER_FRONT,
     IT_PISTON_TOP, IT_STICKY_TOP, IT_PISTON_SIDE, IT_SLAB_TOP, IT_SLAB_SIDE,
+    IT_FURNACE_LIT_FRONT, IT_GLASS,
     IT_FLAT_BASE  // flat item icons follow, one per item, in item id order
 };
 

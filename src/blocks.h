@@ -26,6 +26,11 @@ enum Block : BlockId {
     FIRE,
     // Monsters (M10): TNT, lit by breaking it, flint and steel or another explosion.
     TNT,
+    // Smelting (M7): FURNACE above faces south (its front towards +z); these are the other
+    // facings, then lit furnaces in all four. They all drop FURNACE. Glass comes out of a furnace.
+    FURNACE_WEST, FURNACE_NORTH, FURNACE_EAST,
+    LIT_FURNACE_SOUTH, LIT_FURNACE_WEST, LIT_FURNACE_NORTH, LIT_FURNACE_EAST,
+    GLASS,
     // Farming (M8). The data value (see World::get_data) holds farmland wetness (0 dry .. 7 wet),
     // the wheat stage (0 .. 7 ripe), how many slices of a cake are eaten (0 .. 5) and the age of
     // the top of a sugar cane (0 .. 15). Plants are drawn as crossed sheets (is_plant).
@@ -101,6 +106,12 @@ bool is_thin(BlockId id);
 bool is_bed(BlockId id);    // either half of a bed
 // Drawn as crossed sheets and nothing to bump into: wheat, sugar cane, tall grass, ferns, flowers, mushrooms.
 bool is_plant(BlockId id);
+// Furnaces: any facing, lit or not. The facing is Beta's (0 south, 1 west, 2 north, 3 east, see
+// FACING_DIRS in bed.h) and says which way the front points.
+bool is_furnace(BlockId id);
+bool is_lit_furnace(BlockId id);
+int furnace_dir(BlockId furnace);
+BlockId furnace_block(int dir, bool lit);
 // How tall a solid block is for walking on it: 1, 9/16 for a bed, 15/16 for farmland, 1/2 for cake.
 float block_height(BlockId id);
 // Light (0-15): how much a block dims light passing into it, and how much it gives off.

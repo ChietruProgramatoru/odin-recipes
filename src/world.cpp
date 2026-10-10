@@ -5,6 +5,7 @@
 #include <limits>
 
 #include "bed.h"
+#include "icons.h"
 #include "textures.h"
 
 namespace {
@@ -78,6 +79,8 @@ BlockUvs uniform_uvs(int tile) {
 }
 const BlockUvs FAST_LEAVES_UVS = uniform_uvs(T_LEAVES_FAST);
 const BlockUvs FAST_SPRUCE_LEAVES_UVS = uniform_uvs(T_SPRUCE_LEAVES_FAST);
+// The front of a furnace, on the side it faces.
+const std::array<float, 4> FURNACE_FRONT_UV = tile_uv(IT_FURNACE_FRONT), LIT_FURNACE_FRONT_UV = tile_uv(IT_FURNACE_LIT_FRONT);
 
 const std::array<bool, 256> LEAVES_TABLE = [] {
     std::array<bool, 256> o{};
@@ -158,6 +161,32 @@ BlockId World::get_block(int x, int y, int z) {
     Chunk* c = find(chunk_of(x), chunk_of(z));
     if (!c) return AIR;
     return c->blocks[Chunk::index(x & 15, y, z & 15)];
+}
+
+Furnace* World::furnace_at(glm::ivec3 p) {
+    if (p.y < 0 || p.y >= HEIGHT) return nullptr;
+    Chunk* c = find(chunk_of(p.x), chunk_of(p.z));
+    if (!c) return nullptr;
+    auto it = c->furnaces.find(Chunk::index(p.x & 15, p.y, p.z & 15));
+    return it == c->furnaces.end() ? nullptr : &it->second;
+}
+
+Furnace& World::furnace(glm::ivec3 p) {
+    Chunk& c = chunk(chunk_of(p.x), chunk_of(p.z));
+    c.dirty = true;
+    return c.furnaces[Chunk::index(p.x & 15, std::clamp(p.y, 0, HEIGHT - 1), p.z & 15)];
+}
+
+std::optional<Furnace> World::take_furnace(glm::ivec3 p) {
+    if (p.y < 0 || p.y >= HEIGHT) return std::nullopt;
+    Chunk* c = find(chunk_of(p.x), chunk_of(p.z));
+    if (!c) return std::nullopt;
+    auto it = c->furnaces.find(Chunk::index(p.x & 15, p.y, p.z & 15));
+    if (it == c->furnaces.end()) return std::nullopt;
+    Furnace f = it->second;
+    c->furnaces.erase(it);
+    c->dirty = true;
+    return f;
 }
 
 int World::get_data(int x, int y, int z) {
@@ -555,6 +584,8 @@ ChunkMesh build_mesh(const Padded& P, const PaddedLight& L, const Padded& D, int
                 // Farmland is 15/16 tall, darker on top when wet.
                 const float h = blk == FARMLAND ? 15.0f / 16 : 1.0f;
                 const bool wet_farmland = blk == FARMLAND && D[i] > 0;
+                const bool furnace = is_furnace(blk);
+                const glm::ivec3 facing = furnace ? FACING_DIRS[furnace_dir(blk)] : glm::ivec3(0);
                 for (const Face& f : FACES) {
                     const int front = i + f.offset;
                     BlockId nb = P[front];
@@ -585,7 +616,10 @@ ChunkMesh build_mesh(const Padded& P, const PaddedLight& L, const Padded& D, int
                         sky[c] = s;
                         block[c] = b;
                     }
-                    const auto& uv = (wet_farmland && f.def->slot == 0) ? FARMLAND_WET_UV : uvs[f.def->slot];
+                    const auto& uv = furnace && f.def->normal == facing
+                                         ? (is_lit_furnace(blk) ? LIT_FURNACE_FRONT_UV : FURNACE_FRONT_UV)
+                                     : (wet_farmland && f.def->slot == 0) ? FARMLAND_WET_UV
+                                                                          : uvs[f.def->slot];
                     mesh.solid.quad(wx, wy, wz, f.def->corners, h, uv, shades, sky, block, tint);
                 }
             }

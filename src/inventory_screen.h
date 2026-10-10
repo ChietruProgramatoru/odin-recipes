@@ -1,4 +1,4 @@
-// The inventory (E), crafting table and creative item picker screens, drawn Beta-style by the code
+// The inventory (E), crafting table, furnace and creative item picker screens, drawn Beta-style by the code
 // over the running game. The rules for moving stacks are in container.h.
 #pragma once
 #include <functional>
@@ -10,10 +10,12 @@
 
 class InventoryScreen {
 public:
-    enum class Kind { Inventory, CraftingTable, Creative };
+    enum class Kind { Inventory, CraftingTable, Creative, Furnace };
 
     // Inventory and CraftingTable work on the survival inventory; Creative on the creative hotbar.
     InventoryScreen(Kind kind, Inventory& inventory);
+    // A furnace's screen.
+    InventoryScreen(Inventory& inventory, Furnace& furnace);
 
     const Kind kind;
     std::optional<CraftingMenu> crafting;

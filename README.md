@@ -69,7 +69,14 @@ It runs on Windows (the main target) and Linux.
   ![Inventory](screenshots/inventory.png)
   ![Crafting table](screenshots/crafting_table.png)
 - **Stacks**: most items stack to 64; snowballs, eggs, signs and empty buckets to 16; tools, armor, cake and mushroom stew don't stack. Food stacks to 64 because hunger is kept. Tools and armor have Beta's durability, shown as a bar once they are worn.
-- Every Beta item exists with an icon drawn by the code (blocks show as little 3D cubes). Items whose use comes in a later milestone (tools mining faster, torches, doors, wool...) can be crafted and carried but not used or placed yet. The crafting table, chest and furnace can be placed; chests and furnaces open in later milestones.
+- Every Beta item exists with an icon drawn by the code (blocks show as little 3D cubes). Items whose use comes in a later milestone (tools mining faster, torches, doors, wool...) can be crafted and carried but not used or placed yet. The crafting table, chest and furnace can be placed; chests open in a later milestone.
+- **Furnaces** like Beta 1.7.3: place one (its front faces you) and right-click it. Put something to smelt in the top slot and fuel in the bottom one; the flame shows how much fuel is left and the arrow how far the item is cooked (10 seconds each). A burning furnace lights up and gives off light 13, and keeps smelting when you close it or walk away, as long as it is within your render distance (further away it waits, like Beta). Breaking it drops what is inside. Its contents are saved with the world.
+  - Smelting: iron ore to iron ingots, gold ore to gold ingots, diamond ore to diamonds, sand to glass, cobblestone to stone, clay to bricks, any log to charcoal, raw porkchop and fish to cooked, and beef to **steak** (not in Beta, which had no beef; steak fills 8 hunger like a cooked porkchop).
+  - Fuel: coal and charcoal (80 s, 8 items), logs, planks and other wooden blocks (15 s), sticks (5 s), and a lava bucket (1000 s, and the empty bucket stays in the fuel slot, unlike Beta which lost it).
+- **Glass** comes out of a furnace and can be placed. It is see-through and breaks into nothing, like Beta.
+
+  ![Furnace](screenshots/furnace.png)
+  ![A lit furnace between glass](screenshots/lit_furnace.png)
 - **Creative mode** (a cheat key) gives you unlimited blocks, instant mining and flying. E opens an item picker with every item: click one to hold a full stack, Shift-click to put it straight in the hotbar, scroll with the mouse wheel.
 
   ![Creative item picker](screenshots/creative_items.png)
@@ -174,6 +181,7 @@ These are the defaults. Every key except the F keys, Esc, H and 1–9 can be cha
 | Q | Drop one of the selected item |
 | E | Open or close the inventory (the item picker in creative) |
 | Right mouse on a crafting table | Open the 3x3 crafting grid |
+| Right mouse on a furnace | Open the furnace |
 | C | Cheat: switch between survival and creative |
 | Space twice (creative) | Toggle flying. While flying, Space goes up and Shift goes down |
 | F1 | Hide or show the HUD |
@@ -183,13 +191,13 @@ These are the defaults. Every key except the F keys, Esc, H and 1–9 can be cha
 | H | Show or hide the help text |
 | Esc | Pause menu (Back to Game, Options, Save and Quit to Title). The world is saved when it opens |
 
-In the inventory and crafting table screens (Beta's mouse rules):
+In the inventory, crafting table and furnace screens (Beta's mouse rules):
 
 | Mouse / key | Action |
 | --- | --- |
 | Left click | Pick up a whole stack, put the held stack down, add it to the same item, or swap with a different item |
 | Right click | Pick up half a stack, or put down one item from the held stack |
-| Shift + left click | Move a stack between the hotbar and the storage rows, or out of the crafting grid. On the crafted item: craft as many as fit |
+| Shift + left click | Move a stack between the hotbar and the storage rows, or out of the crafting grid or a furnace slot. On the crafted item: craft as many as fit |
 | Click outside the window | Throw the held stack (right click throws one) |
 | Q over a slot | Throw one item from it |
 | E or Esc | Close. Items left in the crafting grid or on the mouse go back into your inventory (and drop only if it's full) |
@@ -200,7 +208,7 @@ In the inventory and crafting table screens (Beta's mouse rules):
 - Punch a tree (about 3 s per log), press **E** and put the logs in the crafting grid to make planks, then make a crafting table from 4 planks and build a shelter.
 - Cows are found on grass. Five spawn near you at the start, and more appear as you explore.
 - Break tall grass for seeds, till the ground next to water with a hoe and plant them for bread.
-- Make a wooden pickaxe (3 planks over 2 sticks) before mining stone: by hand stone is slow and drops nothing. A stone pickaxe gets you iron.
+- Make a wooden pickaxe (3 planks over 2 sticks) before mining stone: by hand stone is slow and drops nothing. A stone pickaxe gets you iron ore; a furnace (8 cobblestone in a ring) smelts it into ingots. Cook beef in the furnace too: steak fills more than twice as much as raw beef.
 - Keep at least 9 drumsticks of hunger to regenerate health.
 - Light up your home with torches before night: monsters spawn in the dark. Back away from a hissing creeper.
 - Set the difficulty to Peaceful under Options if you just want to build.
@@ -245,8 +253,9 @@ src/
   items.cpp        every item: names, stack sizes, durability, food, armor slots, icons
   icons.cpp        pixel art for item icons and the faces of item blocks
   crafting.cpp     the recipe table and matching a crafting grid
+  furnace.cpp      smelting recipes, fuel and a furnace's burning and cooking each tick
   container.cpp    moving stacks in the inventory screens: click, split, shift-click, crafting
-  inventory_screen.cpp  drawing the inventory, crafting table and creative picker screens
+  inventory_screen.cpp  drawing the inventory, crafting table, furnace and creative picker screens
   mobs.cpp         cow AI and model, the player model and its armor, dropped items, arrows
   combat.cpp       Beta's rules for monsters: difficulty, being hurt, stats, drops, spawning, sunlight, spawners, explosions
   monsters.cpp     monster AI and models, lit TNT, smoke puffs
@@ -277,9 +286,10 @@ tests/             doctest logic tests (no window needed)
 - No music, thunder or other sounds yet (M16).
 - Lightning doesn't start fires and rain doesn't put them out yet (M6). Snow doesn't pile up on the ground yet (snow layers come in M6).
 - Wool only comes from the creative item picker until sheep arrive (M10), so that's where beds start.
-- Doors and most other crafted things don't do anything yet; they arrive with M11 and the other milestones. Chests and furnaces are plain blocks for now.
+- Cactus (to cactus green) and saplings (as fuel) go into the furnace once they exist (M6).
+- Doors and most other crafted things don't do anything yet; they arrive with M11 and the other milestones. Chests are plain blocks for now.
 - Iron and gold need smelting (M7), and string, feathers, bones and gunpowder now come from monsters.
-- Glowstone drops itself when broken (Beta drops glowstone dust, which comes with the Nether in M14). Furnaces and jack-o'-lanterns will give off light once they exist; lava and fire already do.
+- Glowstone drops itself when broken (Beta drops glowstone dust, which comes with the Nether in M14). Jack-o'-lanterns will give off light once they can be placed; lava, fire and lit furnaces already do.
 - Light levels are not stored in the save files: they are worked out again when a chunk is loaded.
 - The menus and text use only plain ASCII letters, numbers and symbols.
 - Worlds saved by this version can't be read by the Python version (or by Minecraft).

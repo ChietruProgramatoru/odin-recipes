@@ -48,8 +48,8 @@ Table build() {
     for (int b = GRASS; b < BLOCK_COUNT; ++b) {
         // The torch is a flat icon, added below; beds are placed from the BED item.
         // Farmland, crops, sugar cane and cake come from other items; flowers are flat icons below.
-        if (b == WATER || b == LAVA || b == FIRE || is_torch(b) || is_bed(b) || is_plant(b) || b == FARMLAND ||
-            b == CAKE_BLOCK)
+        if (b == WATER || b == LAVA || b == FIRE || is_torch(b) || is_bed(b) || (is_furnace(b) && b != FURNACE) ||
+            is_plant(b) || b == FARMLAND || b == CAKE_BLOCK)
             continue;
         const BlockInfo* info = block_info(b);
         t.cube(b, info->name, info->tiles[0], info->tiles[1], info->tiles[1]);
@@ -152,6 +152,7 @@ Table build() {
     // Food.
     t.food(APPLE, "Apple", 4, 2.4f);
     t.food(BEEF, "Beef", 6, 4.0f);
+    t.food(STEAK, "Steak", 8, 12.8f);
     t.food(BREAD, "Bread", 5, 6.0f);
     t.food(COOKIE, "Cookie", 2, 0.4f);
     t.food(GOLDEN_APPLE, "Golden Apple", 4, 9.6f);

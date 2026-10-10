@@ -38,6 +38,8 @@ enum Item : ItemId {
     RAW_PORKCHOP, COOKED_PORKCHOP, RAW_FISH, COOKED_FISH,
     COMPASS, CLOCK, MAP, WOOD_DOOR, IRON_DOOR, SIGN, BED, PAINTING, BOAT,
     MINECART, STORAGE_MINECART, POWERED_MINECART, REPEATER, SADDLE,
+    // Smelting (M7): cooked beef. Not in Beta, which had no beef; this game keeps beef from cows.
+    STEAK,
     SEEDS,  // M8
 
     // Blocks that later milestones make placeable. Until then they are items.
