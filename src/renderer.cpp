@@ -18,6 +18,7 @@ layout(location = 0) in vec3 position;
 layout(location = 1) in float shade;
 layout(location = 2) in vec2 tex;
 layout(location = 3) in vec2 light;
+layout(location = 4) in vec3 tint;
 uniform mat4 mvp;
 uniform mat4 model;
 uniform vec3 eye;
@@ -26,11 +27,13 @@ out vec2 v_tex;
 out float v_shade;
 out float v_dist;
 out vec2 v_light;
+out vec3 v_tint;
 void main() {
     vec4 world = model * vec4(position, 1.0);
     gl_Position = mvp * world;
     v_tex = tex;
     v_shade = shade;
+    v_tint = tint;
     v_dist = length(world.xyz - eye);
     v_light = vec2(light.x * model_light.x, max(light.y, model_light.y));
 }
@@ -43,6 +46,7 @@ in vec2 v_tex;
 in float v_shade;
 in float v_dist;
 in vec2 v_light;
+in vec3 v_tint;
 uniform sampler2D atlas;
 uniform vec4 fog_color;
 uniform float fog_start;
@@ -53,6 +57,11 @@ out vec4 out_color;
 void main() {
     vec4 c = texture(atlas, v_tex);
     if (c.a < alpha_cut) discard;
+    // Pixels with alpha 254 are grey grass and leaves, coloured by the biome.
+    if (abs(c.a - 254.0 / 255.0) < 0.002) {
+        c.rgb *= v_tint;
+        c.a = 1.0;
+    }
     float level = clamp(max(v_light.x * 15.0 - darkness, v_light.y * 15.0), 0.0, 15.0);
     float f = 1.0 - level / 15.0;
     float bright = (1.0 - f) / (f * 3.0 + 1.0) * 0.95 + 0.05;
@@ -182,7 +191,8 @@ GpuMesh::GpuMesh(const MeshData& mesh) : count_(static_cast<GLsizei>(mesh.indice
     glVertexAttribPointer(1, 1, GL_FLOAT, GL_FALSE, stride, reinterpret_cast<void*>(offsetof(Vertex, shade)));
     glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, stride, reinterpret_cast<void*>(offsetof(Vertex, u)));
     glVertexAttribPointer(3, 2, GL_FLOAT, GL_FALSE, stride, reinterpret_cast<void*>(offsetof(Vertex, sky)));
-    for (GLuint i = 0; i < 4; ++i) glEnableVertexAttribArray(i);
+    glVertexAttribPointer(4, 3, GL_FLOAT, GL_FALSE, stride, reinterpret_cast<void*>(offsetof(Vertex, r)));
+    for (GLuint i = 0; i < 5; ++i) glEnableVertexAttribArray(i);
     glBindVertexArray(0);
 }
 

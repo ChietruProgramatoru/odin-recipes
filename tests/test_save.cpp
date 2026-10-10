@@ -123,6 +123,7 @@ TEST_CASE("level.json keeps the seed, spawn and the player") {
     p.exhaustion = 2.25;
     p.inventory.add(DIRT, 70);
     p.inventory.add(BEEF, 3);
+    p.inventory.add(DIAMOND, 2);  // materials from ores are saved too
     p.inventory.slots[35] = Stack{DIAMOND_SWORD, 1, 200};
     p.inventory.armor[0] = Stack{IRON_HELMET, 1, 7};
     p.inventory.armor[3] = Stack{LEATHER_BOOTS, 1};

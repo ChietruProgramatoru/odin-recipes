@@ -15,6 +15,9 @@ enum Block : BlockId {
     // Torches on a wall, named by the side of the torch's cell the wall is on. They drop and
     // show as TORCH; placing a torch on a wall picks one of these.
     TORCH_WALL_WEST, TORCH_WALL_EAST, TORCH_WALL_NORTH, TORCH_WALL_SOUTH,
+    // World generation (M4).
+    GRAVEL, CLAY_BLOCK, SANDSTONE, COAL_ORE, IRON_ORE, GOLD_ORE, DIAMOND_ORE, REDSTONE_ORE, LAPIS_ORE,
+    MOSSY_COBBLE, SPAWNER, LAVA, ICE, BIRCH_LOG, SPRUCE_LOG, BIRCH_LEAVES, SPRUCE_LEAVES,
     BLOCK_COUNT
 };
 
@@ -31,6 +34,14 @@ enum Tile : int {
     T_LEAVES_FAST, T_SKIN, T_HAIR, T_SHIRT, T_PANTS, T_SHOE, T_EYE,
     // The torch in the world (its inventory icon is in icons.h).
     T_TORCH,
+    // World generation blocks.
+    // (Sandstone and clay use the item table's tiles, see icons.h.)
+    T_GRAVEL, T_COAL_ORE, T_IRON_ORE, T_GOLD_ORE,
+    T_DIAMOND_ORE, T_REDSTONE_ORE, T_LAPIS_ORE, T_MOSSY_COBBLE, T_SPAWNER, T_LAVA, T_ICE, T_BIRCH_LOG_SIDE,
+    T_SPRUCE_LOG_SIDE, T_SPRUCE_LEAVES, T_SPRUCE_LEAVES_FAST,
+    // Grass and leaves tiles are grey and tinted by biome in the world (see BlockTint). These are
+    // the same tiles coloured in, for hotbar icons and dropped items.
+    T_GRASS_TOP_ICON, T_GRASS_ICON, T_LEAVES_ICON, T_BIRCH_LEAVES_ICON, T_SPRUCE_LEAVES_ICON,
     TILE_COUNT
 };
 
@@ -39,7 +50,12 @@ struct BlockInfo {
     int tiles[3];                 // tile index for top, sides, bottom
     std::optional<float> hardness; // seconds to break by hand (empty = unbreakable)
     std::optional<ItemId> drop;    // item dropped when broken (empty = nothing)
+    int drop_min = 1, drop_max = 1; // how many are dropped
 };
+
+// How a block's grey pixels are coloured in the world (only atlas pixels marked as tintable).
+enum class BlockTint { NONE, GRASS, FOLIAGE, BIRCH, SPRUCE };
+BlockTint block_tint(BlockId id);
 
 struct FoodInfo {
     int hunger;
@@ -52,6 +68,10 @@ const BlockInfo* block_info(ItemId id);
 bool is_solid(BlockId id);  // can't walk through
 bool is_block(ItemId id);   // placeable block
 bool is_opaque(BlockId id); // hides the faces behind it
+bool is_fluid(BlockId id);  // water or lava: you can't target or break it
+bool is_leaves(BlockId id);
+// Drawn see-through in the solid pass (alpha-tested), so neighbouring faces stay visible.
+bool is_cutout(BlockId id);
 bool is_torch(BlockId id);  // floor or wall torch (drawn as a thin stick, not a cube)
 // Light (0-15): how much a block dims light passing into it, and how much it gives off.
 int light_opacity(BlockId id);

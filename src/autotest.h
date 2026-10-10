@@ -1,6 +1,7 @@
 // Scripted smoke test: `PetrutzCraft --seed 7 --autotest OUT_DIR`.
 // Drives the real program for a few hundred frames: the menus, creating a world, mining, building,
-// cows, eating, fall damage, the F3 and F5 views, the pause menu, then saving, quitting to the
+// cows, eating, fall damage, a tour of the biomes and caves, the F3 and F5 views, the pause menu,
+// then saving, quitting to the
 // title and loading the world again. Saves screenshots to OUT_DIR and writes OUT_DIR/report.txt.
 // The world and options.txt go to OUT_DIR too, so the real saves are never touched.
 #pragma once
@@ -32,6 +33,7 @@ private:
     void finish(App& app);
     void menus(App& app);       // before the world exists
     void play(App& app, Game& g);  // the first visit to the world
+    void tour(App& app, Game& g);  // fly to a desert, a cold biome and into a cave
     void crafting(App& app, Game& g);  // the inventory, a crafting table and the creative item picker
     void reload(App& app);      // quit to the title and load the world again
 
@@ -43,6 +45,8 @@ private:
     std::optional<glm::ivec3> broken_;
     BlockId broken_block_ = 0;
     int hp_before_fall_ = 0;
+    glm::dvec3 tour_start_{0};
+    std::optional<glm::ivec3> cave_;
     uint64_t seed_;
     // Saving and loading.
     int phase_ = 0;  // 0 menus, 1 playing, 2 back at the title, 3 playing again

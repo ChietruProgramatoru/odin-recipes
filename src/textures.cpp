@@ -6,6 +6,7 @@
 #include <utility>
 #include <vector>
 
+#include "biome.h"
 #include "blocks.h"
 #include "icons.h"
 #include "rng.h"
@@ -27,10 +28,13 @@ Image noise_tile(Rng& rng, Rgb base, double spread = 0.15, uint8_t alpha = 255) 
     return img;
 }
 
-const Rgb GRASS_GREEN{95, 159, 53};
 const Rgb DIRT_BROWN{134, 96, 67};
 
-Image grass_top(Rng& rng) { return noise_tile(rng, GRASS_GREEN, 0.18); }
+// Alpha 254 marks a pixel as grey grass or leaves, coloured by the biome when drawn (see renderer.cpp).
+constexpr uint8_t TINTED = 254;
+const Rgb GREY{215, 215, 215};
+
+Image grass_top(Rng& rng) { return noise_tile(rng, GREY, 0.14, TINTED); }
 
 Image dirt(Rng& rng) {
     Image img = noise_tile(rng, DIRT_BROWN, 0.12);
@@ -45,7 +49,7 @@ Image grass_side(Rng& rng) {
     Image img = dirt(rng);
     for (int x = 0; x < TILE; ++x) {
         int depth = 3 + rng.choice({0, 0, 1, 1, 2});
-        for (int y = 0; y < depth; ++y) img.at(x, y) = shade(GRASS_GREEN, 1 + rng.uniform(-0.15, 0.15));
+        for (int y = 0; y < depth; ++y) img.at(x, y) = shade(GREY, 1 + rng.uniform(-0.12, 0.12), TINTED);
     }
     return img;
 }
@@ -118,14 +122,14 @@ Image log_top(Rng& rng) {
     return img;
 }
 
-const Rgb LEAF_GREEN{58, 120, 36};
+const Rgb LEAF_GREY{185, 185, 185};
 
 // Fancy leaves: see-through gaps between the leaves.
 Image leaves(Rng& rng) {
-    Image img = noise_tile(rng, LEAF_GREEN, 0.22);
+    Image img = noise_tile(rng, LEAF_GREY, 0.22, TINTED);
     for (int i = 0; i < 26; ++i) {
         int x = rng.below(TILE), y = rng.below(TILE);
-        img.at(x, y) = shade(LEAF_GREEN, 0.5);
+        img.at(x, y) = shade(LEAF_GREY, 0.5, TINTED);
     }
     for (int i = 0; i < 40; ++i) img.at(rng.below(TILE), rng.below(TILE)).a = 0;
     return img;
@@ -133,10 +137,25 @@ Image leaves(Rng& rng) {
 
 // Fast leaves: solid, with dark gaps instead of holes.
 Image leaves_fast(Rng& rng) {
-    Image img = noise_tile(rng, LEAF_GREEN, 0.22);
+    Image img = noise_tile(rng, LEAF_GREY, 0.22, TINTED);
     for (int i = 0; i < 50; ++i) {
         int x = rng.below(TILE), y = rng.below(TILE);
-        img.at(x, y) = shade(LEAF_GREEN, 0.3);
+        img.at(x, y) = shade(LEAF_GREY, 0.3, TINTED);
+    }
+    return img;
+}
+
+// Spruce needles: short diagonal strokes, see-through (fancy) or with dark gaps (fast).
+Image spruce_leaves(Rng& rng, bool fancy) {
+    Image img = noise_tile(rng, LEAF_GREY, 0.15, TINTED);
+    for (int i = 0; i < 18; ++i) {
+        int x = rng.below(TILE), y = rng.below(TILE);
+        for (int k = 0; k < 3; ++k) img.at((x + k) % TILE, (y + k) % TILE) = shade(LEAF_GREY, 0.55, TINTED);
+    }
+    for (int i = 0; i < 36; ++i) {
+        Rgba& p = img.at(rng.below(TILE), rng.below(TILE));
+        if (fancy) p.a = 0;
+        else p = shade(LEAF_GREY, 0.3, TINTED);
     }
     return img;
 }
@@ -179,6 +198,105 @@ Image brick(Rng& rng) {
         }
     }
     return img;
+}
+
+Image gravel(Rng& rng) {
+    Image img = noise_tile(rng, {130, 124, 122}, 0.1);
+    for (int i = 0; i < 22; ++i) {
+        int x = rng.below(TILE), y = rng.below(TILE);
+        double f = rng.choice({0.6, 0.75, 1.2, 1.35});
+        Rgb c = rng.below(3) == 0 ? Rgb{150, 120, 110} : Rgb{130, 124, 122};
+        for (int k = 0; k < 4; ++k) img.at((x + (k & 1)) % TILE, (y + (k >> 1)) % TILE) = shade(c, f * rng.uniform(0.95, 1.05));
+    }
+    return img;
+}
+
+// Stone with clusters of coloured specks.
+std::function<Image(Rng&)> ore(Rgb color) {
+    return [=](Rng& rng) {
+        Image img = stone(rng);
+        for (int i = 0; i < 5; ++i) {
+            int x = rng.randint(1, TILE - 3), y = rng.randint(1, TILE - 3);
+            for (int k = 0; k < 5; ++k)
+                img.at(x + rng.below(3), y + rng.below(3)) = shade(color, rng.uniform(0.8, 1.15));
+        }
+        return img;
+    };
+}
+
+Image mossy_cobble(Rng& rng) {
+    Image img = cobble(rng);
+    for (int i = 0; i < 7; ++i) {
+        int x = rng.below(TILE), y = rng.below(TILE), r = rng.randint(1, 2);
+        for (int dy = -r; dy <= r; ++dy)
+            for (int dx = -r; dx <= r; ++dx)
+                if (dx * dx + dy * dy <= r * r + 1)
+                    img.at((x + dx + TILE) % TILE, (y + dy + TILE) % TILE) = shade({70, 110, 50}, rng.uniform(0.8, 1.15));
+    }
+    return img;
+}
+
+// A dark iron cage you can see through.
+Image spawner(Rng& rng) {
+    Image img(TILE, TILE, {0, 0, 0, 0});
+    for (int y = 0; y < TILE; ++y)
+        for (int x = 0; x < TILE; ++x) {
+            bool frame = x == 0 || y == 0 || x == TILE - 1 || y == TILE - 1;
+            bool bar = x % 5 == 0 || y % 5 == 0;
+            if (frame || bar) img.at(x, y) = shade({52, 60, 72}, frame ? 1.0 : rng.uniform(0.7, 1.0));
+        }
+    return img;
+}
+
+Image lava(Rng& rng) {
+    Image img = noise_tile(rng, {207, 92, 20}, 0.12);
+    for (int i = 0; i < 12; ++i) {
+        int x = rng.below(TILE), y = rng.below(TILE);
+        for (int k = 0; k < 3; ++k) img.at((x + k) % TILE, y) = shade({252, 190, 60}, rng.uniform(0.9, 1.05));
+    }
+    return img;
+}
+
+Image ice(Rng& rng) {
+    Image img = noise_tile(rng, {165, 195, 250}, 0.04, 165);
+    for (int i = 0; i < 4; ++i) {
+        int x = rng.below(TILE), y = rng.below(TILE);
+        for (int k = 0; k < 4; ++k) img.at((x + k) % TILE, (y + k) % TILE) = shade({220, 235, 255}, 1.0, 190);
+    }
+    return img;
+}
+
+Image birch_log(Rng& rng) {
+    Image img = noise_tile(rng, {216, 215, 208}, 0.04);
+    for (int i = 0; i < 10; ++i) {
+        int x = rng.below(TILE), y = rng.below(TILE), n = rng.randint(2, 4);
+        for (int k = 0; k < n; ++k) img.at((x + k) % TILE, y) = shade({40, 40, 36}, rng.uniform(0.9, 1.3));
+    }
+    return img;
+}
+
+Image spruce_log(Rng& rng) {
+    Image img(TILE, TILE);
+    double col_f[TILE];
+    for (double& f : col_f) f = rng.uniform(0.75, 1.15);
+    for (int y = 0; y < TILE; ++y)
+        for (int x = 0; x < TILE; ++x) img.at(x, y) = shade({62, 44, 26}, col_f[x] * rng.uniform(0.92, 1.08));
+    return img;
+}
+
+// A grey grass/leaves tile coloured in like the world would, for icons.
+std::function<Image(Rng&)> coloured(std::function<Image(Rng&)> grey, Rgb8 tint) {
+    return [=](Rng& rng) {
+        Image img = grey(rng);
+        for (int y = 0; y < img.height; ++y)
+            for (int x = 0; x < img.width; ++x) {
+                Rgba& p = img.at(x, y);
+                if (p.a != TINTED) continue;
+                p = {static_cast<uint8_t>(p.r * tint.r / 255), static_cast<uint8_t>(p.g * tint.g / 255),
+                     static_cast<uint8_t>(p.b * tint.b / 255), 255};
+            }
+        return img;
+    };
 }
 
 Image cow_hide(Rng& rng) {
@@ -321,6 +439,17 @@ std::map<int, Image> make_tiles(int seed) {
                                                {'w', {255, 180, 180, 255}}})},
         {T_BEEF, padded_sprite(BEEF_SPRITE, {{'k', {90, 20, 20, 255}}, {'r', {215, 70, 70, 255}},
                                              {'p', {240, 150, 150, 255}}, {'w', {245, 225, 225, 255}}})},
+        {T_GRAVEL, gravel}, {T_COAL_ORE, ore({35, 35, 35})}, {T_IRON_ORE, ore({216, 175, 147})},
+        {T_GOLD_ORE, ore({250, 236, 78})}, {T_DIAMOND_ORE, ore({100, 232, 240})}, {T_REDSTONE_ORE, ore({200, 10, 10})},
+        {T_LAPIS_ORE, ore({30, 64, 175})}, {T_MOSSY_COBBLE, mossy_cobble}, {T_SPAWNER, spawner}, {T_LAVA, lava},
+        {T_ICE, ice}, {T_BIRCH_LOG_SIDE, birch_log}, {T_SPRUCE_LOG_SIDE, spruce_log},
+        {T_SPRUCE_LEAVES, [](Rng& rng) { return spruce_leaves(rng, true); }},
+        {T_SPRUCE_LEAVES_FAST, [](Rng& rng) { return spruce_leaves(rng, false); }},
+        {T_GRASS_TOP_ICON, coloured(grass_top, grass_color(ICON_TEMPERATURE, ICON_RAINFALL))},
+        {T_GRASS_ICON, coloured(grass_side, grass_color(ICON_TEMPERATURE, ICON_RAINFALL))},
+        {T_LEAVES_ICON, coloured(leaves, foliage_color(ICON_TEMPERATURE, ICON_RAINFALL))},
+        {T_BIRCH_LEAVES_ICON, coloured(leaves, BIRCH_COLOR)},
+        {T_SPRUCE_LEAVES_ICON, coloured([](Rng& rng) { return spruce_leaves(rng, true); }, SPRUCE_COLOR)},
     };
     std::map<int, Image> tiles;
     for (const auto& [index, gen] : generators) {

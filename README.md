@@ -11,7 +11,16 @@ It runs on Windows (the main target) and Linux.
 
 - **Title screen and worlds**: Beta-style gray buttons on a dark dirt background, all drawn by the code. Singleplayer lists your worlds (newest first) and lets you create, rename and delete them. A new world takes a name and an optional seed: a number is used as is, any other text is turned into a number, and a blank seed picks a random one.
 - **Saving**: worlds are saved every 60 seconds, when you open the pause menu and when you quit. Blocks you changed, where you stand, health, hunger, your whole inventory and armor, cows and dropped items all come back when you load the world.
-- **Endless terrain** generated from Perlin noise: grassy hills, sandy beaches, lakes, rare stone peaks and oak trees. The world is 128 blocks tall with the sea at height 64. Chunks are generated (or loaded from the save) and meshed on background threads as you walk, so the game doesn't stutter.
+- **Endless Beta-style terrain** from 3D Perlin noise: rolling hills, steep cliffs with overhangs, the odd floating island, oceans with sand and gravel beaches. The world is 128 blocks tall with the sea at height 64. Chunks are generated (or loaded from the save) and meshed on background threads as you walk, so the game doesn't stutter.
+- **Biomes** picked from temperature and rainfall like Beta: Rainforest, Swamp, Seasonal Forest, Forest, Savanna, Shrubland, Taiga, Desert, Plains, Ice Desert and Tundra. Grass and leaves change colour with the climate, deserts are sand with sandstone underneath, and water freezes over in Taiga, Tundra and Ice Desert. F3 shows the biome you are in.
+
+  ![Hills with overhangs and a floating island](screenshots/hills.png)
+
+  ![Taiga with spruces and a frozen lake](screenshots/taiga.png)
+- **Trees by biome**: oaks, big oaks with branches, birches in forests, spruces and tall pines in the taiga. Deserts, plains and tundra have hardly any trees.
+- **Underground**: winding caves and round cave rooms (filled with lava near the bottom), water and lava lakes underground and on the surface, pockets of dirt and gravel, clay under shallow water, and ores at Beta's depths: coal anywhere, iron below 64, gold and lapis lazuli below 32, redstone and diamond below 16.
+- **Dungeons**: small mossy cobblestone rooms around a monster spawner, hidden where caves meet. The spawner stays quiet until monsters arrive (M10), and the loot chests come once chests exist.
+- **Ores drop Beta's items**: coal, diamonds, 4–5 redstone, 4–8 lapis lazuli, and clay blocks give 4 clay. Iron and gold ore drop themselves, ready for smelting (M7).
 - **Building**: hold the left mouse button to mine a block. The block drops as an item that you pick up by walking over it. Right click places the selected block.
 - **Health and hunger**: you have 10 hearts and 10 drumsticks. Walking, sprinting, jumping, mining and fighting use up hunger. When you are well fed you slowly heal. When you are starving you slowly lose health, down to half a heart. Falls of more than 3 blocks hurt, and a big enough fall kills you.
 - **Cows** wander, graze and hop up ledges. Punch one and it panics and runs away. Each cow drops 1 to 3 beef, which you eat with a right click to restore 6 hunger.
@@ -37,7 +46,7 @@ It runs on Windows (the main target) and Linux.
 
   ![Night with a torch](screenshots/night.png)
 - **Clouds** drift slowly over the world at height 108: 3D boxes with Fancy graphics, a flat layer with Fast graphics. They can be turned off in Video Settings.
-- **Debug screen** (F3) with your position, chunk, facing, light level (sky and block), time of day, seed and frame rate. F1 hides the HUD and F2 saves a screenshot.
+- **Debug screen** (F3) with your position, chunk, facing, biome, light level (sky and block), time of day, seed and frame rate. F1 hides the HUD and F2 saves a screenshot.
 - All textures and the font are drawn by the code itself (no image files), with smooth lighting (ambient occlusion plus light levels blended across each face) and distance fog.
 
 ## Build and run on Windows
@@ -150,7 +159,7 @@ ctest --test-dir build --output-on-failure        # logic tests (add -C Release 
 xvfb-run -a -s "-screen 0 1280x720x24" ./build/PetrutzCraft --seed 7 --autotest OUT_DIR
 ```
 
-The second command plays a scripted game and saves screenshots plus `report.txt` to `OUT_DIR`: it opens the title and options screens, creates a world from the Create New World screen, finds a cow, kills it, picks up and eats the beef, mines and places a block, crafts planks and a crafting table in the inventory screen, puts on a chestplate, crafts a pickaxe on a placed crafting table, takes a stack from the creative item picker, falls, flies, takes F5 and F3 pictures, places a torch and glowstone and checks their light, takes pictures at night and at sunset, opens the pause menu, changes a block, saves and quits to the title, and loads the world again to check that everything came back. Its world and `options.txt` go in `OUT_DIR`, so your own saves are never touched. It exits with an error if any check fails. On Windows or a Linux desktop, run it without `xvfb-run`. GitHub runs both on every push (the screenshot test on Linux only, since GitHub's Windows machines have no graphics card).
+The second command plays a scripted game and saves screenshots plus `report.txt` to `OUT_DIR`: it opens the title and options screens, creates a world from the Create New World screen, finds a cow, kills it, picks up and eats the beef, mines and places a block, crafts planks and a crafting table in the inventory screen, puts on a chestplate, crafts a pickaxe on a placed crafting table, takes a stack from the creative item picker, falls, flies, visits a desert, hills, a taiga and a torch-lit cave (checking for sandstone, spruces, frozen water and every ore), takes F5 and F3 pictures, places a torch and glowstone and checks their light, takes pictures at night and at sunset, opens the pause menu, changes a block, saves and quits to the title, and loads the world again to check that everything came back. Its world and `options.txt` go in `OUT_DIR`, so your own saves are never touched. It exits with an error if any check fails. On Windows or a Linux desktop, run it without `xvfb-run`. GitHub runs both on every push (the screenshot test on Linux only, since GitHub's Windows machines have no graphics card).
 
 ## Project layout
 
@@ -166,7 +175,9 @@ src/
   options.cpp      options.txt and the key bindings
   json.cpp         a small JSON reader and writer
   zlib.cpp         zlib compression and decompression (for saves and PNG screenshots)
-  world.cpp        chunk storage, terrain generation, meshing (with ambient occlusion and light), ray casting
+  world.cpp        chunk storage, meshing (with ambient occlusion, light and biome colours), ray casting
+  worldgen.cpp     world generation: 3D noise terrain, biome surfaces, caves, lakes, dungeons, ores, trees
+  biome.cpp        biomes from temperature and rainfall, grass and leaf colours
   light.cpp        sky light and block light: lighting new chunks and updating light after block changes
   sky.cpp          time of day: sun position, sky, fog and cloud colours, how dark the night is, the cloud map
   streamer.cpp     background threads that generate and mesh chunks
@@ -183,7 +194,7 @@ src/
   textures.cpp     procedurally generated pixel-art textures
   font.cpp         the 5x7 pixel font
   blocks.cpp       block definitions
-  noise.cpp        Perlin noise
+  noise.cpp        2D and 3D Perlin noise
   png.cpp          PNG writer for autotest screenshots
   gl.cpp           loads the OpenGL functions the game uses
   autotest.cpp     the scripted smoke test
@@ -192,12 +203,16 @@ tests/             doctest logic tests (no window needed)
 
 ## Known limits
 
-- There are no furnaces, caves or hostile mobs yet.
-- No sound, music, weather or monsters yet, and no options for them until they arrive. Rain, snow, thunderstorms and beds come in a second M5 update, after biomes (M4).
+- There are no hostile mobs yet.
+- Any block can be mined by hand for now; pickaxe rules come with tools (M3).
+- Lava and water stand still and lava doesn't burn you yet (M6). Lava, water and ice are see-through for the crosshair, and ice drops nothing (like Beta).
+- No tall grass, flowers, mushrooms, sugar cane, cacti, pumpkins or snow layers yet: they need non-cube shapes and come in M11.
+- Worlds saved before world generation changed keep the chunks you visited, so there is a visible cliff where the old terrain meets the new.
+- No sound, music, weather or monsters yet, and no options for them until they arrive. Rain, snow, thunderstorms and beds come in a second M5 update.
 - Tools, armor, doors, beds and most other crafted things don't do anything yet; they arrive with M3, M5, M11 and the other milestones. Chests and furnaces are plain blocks for now.
-- Ingredients like iron, coal, string and dyes can't be found in survival yet (ores come in M4, mobs in M10); the creative item picker has them.
-- Glowstone drops itself when broken (Beta drops glowstone dust, which comes with the Nether in M14). Lava, fire, furnaces and jack-o'-lanterns will give off light once they exist.
+- Iron and gold need smelting (M7), and string, feathers and the like come from mobs (M10); until then the creative item picker has them.
+- Glowstone drops itself when broken (Beta drops glowstone dust, which comes with the Nether in M14). Fire, furnaces and jack-o'-lanterns will give off light once they exist; lava already does.
 - Light levels are not stored in the save files: they are worked out again when a chunk is loaded.
 - The menus and text use only plain ASCII letters, numbers and symbols.
 - Worlds saved by this version can't be read by the Python version (or by Minecraft).
-- The same seed makes a different world than the Python version did, because the random numbers come from a different generator. The terrain rules are the same.
+- The same seed makes a different world than the Python version did, and than Minecraft Beta: the goal is Beta's look and feel, not the same worlds.

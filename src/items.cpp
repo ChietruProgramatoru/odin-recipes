@@ -43,12 +43,17 @@ struct Table {
 
 Table build() {
     Table t;
-    // Real blocks first (not water). The crafting table, chest and furnace get their own icons below.
+    // Real blocks first (not water or lava). The crafting table, chest and furnace get their own icons
+    // below; grass and leaves use coloured-in copies of their grey (biome-tinted) tiles.
     for (int b = GRASS; b < BLOCK_COUNT; ++b) {
-        if (b == WATER || is_torch(b)) continue;  // the torch is a flat icon, added below
+        if (b == WATER || b == LAVA || is_torch(b)) continue;  // the torch is a flat icon, added below
         const BlockInfo* info = block_info(b);
         t.cube(b, info->name, info->tiles[0], info->tiles[1], info->tiles[1]);
     }
+    t.cube(GRASS, "Grass", T_GRASS_TOP_ICON, T_GRASS_ICON, T_GRASS_ICON);
+    t.cube(LEAVES, "Leaves", T_LEAVES_ICON, T_LEAVES_ICON, T_LEAVES_ICON);
+    t.cube(BIRCH_LEAVES, "Birch Leaves", T_BIRCH_LEAVES_ICON, T_BIRCH_LEAVES_ICON, T_BIRCH_LEAVES_ICON);
+    t.cube(SPRUCE_LEAVES, "Spruce Leaves", T_SPRUCE_LEAVES_ICON, T_SPRUCE_LEAVES_ICON, T_SPRUCE_LEAVES_ICON);
     t.cube(CRAFTING_TABLE, "Crafting Table", IT_CRAFT_TOP, IT_CRAFT_FRONT, IT_CRAFT_SIDE);
     t.cube(CHEST, "Chest", IT_CHEST_TOP, IT_CHEST_FRONT, IT_CHEST_SIDE);
     t.cube(FURNACE, "Furnace", IT_FURNACE_TOP, IT_FURNACE_FRONT, IT_FURNACE_SIDE);
@@ -59,9 +64,7 @@ Table build() {
                IT_WOOL + c, IT_WOOL + c);
     t.cube(PUMPKIN, "Pumpkin", IT_PUMPKIN_TOP, IT_PUMPKIN_FACE, IT_PUMPKIN_SIDE);
     t.cube(JACK_O_LANTERN, "Jack 'o' Lantern", IT_PUMPKIN_TOP, IT_JACK_FACE, IT_PUMPKIN_SIDE);
-    t.cube(SANDSTONE, "Sandstone", IT_SANDSTONE_TOP, IT_SANDSTONE_SIDE, IT_SANDSTONE_SIDE);
     t.cube(SNOW_BLOCK, "Snow", IT_SNOW, IT_SNOW, IT_SNOW);
-    t.cube(CLAY_BLOCK, "Clay", IT_CLAY, IT_CLAY, IT_CLAY);
     t.cube(GOLD_BLOCK, "Block of Gold", IT_GOLD_BLOCK, IT_GOLD_BLOCK, IT_GOLD_BLOCK);
     t.cube(IRON_BLOCK, "Block of Iron", IT_IRON_BLOCK, IT_IRON_BLOCK, IT_IRON_BLOCK);
     t.cube(DIAMOND_BLOCK, "Block of Diamond", IT_DIAMOND_BLOCK, IT_DIAMOND_BLOCK, IT_DIAMOND_BLOCK);
@@ -228,6 +231,8 @@ std::string item_name(ItemId id) {
 ItemId current_item_id(ItemId id) {
     if (id == OLD_TORCH_ITEM) return TORCH;
     if (id == OLD_GLOWSTONE_ITEM) return GLOWSTONE;
+    if (id == OLD_SANDSTONE_ITEM) return SANDSTONE;
+    if (id == OLD_CLAY_ITEM) return CLAY_BLOCK;
     return id;
 }
 

@@ -52,7 +52,9 @@ TEST_CASE("the cow hit box is found by a ray pointed at it") {
 TEST_CASE("item drops fall and settle") {
     World w(5);
     Rng rng(4);
-    int y = w.surface_y(8, 8);
+    const int y = HEIGHT - 20;
+    for (int x = 4; x <= 12; ++x)  // a platform in the air, so there is no water to float in
+        for (int z = 4; z <= 12; ++z) w.set_block(x, y - 1, z, STONE);
     ItemDrop drop(w, Stack{BEEF, 1}, 8.5, y + 2, 8.5, rng);
     for (int i = 0; i < 300; ++i) drop.tick(1.0 / 60);
     CHECK(drop.body.on_ground);

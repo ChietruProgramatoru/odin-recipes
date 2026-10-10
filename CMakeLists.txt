@@ -64,6 +64,8 @@ add_library(petrutz_core STATIC
   src/container.cpp
   src/noise.cpp
   src/world.cpp
+  src/worldgen.cpp
+  src/biome.cpp
   src/light.cpp
   src/sky.cpp
   src/streamer.cpp
@@ -111,6 +113,7 @@ enable_testing()
 add_executable(petrutz_tests
   tests/test_main.cpp
   tests/test_world.cpp
+  tests/test_worldgen.cpp
   tests/test_survival.cpp
   tests/test_crafting.cpp
   tests/test_streamer.cpp

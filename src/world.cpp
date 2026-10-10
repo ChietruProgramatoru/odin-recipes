@@ -57,7 +57,6 @@ std::array<Face, 6> build_faces() {
 
 const std::array<Face, 6> FACES = build_faces();
 constexpr float AO_LEVELS[4] = {1.0f, 0.78f, 0.62f, 0.48f};
-constexpr float WATER_SURFACE = 0.875f;
 
 struct BlockUvs {
     std::array<std::array<float, 4>, 3> uv;  // top, side, bottom
@@ -71,11 +70,22 @@ const std::array<BlockUvs, BLOCK_COUNT> BLOCK_UVS = [] {
 }();
 
 // Fast graphics draws leaves as solid blocks with their own darker tile.
-const BlockUvs FAST_LEAVES_UVS = [] {
+BlockUvs uniform_uvs(int tile) {
     BlockUvs out{};
-    for (auto& uv : out.uv) uv = tile_uv(T_LEAVES_FAST);
+    for (auto& uv : out.uv) uv = tile_uv(tile);
     return out;
+}
+const BlockUvs FAST_LEAVES_UVS = uniform_uvs(T_LEAVES_FAST);
+const BlockUvs FAST_SPRUCE_LEAVES_UVS = uniform_uvs(T_SPRUCE_LEAVES_FAST);
+
+const std::array<bool, 256> LEAVES_TABLE = [] {
+    std::array<bool, 256> o{};
+    for (int b = 0; b < 256; ++b) o[b] = is_leaves(static_cast<BlockId>(b));
+    return o;
 }();
+
+// Liquids and ice: the top is lowered when nothing of the same kind sits on it.
+constexpr float LIQUID_SURFACE = 0.875f;
 
 const std::array<bool, 256> OPAQUE = [] {
     std::array<bool, 256> o{};
@@ -83,101 +93,11 @@ const std::array<bool, 256> OPAQUE = [] {
     return o;
 }();
 
-void place(Chunk& chunk, int wx, int y, int wz, BlockId block, bool only_air = false) {
-    int lx = wx - chunk.cx * CHUNK, lz = wz - chunk.cz * CHUNK;
-    if (lx >= 0 && lx < CHUNK && lz >= 0 && lz < CHUNK && y >= 0 && y < HEIGHT) {
-        BlockId& b = chunk.blocks[Chunk::index(lx, y, lz)];
-        if (!only_air || b == AIR) b = block;
-    }
-}
-
 int ifloor(double v) { return static_cast<int>(std::floor(v)); }
 
 }  // namespace
 
 const std::array<FaceDef, 6>& face_defs() { return FACE_DEFS; }
-
-double hash01(int x, int z, int salt, uint64_t seed) {
-    uint32_t h = (static_cast<uint32_t>(x) * 73856093u) ^ (static_cast<uint32_t>(z) * 19349663u) ^
-                 (static_cast<uint32_t>(salt) * 83492791u) ^ (static_cast<uint32_t>(seed) * 2654435761u);
-    h = (h ^ (h >> 13)) * 1274126177u;
-    return static_cast<double>(h ^ (h >> 16)) / 4294967296.0;
-}
-
-// --- Terrain ------------------------------------------------------------------------
-
-TerrainGenerator::TerrainGenerator(uint64_t seed)
-    : seed_(seed), continent_(seed), hills_(seed + 1), mountains_(seed + 2) {}
-
-int TerrainGenerator::height(int wx, int wz) const {
-    double c = continent_.fbm(wx / 220.0, wz / 220.0, 3);
-    double hl = hills_.fbm(wx / 55.0, wz / 55.0, 4);
-    double m = std::max(0.0, mountains_.fbm(wx / 110.0 + 50, wz / 110.0 + 50, 3));
-    int h = static_cast<int>(SEA_LEVEL + 3 + c * 14 + hl * 6 + m * m * 70);
-    return std::clamp(h, 3, HEIGHT - 12);
-}
-
-bool TerrainGenerator::is_tree(int wx, int wz) const { return hash01(wx, wz, 1, seed_) < 0.011; }
-
-std::unique_ptr<Chunk> TerrainGenerator::generate(int cx, int cz) const {
-    auto chunk = std::make_unique<Chunk>(cx, cz);
-    auto& b = chunk->blocks;
-    const int bx = cx * CHUNK, bz = cz * CHUNK;
-
-    // Heights for the chunk plus a 2-block margin (trees may hang over from neighbouring columns).
-    constexpr int M = 2, HW = CHUNK + 2 * M;
-    int heights[HW * HW];
-    for (int z = 0; z < HW; ++z)
-        for (int x = 0; x < HW; ++x) heights[z * HW + x] = height(bx - M + x, bz - M + z);
-    auto h_at = [&](int wx, int wz) { return heights[(wz - bz + M) * HW + (wx - bx + M)]; };
-
-    int top = SEA_LEVEL;
-    for (int lz = 0; lz < CHUNK; ++lz)
-        for (int lx = 0; lx < CHUNK; ++lx) {
-            int h = h_at(bx + lx, bz + lz);
-            bool beach = h <= SEA_LEVEL + 1;
-            b[Chunk::index(lx, 0, lz)] = BEDROCK;
-            for (int y = 1; y <= h; ++y) {
-                BlockId blk;
-                if (y < h - 3)
-                    blk = STONE;
-                else if (y < h)
-                    blk = beach ? SAND : DIRT;
-                else if (beach)
-                    blk = SAND;
-                else
-                    blk = h > SNOWLESS_PEAK ? STONE : GRASS;
-                b[Chunk::index(lx, y, lz)] = blk;
-            }
-            for (int y = h + 1; y <= SEA_LEVEL; ++y) b[Chunk::index(lx, y, lz)] = WATER;
-            top = std::max(top, h);
-        }
-
-    for (int wz = bz - M; wz < bz + CHUNK + M; ++wz)
-        for (int wx = bx - M; wx < bx + CHUNK + M; ++wx) {
-            if (!is_tree(wx, wz)) continue;
-            int h = h_at(wx, wz);
-            if (h <= SEA_LEVEL + 1 || h > SNOWLESS_PEAK - 2) continue;
-            int trunk = 4 + static_cast<int>(hash01(wx, wz, 2, seed_) * 3);
-            int crown = h + trunk;
-            for (int dy = -2; dy < 2; ++dy) {
-                int r = dy < 0 ? 2 : 1;
-                for (int dz = -r; dz <= r; ++dz)
-                    for (int dx = -r; dx <= r; ++dx) {
-                        if (r == 2 && std::abs(dx) == 2 && std::abs(dz) == 2 &&
-                            hash01(wx + dx, wz + dz, 3 + dy, seed_) < 0.6)
-                            continue;
-                        if (dy == 1 && std::abs(dx) == 1 && std::abs(dz) == 1) continue;
-                        place(*chunk, wx + dx, crown + dy, wz + dz, LEAVES, true);
-                    }
-            }
-            for (int y = h + 1; y < crown; ++y) place(*chunk, wx, y, wz, LOG);
-            place(*chunk, wx, h, wz, DIRT);
-            top = std::max(top, crown + 2);
-        }
-    chunk->max_y = std::min(HEIGHT - 1, top + 1);
-    return chunk;
-}
 
 // --- World storage ------------------------------------------------------------------
 
@@ -200,7 +120,8 @@ Chunk& World::chunk(int cx, int cz) {
 std::unique_ptr<Chunk> World::load_or_generate(int cx, int cz) const {
     std::unique_ptr<Chunk> c;
     if (store_) c = store_->load(cx, cz);
-    if (!c) c = generator_.generate(cx, cz);
+    if (c) c->climate = generator_.climate(cx, cz);
+    else c = generator_.generate(cx, cz);
     light_chunk(*c);
     return c;
 }
@@ -304,7 +225,7 @@ std::optional<RayHit> World::raycast(glm::vec3 origin, glm::vec3 direction, floa
     float t = 0.0f;
     while (t <= max_dist) {
         BlockId blk = get_block(pos.x, pos.y, pos.z);
-        if (blk != AIR && blk != WATER) return RayHit{pos, prev, t};
+        if (blk != AIR && !is_fluid(blk)) return RayHit{pos, prev, t};
         prev = pos;
         int axis = 0;
         if (t_max[1] < t_max[axis]) axis = 1;
@@ -370,7 +291,8 @@ PaddedLight World::padded_light(int cx, int cz) {
 ChunkMesh World::build_mesh_now(int cx, int cz, MeshOptions options) {
     Padded P = padded(cx, cz);
     PaddedLight L = padded_light(cx, cz);
-    return build_mesh(P, L, cx, cz, chunk(cx, cz).max_y, options);
+    const Chunk& c = chunk(cx, cz);
+    return build_mesh(P, L, cx, cz, c.max_y, options, &c.climate);
 }
 
 namespace {
@@ -407,11 +329,20 @@ void add_torch(MeshData& mesh, float wx, float wy, float wz, BlockId blk, uint8_
 
 }  // namespace
 
-ChunkMesh build_mesh(const Padded& P, const PaddedLight& L, int cx, int cz, int max_y, MeshOptions options) {
+ChunkMesh build_mesh(const Padded& P, const PaddedLight& L, int cx, int cz, int max_y, MeshOptions options,
+                     const Climate* climate) {
     ChunkMesh mesh;
     const int ox = cx * CHUNK, oz = cz * CHUNK;
     const int up = off(0, 1, 0);
     const int top = std::min(HEIGHT, max_y + 1);
+    const Rgb8 white{255, 255, 255};
+    // Grass and leaf colours per column.
+    std::array<Rgb8, CHUNK * CHUNK> grass, foliage;
+    for (int i = 0; i < CHUNK * CHUNK; ++i) {
+        double t = climate ? climate->temp(i) : ICON_TEMPERATURE, r = climate ? climate->rain(i) : ICON_RAINFALL;
+        grass[i] = grass_color(t, r);
+        foliage[i] = foliage_color(t, r);
+    }
     for (int y = 0; y < top; ++y)
         for (int z = 0; z < CHUNK; ++z) {
             int base = (y + 1) * LAYER + (z + 1) * PW + 1;
@@ -425,21 +356,46 @@ ChunkMesh build_mesh(const Padded& P, const PaddedLight& L, int cx, int cz, int 
                     continue;
                 }
                 if (blk == WATER) {
-                    float h = P[i + up] == WATER ? 1.0f : WATER_SURFACE;
+                    float h = P[i + up] == WATER ? 1.0f : LIQUID_SURFACE;
                     const auto& uv = BLOCK_UVS[WATER].uv[0];
                     for (const Face& f : FACES) {
                         BlockId nb = P[i + f.offset];
-                        if (f.offset == -up || (nb != AIR && !is_torch(nb))) continue;
+                        if (f.offset == -up || (nb != AIR && !is_torch(nb) && !is_cutout(nb))) continue;
                         float l = f.def->light, s = sky_of(L[i + f.offset]), b = block_of(L[i + f.offset]);
                         mesh.water.quad(wx, wy, wz, f.def->corners, h, uv, {l, l, l, l}, {s, s, s, s}, {b, b, b, b});
                     }
                     continue;
                 }
-                const auto& uvs = (blk == LEAVES && !options.fancy_leaves) ? FAST_LEAVES_UVS.uv : BLOCK_UVS[blk].uv;
+                if (blk == LAVA || blk == ICE) {
+                    // Lava is drawn solid, ice see-through with the water.
+                    float h = (blk == ICE || P[i + up] == blk) ? 1.0f : LIQUID_SURFACE;
+                    MeshData& out = blk == LAVA ? mesh.solid : mesh.water;
+                    for (const Face& f : FACES) {
+                        BlockId nb = P[i + f.offset];
+                        if (OPAQUE[nb] || nb == blk || (blk == ICE && nb == WATER)) continue;
+                        float l = f.def->light, s = sky_of(L[i + f.offset]), b = block_of(L[i + f.offset]);
+                        out.quad(wx, wy, wz, f.def->corners, h, BLOCK_UVS[blk].uv[f.def->slot], {l, l, l, l},
+                                 {s, s, s, s}, {b, b, b, b});
+                    }
+                    continue;
+                }
+                bool leaves = LEAVES_TABLE[blk];
+                const auto& uvs = (leaves && !options.fancy_leaves)
+                                      ? (blk == SPRUCE_LEAVES ? FAST_SPRUCE_LEAVES_UVS.uv : FAST_LEAVES_UVS.uv)
+                                      : BLOCK_UVS[blk].uv;
+                Rgb8 tint = white;
+                switch (block_tint(blk)) {
+                    case BlockTint::GRASS: tint = grass[(z << 4) | x]; break;
+                    case BlockTint::FOLIAGE: tint = foliage[(z << 4) | x]; break;
+                    case BlockTint::BIRCH: tint = BIRCH_COLOR; break;
+                    case BlockTint::SPRUCE: tint = SPRUCE_COLOR; break;
+                    case BlockTint::NONE: break;
+                }
                 for (const Face& f : FACES) {
                     const int front = i + f.offset;
                     BlockId nb = P[front];
-                    if (OPAQUE[nb] && !(nb == LEAVES && options.fancy_leaves)) continue;
+                    if (OPAQUE[nb] && !(LEAVES_TABLE[nb] && options.fancy_leaves)) continue;
+                    if (nb == blk && is_cutout(blk)) continue;
                     std::array<float, 4> shades, sky, block;
                     for (int c = 0; c < 4; ++c) {
                         int occ = 0;
@@ -465,7 +421,7 @@ ChunkMesh build_mesh(const Padded& P, const PaddedLight& L, int cx, int cz, int 
                         sky[c] = s;
                         block[c] = b;
                     }
-                    mesh.solid.quad(wx, wy, wz, f.def->corners, 1.0f, uvs[f.def->slot], shades, sky, block);
+                    mesh.solid.quad(wx, wy, wz, f.def->corners, 1.0f, uvs[f.def->slot], shades, sky, block, tint);
                 }
             }
         }
@@ -473,19 +429,21 @@ ChunkMesh build_mesh(const Padded& P, const PaddedLight& L, int cx, int cz, int 
 }
 
 void MeshData::quad(float x, float y, float z, const std::array<glm::ivec3, 4>& corners, float h,
-                    const std::array<float, 4>& uv, const std::array<float, 4>& shades) {
-    quad(x, y, z, corners, h, uv, shades, {1, 1, 1, 1}, {0, 0, 0, 0});
+                    const std::array<float, 4>& uv, const std::array<float, 4>& shades, Rgb8 tint) {
+    quad(x, y, z, corners, h, uv, shades, {1, 1, 1, 1}, {0, 0, 0, 0}, tint);
 }
 
 void MeshData::quad(float x, float y, float z, const std::array<glm::ivec3, 4>& corners, float h,
                     const std::array<float, 4>& uv, const std::array<float, 4>& shades,
-                    const std::array<float, 4>& sky, const std::array<float, 4>& block) {
+                    const std::array<float, 4>& sky, const std::array<float, 4>& block, Rgb8 tint) {
     const float us[4] = {uv[0], uv[2], uv[2], uv[0]};
     const float vs[4] = {uv[1], uv[1], uv[3], uv[3]};
+    const float r = tint.r / 255.0f, g = tint.g / 255.0f, b = tint.b / 255.0f;
     uint32_t n = static_cast<uint32_t>(vertices.size());
     float bright[4];
     for (int c = 0; c < 4; ++c) {
-        vertices.push_back({x + corners[c].x, y + corners[c].y * h, z + corners[c].z, shades[c], us[c], vs[c], sky[c], block[c]});
+        vertices.push_back(
+            {x + corners[c].x, y + corners[c].y * h, z + corners[c].z, shades[c], us[c], vs[c], sky[c], block[c], r, g, b});
         bright[c] = shades[c] * (0.2f + std::max(sky[c], block[c]));
     }
     // Flip the quad's diagonal so occlusion and light gradients interpolate smoothly.

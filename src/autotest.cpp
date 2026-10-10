@@ -5,8 +5,11 @@
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
+#include <initializer_list>
+#include <optional>
 
 #include <GLFW/glfw3.h>
+#include <glm/vec2.hpp>
 
 #include "app.h"
 #include "game.h"
@@ -16,6 +19,17 @@
 namespace {
 constexpr double PI = 3.14159265358979323846;
 double degrees(double r) { return r * 180.0 / PI; }
+
+// Nearest dry land (searching outwards in a square spiral) where the biome is one of `wanted`.
+std::optional<glm::ivec2> find_biome(const TerrainGenerator& gen, int x, int z, std::initializer_list<Biome> wanted) {
+    for (int r = 0; r < 6000; r += 48)
+        for (int i = -r; i <= r; i += 48)
+            for (glm::ivec2 d : {glm::ivec2(i, -r), glm::ivec2(i, r), glm::ivec2(-r, i), glm::ivec2(r, i)})
+                for (Biome b : wanted)
+                    if (gen.biome_at(x + d.x, z + d.y) == b && gen.density(x + d.x, SEA_LEVEL + 4, z + d.y) > 0)
+                        return glm::ivec2(x + d.x, z + d.y);
+    return std::nullopt;
+}
 }  // namespace
 
 AutoTest::AutoTest(std::string out_dir, uint64_t seed) : out_(std::move(out_dir)), seed_(seed) {
@@ -155,10 +169,17 @@ void AutoTest::play(App& app, Game& g) {
         if (g.target) {
             broken_ = g.target->block;
             broken_block_ = g.world.get_block(broken_->x, broken_->y, broken_->z);
+            log("breaking " + item_name(broken_block_));
             g.break_block(*broken_, broken_block_);
             check("block removed from world", g.world.get_block(broken_->x, broken_->y, broken_->z) == AIR);
         }
     }
+    if (f == 320)  // the drop may have bounced into water or down a slope; bring it over like the beef
+        for (auto& d : g.drops) {
+            d->body.x = p.x;
+            d->body.y = p.y + 0.5;
+            d->body.z = p.z;
+        }
     if (f == 340 && broken_) {
         auto drop = block_info(broken_block_) ? block_info(broken_block_)->drop : std::nullopt;
         check("broken block collected into inventory", !drop || g.inventory.count(*drop) > 0);
@@ -187,10 +208,8 @@ void AutoTest::play(App& app, Game& g) {
         p.y += 25;
         g.pitch = 35;
     }
-    if (f == 520) {
-        shot(app, "4_overview.png");
-        g.flying = false;  // land (creative, so no fall damage) for the third-person picture
-    }
+    if (f == 520) shot(app, "4_overview.png");
+    if (f >= 525 && f < 600) tour(app, g);
     if (f == 615) {
         g.third_person = true;  // the model is added to the scene in the next update
         g.pitch = 20;
@@ -261,6 +280,151 @@ void AutoTest::play(App& app, Game& g) {
         check("Save and Quit to Title closes the world", !app.game);
         phase_ = 2;
         phase_start_ = app.frame;
+    }
+}
+
+void AutoTest::tour(App& app, Game& g) {
+    const long f = g.frame;
+    Body& p = g.player;
+    World& w = g.world;
+    const TerrainGenerator& gen = w.generator();
+    auto fly_to = [&](int x, int z, double up, double pitch) {
+        p.x = x + 0.5;
+        p.z = z + 0.5;
+        p.y = w.surface_y(x, z) + up;
+        p.vy = 0;
+        g.yaw = 45;
+        g.pitch = pitch;
+    };
+    auto column_has = [&](int x, int z, BlockId b) {
+        for (int y = 0; y < HEIGHT; ++y)
+            if (w.get_block(x, y, z) == b) return true;
+        return false;
+    };
+    if (f == 525) tour_start_ = {p.x, p.y, p.z};
+    if (f == 530) {
+        auto at = find_biome(gen, static_cast<int>(p.x), static_cast<int>(p.z), {Biome::DESERT});
+        check("found a desert", at.has_value());
+        if (at) {
+            fly_to(at->x, at->y, 14, 30);
+            int columns = 0, sand = 0, sandstone = 0;
+            for (int dx = -10; dx <= 10; ++dx)
+                for (int dz = -10; dz <= 10; ++dz) {
+                    int x = at->x + dx, z = at->y + dz;
+                    if (gen.biome_at(x, z) != Biome::DESERT) continue;
+                    ++columns;
+                    sand += w.get_block(x, w.surface_y(x, z) - 1, z) == SAND;
+                    sandstone += column_has(x, z, SANDSTONE);
+                }
+            check("desert is sand on top with sandstone under it (" + std::to_string(sand) + " sand, " +
+                      std::to_string(sandstone) + " sandstone of " + std::to_string(columns) + " columns)",
+                  sand > columns / 2 && sandstone > columns / 2);
+            shot(app, "m4_desert.png");
+        }
+    }
+    if (f == 540) {
+        // Hills: the nearest ground above y 100, seen from the side.
+        std::optional<glm::ivec2> hill;
+        int x0 = static_cast<int>(tour_start_.x), z0 = static_cast<int>(tour_start_.z);
+        for (int r = 0; r < 3000 && !hill; r += 24)
+            for (int i = -r; i <= r && !hill; i += 24)
+                for (glm::ivec2 d : {glm::ivec2(i, -r), glm::ivec2(i, r), glm::ivec2(-r, i), glm::ivec2(r, i)})
+                    if (!hill && gen.density(x0 + d.x, 100, z0 + d.y) > 0) hill = glm::ivec2(x0 + d.x, z0 + d.y);
+        check("found hills above y 100", hill.has_value());
+        if (hill) {
+            fly_to(hill->x - 30, hill->y - 30, 0, 5);
+            p.y = std::max(p.y + 4, 92.0);
+            face(g, hill->x, hill->y, 5);
+            shot(app, "m4_hills.png");
+        }
+    }
+    if (f == 550) {
+        auto at = find_biome(gen, static_cast<int>(p.x), static_cast<int>(p.z), {Biome::TAIGA});
+        check("found a taiga", at.has_value());
+        if (at) {
+            fly_to(at->x, at->y, 16, 35);
+            int logs = 0, ice = 0, unfrozen = 0;
+            for (int dx = -40; dx <= 40; ++dx)
+                for (int dz = -40; dz <= 40; ++dz) {
+                    int x = at->x + dx, z = at->y + dz, top = w.surface_y(x, z);
+                    for (int y = std::max(0, top - 12); y <= std::min(HEIGHT - 1, top + 12); ++y) {
+                        BlockId b = w.get_block(x, y, z);
+                        logs += b == SPRUCE_LOG;
+                    }
+                    for (int y = HEIGHT - 1; y > 0; --y) {
+                        BlockId b = w.get_block(x, y, z);
+                        if (b == AIR) continue;
+                        ice += b == ICE;
+                        unfrozen += b == WATER && is_cold(gen.biome_at(x, z));
+                        break;
+                    }
+                }
+            check("taiga has spruce trees (" + std::to_string(logs) + " spruce logs)", logs > 0);
+            check("water is frozen in cold biomes (" + std::to_string(ice) + " ice on top, " + std::to_string(unfrozen) +
+                      " open water)", unfrozen == 0);
+            shot(app, "m4_taiga.png");
+        }
+    }
+    if (f == 558) {
+        // A cave: an open pocket underground, at least 5 blocks of air in a row.
+        std::optional<glm::ivec3> cave;
+        int cx0 = chunk_of(static_cast<int>(tour_start_.x)), cz0 = chunk_of(static_cast<int>(tour_start_.z));
+        for (int r = 0; r <= 6 && !cave; ++r)
+            for (int cx = cx0 - r; cx <= cx0 + r && !cave; ++cx)
+                for (int cz = cz0 - r; cz <= cz0 + r && !cave; ++cz)
+                    for (int i = 0; i < CHUNK * CHUNK && !cave; i += 3)
+                        for (int y = 16; y < 50 && !cave; ++y) {
+                            int x = cx * CHUNK + (i & 15), z = cz * CHUNK + (i >> 4);
+                            bool open = true;
+                            for (int k = -3; k <= 3; ++k)
+                                open &= w.get_block(x + k, y, z) == AIR && w.get_block(x + k, y + 1, z) == AIR;
+                            if (open && w.get_block(x, y - 1, z) != AIR && w.get_block(x, y + 8, z) == STONE)
+                                cave = glm::ivec3(x, y, z);
+                        }
+        check("found a cave underground", cave.has_value());
+        if (cave) {
+            // Caves are dark: light this one with torches on its floor.
+            for (int k : {-3, 3}) {
+                glm::ivec3 t = *cave + glm::ivec3(k, 0, 0);
+                if (is_opaque(w.get_block(t.x, t.y - 1, t.z)))
+                    g.renderer->rebuild(w.set_block(t.x, t.y, t.z, TORCH));
+            }
+            p.x = cave->x + 0.5;
+            p.y = cave->y;
+            p.z = cave->z + 0.5;
+            p.vy = 0;
+            g.yaw = 90;
+            g.pitch = 0;
+            cave_ = *cave;
+        }
+    }
+    if (f == 565 && cave_) shot(app, "m4_cave.png");
+    if (f == 575) {
+        // Ores and dungeons, counted over the chunks around the start.
+        int ores[BLOCK_COUNT] = {};
+        int spawners = 0;
+        int cx0 = chunk_of(static_cast<int>(tour_start_.x)), cz0 = chunk_of(static_cast<int>(tour_start_.z));
+        for (int cx = cx0 - 5; cx <= cx0 + 5; ++cx)
+            for (int cz = cz0 - 5; cz <= cz0 + 5; ++cz)
+                for (BlockId b : w.chunk(cx, cz).blocks) {
+                    ++ores[b];
+                    spawners += b == SPAWNER;
+                }
+        char buf[200];
+        std::snprintf(buf, sizeof buf, "in 121 chunks: coal %d, iron %d, gold %d, redstone %d, diamond %d, lapis %d, spawners %d",
+                      ores[COAL_ORE], ores[IRON_ORE], ores[GOLD_ORE], ores[REDSTONE_ORE], ores[DIAMOND_ORE], ores[LAPIS_ORE],
+                      spawners);
+        log(buf);
+        check("every ore is generated", ores[COAL_ORE] && ores[IRON_ORE] && ores[GOLD_ORE] && ores[REDSTONE_ORE] &&
+                                            ores[DIAMOND_ORE] && ores[LAPIS_ORE]);
+    }
+    if (f == 590) {
+        // Back to where the tour started, standing on the ground for the third-person picture.
+        g.flying = false;
+        p.x = tour_start_.x;
+        p.z = tour_start_.z;
+        p.y = w.surface_y(static_cast<int>(std::floor(p.x)), static_cast<int>(std::floor(p.z)));
+        p.vy = 0;
     }
 }
 
