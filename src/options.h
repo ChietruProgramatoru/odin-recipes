@@ -37,6 +37,7 @@ struct Options {
     int view_distance = VIEW_NORMAL;
     bool fancy_graphics = true;
     bool smooth_lighting = true;
+    bool clouds = true;  // Fancy graphics draws them as 3D boxes, Fast as a flat layer
     std::array<int, KEY_ACTION_COUNT> keys;
 
     Options();

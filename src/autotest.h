@@ -49,4 +49,8 @@ private:
     glm::ivec3 marker_{0};
     PlayerData saved_player_;
     size_t saved_cows_ = 0;
+    // Light and day/night.
+    glm::ivec3 torch_{0}, glowstone_{0};
+    int64_t day_time_ = 0;
+    double ground_y_ = 0;
 };

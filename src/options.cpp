@@ -127,6 +127,7 @@ std::string Options::to_text() const {
     out << "viewDistance:" << view_distance << "\n";
     out << "fancyGraphics:" << b(fancy_graphics) << "\n";
     out << "ao:" << b(smooth_lighting) << "\n";
+    out << "clouds:" << b(clouds) << "\n";
     for (int i = 0; i < KEY_ACTION_COUNT; ++i) out << "key_" << KEY_ACTIONS[i].id << ":" << keys[i] << "\n";
     return out.str();
 }
@@ -146,6 +147,7 @@ Options Options::from_text(const std::string& text) {
         else if (key == "viewDistance" && parse_int(value, n)) o.view_distance = std::clamp(n, 0, VIEW_COUNT - 1);
         else if (key == "fancyGraphics") parse_bool(value, o.fancy_graphics);
         else if (key == "ao") parse_bool(value, o.smooth_lighting);
+        else if (key == "clouds") parse_bool(value, o.clouds);
         else if (key.rfind("key_", 0) == 0 && parse_int(value, n) && n > 0 && n <= GLFW_KEY_LAST)
             for (int i = 0; i < KEY_ACTION_COUNT; ++i)
                 if (key.substr(4) == KEY_ACTIONS[i].id) o.keys[i] = n;

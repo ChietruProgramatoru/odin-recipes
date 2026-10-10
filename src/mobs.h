@@ -25,6 +25,7 @@ enum Model : int {
 struct ModelPart {
     int model;
     glm::mat4 transform;
+    float sky = 1, block = 0;  // light levels 0..1 where the model stands
 };
 
 class Cow {

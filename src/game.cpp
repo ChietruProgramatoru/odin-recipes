@@ -9,6 +9,7 @@
 #include <GLFW/glfw3.h>
 
 #include "textures.h"
+#include "torch.h"
 
 namespace {
 constexpr double PI = 3.14159265358979323846;
@@ -27,7 +28,7 @@ Game::Game(GLFWwindow* win, GLuint atlas, Painter& painter, const Options& opts,
       player(world, 0, 0, 0, 0.3, 1.8),
       scripted_(setup.scripted) {
     world.set_store(&saver->store());
-    renderer = std::make_unique<WorldRenderer>(world, atlas, view_distance_chunks(options.view_distance), SKY);
+    renderer = std::make_unique<WorldRenderer>(world, atlas, view_distance_chunks(options.view_distance));
     renderer->set_mesh_options({options.smooth_lighting, options.fancy_graphics});
     renderer->on_chunk_shown = [this](ChunkPos pos) { on_chunk_shown(pos); };
     hud = std::make_unique<Hud>(painter);
@@ -367,15 +368,24 @@ void Game::update(double dt) {
     const double view = renderer->render_distance * CHUNK;
     std::vector<ModelPart> parts;
     auto in_view = [&](const Body& b) { return std::abs(b.x - player.x) < view && std::abs(b.z - player.z) < view; };
+    // Models are lit by the light in the block where they stand.
+    auto add_lit = [&](std::vector<ModelPart> more, const Body& b) {
+        int x = ifloor(b.x), y = ifloor(b.y + 0.2), z = ifloor(b.z);
+        float sky = world.sky_light(x, y, z) / static_cast<float>(MAX_LIGHT);
+        float blk = world.block_light(x, y, z) / static_cast<float>(MAX_LIGHT);
+        for (ModelPart& part : more) {
+            part.sky = sky;
+            part.block = blk;
+            parts.push_back(part);
+        }
+    };
     for (const auto& cow : cows)
-        if (in_view(cow->body))
-            for (auto& part : cow->parts()) parts.push_back(part);
+        if (in_view(cow->body)) add_lit(cow->parts(), cow->body);
     for (const auto& drop : drops)
-        if (in_view(drop->body))
-            for (auto& part : drop->parts()) parts.push_back(part);
+        if (in_view(drop->body)) add_lit(drop->parts(), drop->body);
     if (third_person && !dead) {
         PlayerPose pose{player.x, player.y, player.z, yaw, pitch, walk_phase, walk_amount, sneaking};
-        for (auto& part : player_parts(pose)) parts.push_back(part);
+        add_lit(player_parts(pose), player);
     }
     renderer->set_instances(std::move(parts));
     renderer->set_outline(target && !target_cow ? std::optional<glm::ivec3>(target->block) : std::nullopt);
@@ -400,34 +410,37 @@ std::string Game::debug_text() {
     // Beta's facing number: 0 south (+z), 1 west, 2 north, 3 east.
     int f = ifloor(-yaw / 90.0 + 0.5) & 3;
     static const char* FACING[4] = {"south", "west", "north", "east"};
-    // Real light levels arrive with M5; until then only open sky counts.
-    int sky = 15;
-    for (int y = ifloor(eye().y); y < HEIGHT; ++y)
-        if (is_opaque(world.get_block(bx, y, bz))) sky = 0;
+    // Light where the player's feet are: sky light (dimmed at night) or block light, whichever is brighter.
+    int sky = world.sky_light(bx, by, bz), blk = world.block_light(bx, by, bz);
+    int dimmed = std::max(0, sky - static_cast<int>(sky_darkness(celestial_angle(static_cast<double>(level.time)))));
+    int minutes = clock_minutes(level.time);
     std::snprintf(buf, sizeof buf,
-                  "PetrutzCraft M1 (%.0f fps, %d chunk updates)\n"
+                  "PetrutzCraft M5 (%.0f fps, %d chunk updates)\n"
                   "x: %.3f (block %d)\ny: %.3f (feet, block %d)\nz: %.3f (block %d)\n"
                   "Chunk: %d %d (at %d %d in it)\n"
                   "Facing: %s (f: %d)\n"
-                  "Sky light: %d\n"
+                  "Light: %d (%d sky, %d block)\n"
+                  "Time: day %lld, %02d:%02d\n"
                   "Seed: %lld\n"
                   "Chunks loaded: %zu   cows: %zu   items: %zu",
                   fps, renderer->jobs_in_flight(), player.x, bx, player.y, by, player.z, bz, chunk_of(bx), chunk_of(bz),
-                  bx & 15, bz & 15, FACING[f], f, sky, static_cast<long long>(level.seed), world.chunk_count(),
-                  cows.size(), drops.size());
+                  bx & 15, bz & 15, FACING[f], f, std::max(dimmed, blk), sky, blk,
+                  static_cast<long long>(level.time / DAY_TICKS + 1), minutes / 60, minutes % 60,
+                  static_cast<long long>(level.seed), world.chunk_count(), cows.size(), drops.size());
     return buf;
 }
 
 void Game::draw(int w, int h) {
     glViewport(0, 0, w, h);
-    glClearColor(SKY.r, SKY.g, SKY.b, SKY.a);
-    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
     glm::vec3 cam = camera();
-    renderer->draw(w, h, cam, forward());
+    SkyState sky = sky_state(static_cast<double>(level.time) + ticks_);
+    sky.show_clouds = options.clouds;
+    sky.fancy_clouds = options.fancy_graphics;
+    renderer->draw(w, h, cam, forward(), sky);
 
     if (hud_hidden && !vitals.dead()) return;
     bool underwater = world.get_block(ifloor(cam.x), ifloor(cam.y), ifloor(cam.z)) == WATER;
-    std::string info = debug_screen ? debug_text() : "PetrutzCraft M1";
+    std::string info = debug_screen ? debug_text() : "PetrutzCraft M5";
     if (!debug_screen && creative) info += flying ? "\nCreative (flying)" : "\nCreative";
     hud->draw(w, h, {&active_inventory(), &vitals, creative, info, help_text(), underwater, vitals.dead()});
 }
@@ -570,6 +583,15 @@ void Game::mine(double dt) {
 
 void Game::break_block(glm::ivec3 pos, BlockId blk) {
     renderer->rebuild(world.set_block(pos.x, pos.y, pos.z, AIR));
+    // Torches that hung on this block fall off.
+    for (const FaceDef& f : face_defs()) {
+        glm::ivec3 n = pos + f.normal;
+        BlockId b = world.get_block(n.x, n.y, n.z);
+        if (is_torch(b) && n + torch_support(b) == pos) {
+            renderer->rebuild(world.set_block(n.x, n.y, n.z, AIR));
+            if (!creative) spawn_drop(TORCH, n.x + 0.5, n.y + 0.3, n.z + 0.5);
+        }
+    }
     if (creative) return;
     vitals.exhaust(EXHAUST_BREAK);
     std::optional<ItemId> drop = block_info(blk) ? block_info(blk)->drop : std::nullopt;
@@ -609,15 +631,22 @@ void Game::use_item() {
     }
     if (!is_block(*item) || !target || target_cow || !target->before) return;
     glm::ivec3 c = *target->before;
+    BlockId place = static_cast<BlockId>(*item);
+    if (place == TORCH) {
+        // Torches go on top of or on the side of a solid block, and nothing stands in their way.
+        auto torch = torch_for_face(c - target->block);
+        if (!torch || !is_opaque(world.get_block(target->block.x, target->block.y, target->block.z))) return;
+        place = *torch;
+    }
     std::vector<const Body*> bodies{&player};
     for (const auto& cow : cows) bodies.push_back(&cow->body);
     for (const Body* b : bodies)
-        if (c.x + 1 > b->x - b->half && c.x < b->x + b->half && c.z + 1 > b->z - b->half && c.z < b->z + b->half &&
+        if (is_solid(place) && c.x + 1 > b->x - b->half && c.x < b->x + b->half && c.z + 1 > b->z - b->half && c.z < b->z + b->half &&
             c.y + 1 > b->y && c.y < b->y + b->height)
             return;  // don't build inside someone
     BlockId here = world.get_block(c.x, c.y, c.z);
     if (here != AIR && here != WATER) return;
-    renderer->rebuild(world.set_block(c.x, c.y, c.z, static_cast<BlockId>(*item)));
+    renderer->rebuild(world.set_block(c.x, c.y, c.z, place));
     if (!creative) inv.take_selected();
 }
 

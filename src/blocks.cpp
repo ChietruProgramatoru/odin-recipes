@@ -15,6 +15,12 @@ const BlockInfo BLOCKS[BLOCK_COUNT] = {
     {"Bedrock", {T_BEDROCK, T_BEDROCK, T_BEDROCK}, std::nullopt, std::nullopt},
     {"Water", {T_WATER, T_WATER, T_WATER}, std::nullopt, std::nullopt},
     {"Bricks", {T_BRICK, T_BRICK, T_BRICK}, 2.0f, BRICK},
+    {"Glowstone", {T_GLOWSTONE, T_GLOWSTONE, T_GLOWSTONE}, 0.45f, GLOWSTONE},
+    {"Torch", {T_TORCH, T_TORCH, T_TORCH}, 0.0f, TORCH},
+    {"Torch", {T_TORCH, T_TORCH, T_TORCH}, 0.0f, TORCH},
+    {"Torch", {T_TORCH, T_TORCH, T_TORCH}, 0.0f, TORCH},
+    {"Torch", {T_TORCH, T_TORCH, T_TORCH}, 0.0f, TORCH},
+    {"Torch", {T_TORCH, T_TORCH, T_TORCH}, 0.0f, TORCH},
 };
 
 const FoodInfo APPLE_FOOD{4, 2.4f};
@@ -40,8 +46,23 @@ std::string item_name(ItemId id) {
     return "";
 }
 
-bool is_solid(BlockId id) { return id != AIR && id != WATER; }
-bool is_opaque(BlockId id) { return id != AIR && id != WATER; }
+bool is_torch(BlockId id) { return id >= TORCH && id <= TORCH_WALL_SOUTH; }
+bool is_solid(BlockId id) { return id != AIR && id != WATER && !is_torch(id); }
+bool is_opaque(BlockId id) { return id != AIR && id != WATER && !is_torch(id); }
+
+// Beta's values: leaves dim light by 1, water by 3, solid blocks stop it.
+int light_opacity(BlockId id) {
+    if (id == AIR || is_torch(id)) return 0;
+    if (id == LEAVES) return 1;
+    if (id == WATER) return 3;
+    return 15;
+}
+
+int light_emission(BlockId id) {
+    if (id == GLOWSTONE) return 15;
+    if (is_torch(id)) return 14;
+    return 0;
+}
 bool is_block(ItemId id) { return block_info(id) != nullptr; }
 
 int icon_tile(ItemId id) {
@@ -53,7 +74,7 @@ int icon_tile(ItemId id) {
 const std::vector<ItemId>& all_items() {
     static const std::vector<ItemId> items = [] {
         std::vector<ItemId> v;
-        for (int b = GRASS; b < BLOCK_COUNT; ++b) v.push_back(b);
+        for (int b = GRASS; b <= TORCH; ++b) v.push_back(b);
         v.push_back(APPLE);
         v.push_back(BEEF);
         return v;
@@ -62,6 +83,6 @@ const std::vector<ItemId>& all_items() {
 }
 
 const std::vector<ItemId>& creative_items() {
-    static const std::vector<ItemId> items = {GRASS, DIRT, STONE, COBBLE, SAND, LOG, PLANKS, BRICK, LEAVES};
+    static const std::vector<ItemId> items = {GRASS, DIRT, STONE, COBBLE, SAND, LOG, PLANKS, TORCH, GLOWSTONE};
     return items;
 }

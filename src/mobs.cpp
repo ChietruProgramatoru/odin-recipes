@@ -254,7 +254,7 @@ std::map<int, MeshData> build_models() {
     add_box(leg, ident, {0.26f, 0.125f, 0.27f}, {0, -0.6125f, 0.005f}, T_SHOE);
 
     for (ItemId item : all_items()) {
-        glm::vec3 size = is_block(item) ? glm::vec3(0.25f) : glm::vec3(0.4f, 0.4f, 0.03f);
+        glm::vec3 size = is_block(item) && !is_torch(item) ? glm::vec3(0.25f) : glm::vec3(0.4f, 0.4f, 0.03f);
         add_box(models[ITEM_MODEL_BASE + item], ident, size, {0, 0, 0}, icon_tile(item));
     }
     return models;

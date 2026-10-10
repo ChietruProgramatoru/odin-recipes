@@ -29,6 +29,9 @@ constexpr GLenum GL_COLOR_BUFFER_BIT = 0x00004000;
 constexpr GLenum GL_LINES = 0x0001;
 constexpr GLenum GL_TRIANGLES = 0x0004;
 constexpr GLenum GL_SRC_ALPHA = 0x0302;
+constexpr GLenum GL_ONE = 1;
+constexpr GLenum GL_LESS = 0x0201;
+constexpr GLenum GL_LEQUAL = 0x0203;
 constexpr GLenum GL_ONE_MINUS_SRC_ALPHA = 0x0303;
 constexpr GLenum GL_CW = 0x0900;
 constexpr GLenum GL_CCW = 0x0901;
@@ -88,6 +91,12 @@ extern PFN_glBlendFunc pc_glBlendFunc;
 typedef void(GL_APIENTRY* PFN_glDepthMask)(GLboolean flag);
 extern PFN_glDepthMask pc_glDepthMask;
 #define glDepthMask pc_glDepthMask
+typedef void(GL_APIENTRY* PFN_glDepthFunc)(GLenum func);
+extern PFN_glDepthFunc pc_glDepthFunc;
+#define glDepthFunc pc_glDepthFunc
+typedef void(GL_APIENTRY* PFN_glColorMask)(GLboolean r, GLboolean g, GLboolean b, GLboolean a);
+extern PFN_glColorMask pc_glColorMask;
+#define glColorMask pc_glColorMask
 typedef void(GL_APIENTRY* PFN_glFrontFace)(GLenum mode);
 extern PFN_glFrontFace pc_glFrontFace;
 #define glFrontFace pc_glFrontFace

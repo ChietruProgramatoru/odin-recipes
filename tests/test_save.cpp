@@ -270,8 +270,11 @@ TEST_CASE("options.txt keeps every setting and ignores junk") {
     o.view_distance = VIEW_TINY;
     o.fancy_graphics = false;
     o.smooth_lighting = false;
+    o.clouds = false;
     o.keys[KEY_JUMP] = GLFW_KEY_J;
     Options back = Options::from_text(o.to_text());
+    CHECK_FALSE(back.clouds);
+    CHECK(Options().clouds);
     CHECK(back.to_text() == o.to_text());
     CHECK(back.keys[KEY_JUMP] == GLFW_KEY_J);
     CHECK(back.sensitivity == 0.75f);
