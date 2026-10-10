@@ -120,7 +120,11 @@ void AutoTest::play(App& app, Game& g) {
             double d = dist_to(cow_);
             p.x += (cow_->body.x - p.x) * (d - 3) / d;
             p.z += (cow_->body.z - p.z) * (d - 3) / d;
-            p.y = g.world.surface_y(static_cast<int>(std::floor(p.x)), static_cast<int>(std::floor(p.z)));
+            // Stand at the cow's height (within hitting reach even on a slope): room to stand and ground underfoot.
+            p.y = std::floor(cow_->body.y);
+            int bx = static_cast<int>(std::floor(p.x)), by = static_cast<int>(p.y), bz = static_cast<int>(std::floor(p.z));
+            for (int dy = 0; dy < 2; ++dy) g.renderer->rebuild(g.world.set_block(bx, by + dy, bz, AIR));
+            if (!g.world.is_solid_at(bx, by - 1, bz)) g.renderer->rebuild(g.world.set_block(bx, by - 1, bz, DIRT));
             cow_start_x_ = cow_->body.x;
             cow_start_z_ = cow_->body.z;
         }
@@ -128,6 +132,16 @@ void AutoTest::play(App& app, Game& g) {
     if (f > 120 && f < 200 && cow_) {
         double d = dist_to(cow_);
         face(g, cow_->body.x, cow_->body.z, degrees(std::atan2(p.y + EYE_HEIGHT - (cow_->body.y + 0.8), d)));
+    }
+    if (f == 155 && cow_) {
+        // Leaves or a hill between the player and the cow would hide it: clear the line of sight.
+        glm::vec3 e = g.eye(), to(cow_->body.x, cow_->body.y + 0.8, cow_->body.z);
+        float d = glm::length(to - e);
+        glm::vec3 dir = (to - e) / d;
+        while (auto hit = g.world.raycast(e, dir, d - 0.7f)) {
+            log("cleared " + item_name(g.world.get_block(hit->block.x, hit->block.y, hit->block.z)) + " in front of the cow");
+            g.renderer->rebuild(g.world.set_block(hit->block.x, hit->block.y, hit->block.z, AIR));
+        }
     }
     if (f == 160 && cow_) {
         shot(app, "2_cow.png");
