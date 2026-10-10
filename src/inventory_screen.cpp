@@ -47,9 +47,25 @@ struct Frame {
         rect(x, y, 17, 17, WHITE);
         rect(x, y, 16, 16, SLOT);
     }
-    void arrow(int x, int y) const {  // 22 x 15, pointing right
-        rect(x, y + 5, 15, 5, SLOT);
-        for (int i = 0; i < 7; ++i) rect(x + 15 + i, y + i, 1, 15 - 2 * i, SLOT);
+    // 22 x 15, pointing right. Only the first `width` columns are drawn (a furnace's progress).
+    void arrow(int x, int y, Color c = SLOT, int width = 22) const {
+        rect(x, y + 5, std::min(15, width), 5, c);
+        for (int i = 0; i < 7 && 15 + i < width; ++i) rect(x + 15 + i, y + i, 1, 15 - 2 * i, c);
+    }
+    // A furnace's 14 x 14 flame, lit from the bottom up to `lit` rows.
+    void flame(int x, int y, int lit) const {
+        static const char* ROWS[14] = {
+            "......#.......", ".....##.......", ".....###......", "....####......", "....####..#...",
+            "...#####.##...", "..#######.##..", "..##########..", ".############.", ".############.",
+            "##############", "##############", ".############.", "..##########..",
+        };
+        for (int r = 0; r < 14; ++r)
+            for (int c = 0; c < 14; ++c) {
+                if (ROWS[r][c] != '#') continue;
+                const bool on = r >= 14 - lit;
+                const Color fire = r < 6 ? Color{1, 0.85f, 0.25f, 1} : r < 10 ? Color{1, 0.55f, 0.1f, 1} : Color{0.85f, 0.25f, 0.05f, 1};
+                rect(x + c, y + r, 1, 1, on ? fire : SLOT);
+            }
     }
 };
 
@@ -60,6 +76,10 @@ InventoryScreen::InventoryScreen(Kind k, Inventory& inventory) : kind(k) {
         creative.emplace(inventory);
     else
         crafting.emplace(inventory, kind == Kind::CraftingTable ? 3 : 2);
+}
+
+InventoryScreen::InventoryScreen(Inventory& inventory, Furnace& furnace) : kind(Kind::Furnace) {
+    crafting.emplace(inventory, furnace);
 }
 
 int InventoryScreen::gui_scale(int width, int height) {
@@ -87,6 +107,10 @@ std::vector<InventoryScreen::SlotPos> InventoryScreen::slot_positions() const {
         for (int r = 0; r < 2; ++r)
             for (int c = 0; c < 2; ++c) out.push_back({{Slot::Grid, r * 2 + c}, 88 + c * 18, 26 + r * 18});
         out.push_back({{Slot::Result, 0}, 144, 36});
+    } else if (kind == Kind::Furnace) {
+        out.push_back({{Slot::Furnace, FURNACE_INPUT}, 56, 17});
+        out.push_back({{Slot::Furnace, FURNACE_FUEL}, 56, 53});
+        out.push_back({{Slot::Furnace, FURNACE_OUTPUT}, 116, 35});
     } else {
         for (int r = 0; r < 3; ++r)
             for (int c = 0; c < 3; ++c) out.push_back({{Slot::Grid, r * 3 + c}, 30 + c * 18, 17 + r * 18});
@@ -174,7 +198,15 @@ void InventoryScreen::draw(Painter& p, int width, int height, double mx, double 
 
     p.rect(0, 0, static_cast<float>(width), static_cast<float>(height), 16 / 255.f, 16 / 255.f, 16 / 255.f, 0.75f);
     f.panel(pw, ph);
-    for (const SlotPos& sp : slot_positions()) f.slot(sp.x, sp.y);
+    for (const SlotPos& sp : slot_positions()) {
+        if (sp.slot.kind == Slot::Furnace && sp.slot.index == FURNACE_OUTPUT) {  // the big output slot
+            f.rect(sp.x - 5, sp.y - 5, 26, 26, DARK);
+            f.rect(sp.x - 4, sp.y - 4, 25, 25, WHITE);
+            f.rect(sp.x - 4, sp.y - 4, 24, 24, SLOT);
+        } else {
+            f.slot(sp.x, sp.y);
+        }
+    }
 
     if (kind == Kind::Inventory) {
         f.label("Crafting", 86, 16);
@@ -188,6 +220,15 @@ void InventoryScreen::draw(Painter& p, int width, int height, double mx, double 
         draw_player(static_cast<int>(bx), static_cast<int>(by), static_cast<int>(bw), static_cast<int>(bh),
                     static_cast<float>((mx - (bx + bw / 2)) / bh), static_cast<float>((my - (height - by - bh * 0.8f)) / bh));
         p.begin(width, height);
+    } else if (kind == Kind::Furnace) {
+        const Furnace& fur = *crafting->furnace;
+        f.label("Furnace", 60, 6);
+        f.label("Inventory", 8, 72);
+        // The flame shows how much of the fuel is left, the arrow how far the item is cooked.
+        const int lit = fur.burning() ? 1 + fur.burn_left * 13 / std::max(1, fur.burn_total) : 0;
+        f.flame(56, 36, std::min(14, lit));
+        f.arrow(79, 34);
+        f.arrow(79, 34, WHITE, fur.cook * 24 / SMELT_TICKS);
     } else if (kind == Kind::CraftingTable) {
         f.label("Crafting", 28, 6);
         f.arrow(90, 35);

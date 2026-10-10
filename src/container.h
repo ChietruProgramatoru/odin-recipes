@@ -1,28 +1,36 @@
-// What the mouse does in the inventory and crafting table screens, without any drawing:
-// picking up, placing, splitting and shift-clicking stacks, and taking crafted items.
+// What the mouse does in the inventory, crafting table and furnace screens, without any drawing:
+// picking up, placing, splitting and shift-clicking stacks, and taking crafted or smelted items.
 #pragma once
 #include <optional>
 #include <vector>
 
 #include "crafting.h"
+#include "furnace.h"
 #include "survival.h"
 
 struct Slot {
-    enum Kind { Result, Grid, Armor, Inv } kind;
-    int index;  // cell of the grid, armor piece (0 helmet..3 boots) or inventory slot (0-8 hotbar, 9-35 storage)
+    enum Kind { Result, Grid, Armor, Inv, Furnace } kind;
+    // Cell of the grid, armor piece (0 helmet..3 boots), inventory slot (0-8 hotbar, 9-35 storage)
+    // or furnace slot (FURNACE_INPUT, FURNACE_FUEL, FURNACE_OUTPUT).
+    int index;
     bool operator==(const Slot&) const = default;
 };
+
+enum FurnaceSlot { FURNACE_INPUT, FURNACE_FUEL, FURNACE_OUTPUT };
 
 class CraftingMenu {
 public:
     // grid_size 2 is the inventory screen (with armor slots), 3 is a crafting table.
     CraftingMenu(Inventory& inventory, int grid_size);
+    // A furnace's screen: its three slots and the inventory, no crafting grid.
+    CraftingMenu(Inventory& inventory, Furnace& furnace);
 
     Inventory& inv;
     const int grid_size;
     Grid grid;
     std::optional<Stack> result;  // what the grid makes right now
     std::optional<Stack> cursor;  // the stack held by the mouse
+    Furnace* furnace = nullptr;   // the furnace whose screen this is
 
     std::optional<Stack>& at(Slot s);
     // Mouse button 0 (left) or 1 (right) on a slot, with or without Shift.
