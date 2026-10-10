@@ -83,6 +83,7 @@ add_library(petrutz_core STATIC
   src/streamer.cpp
   src/physics.cpp
   src/survival.cpp
+  src/farming.cpp
   src/tools.cpp
   src/mobs.cpp
   src/combat.cpp
@@ -132,6 +133,7 @@ add_executable(petrutz_tests
   tests/test_world.cpp
   tests/test_worldgen.cpp
   tests/test_survival.cpp
+  tests/test_farming.cpp
   tests/test_crafting.cpp
   tests/test_streamer.cpp
   tests/test_misc.cpp

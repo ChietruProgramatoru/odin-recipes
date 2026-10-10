@@ -40,6 +40,12 @@ It runs on Windows (the main target) and Linux.
 - **Health and hunger**: you have 10 hearts and 10 drumsticks. Walking, sprinting, jumping, mining and fighting use up hunger. When you are well fed you slowly heal. When you are starving you slowly lose health, down to half a heart. Falls of more than 3 blocks hurt, and a big enough fall kills you.
 - **Cows** wander, graze and hop up ledges. Punch one and it panics and runs away. Each cow drops 1 to 3 beef, which you eat with a right click to restore 6 hunger.
 - Apples sometimes drop from leaves.
+- **Farming** like Beta 1.7.3: right-click grass or dirt with a **hoe** to make farmland. Farmland within 4 blocks of water (or out in the rain) turns dark and wet; dry farmland with nothing planted turns back to dirt. **Seeds** (one in eight bits of tall grass drops one) plant wheat, which grows through 8 stages in light 9 or more, fastest on wet farmland with more farmland around it and slower when crops crowd it on two sides. In the best spot it ripens in about 25 minutes of daylight. Ripe wheat drops wheat and 0 to 3 seeds; three wheat in a row make **bread**. Jumping or falling onto farmland can trample it back to dirt; walking over it is safe.
+- **Bone meal** (from bones) ripens a crop at once, or sprouts tall grass and flowers around the grass you use it on.
+- **Wild plants**: tall grass (on plains and in forests), ferns (in rainforests), dandelions, roses, brown and red mushrooms (in dark places, where they slowly spread) and **sugar cane** by water, which grows up to 3 tall. Plants pop off when the block under them goes. Sugar cane makes sugar and paper; the mushrooms make mushroom stew.
+- **Food**: apples, golden apples, bread, mushroom stew (gives back the bowl), raw and cooked porkchops, raw and cooked fish, cookies, beef and **cake**. Each fills hunger and saturation (Minecraft 1.0's values, since hunger is kept). A cake is placed as a block and eaten a slice at a time with a right click: six slices of 1 drumstick each.
+
+  ![A farm](screenshots/farm.png)
 - **Monsters** like Beta 1.7.3, with original blocky models:
   - **Zombies** walk at you and hit for 2.5 hearts, and drop feathers.
   - **Skeletons** keep their distance and shoot arrows; they drop arrows and bones.
@@ -193,6 +199,7 @@ In the inventory and crafting table screens (Beta's mouse rules):
 - Click **Singleplayer**, then **Create New World**.
 - Punch a tree (about 3 s per log), press **E** and put the logs in the crafting grid to make planks, then make a crafting table from 4 planks and build a shelter.
 - Cows are found on grass. Five spawn near you at the start, and more appear as you explore.
+- Break tall grass for seeds, till the ground next to water with a hoe and plant them for bread.
 - Make a wooden pickaxe (3 planks over 2 sticks) before mining stone: by hand stone is slow and drops nothing. A stone pickaxe gets you iron.
 - Keep at least 9 drumsticks of hunger to regenerate health.
 - Light up your home with torches before night: monsters spawn in the dark. Back away from a hissing creeper.
@@ -205,7 +212,7 @@ ctest --test-dir build --output-on-failure        # logic tests (add -C Release 
 xvfb-run -a -s "-screen 0 1280x720x24" ./build/PetrutzCraft --seed 7 --autotest OUT_DIR
 ```
 
-The second command plays a scripted game and saves screenshots plus `report.txt` to `OUT_DIR`: it opens the title and options screens, creates a world from the Create New World screen, finds a cow, kills it, picks up and eats the beef, mines and places a block, crafts planks and a crafting table in the inventory screen, puts on a chestplate, crafts a pickaxe on a placed crafting table, takes a stack from the creative item picker, falls, mines stone by hand and with a pickaxe, takes a hit in full armor, shoots arrows into a wall, lights a fire, pours and scoops up water, flies, visits a desert, hills, a taiga and a torch-lit cave (checking for sandstone, spruces, frozen water and every ore), takes F5 (in armor) and F3 pictures, places a torch and glowstone and checks their light, takes pictures at night and at sunset, makes it rain, snow and thunder (checking that lightning hurts), places a bed, sleeps through the night in it and respawns by it, fights every monster in a flat arena (a zombie's hit and knockback, a sword's hits and the invulnerability after them, a skeleton's arrow, a creeper's fuse and crater, a spider climbing a wall, a slime splitting, a zombie burning in the sun, a chain of TNT, a mob spawner, Peaceful, the death screen and natural spawning at midnight), opens the pause menu, changes a block, saves and quits to the title, and loads the world again to check that everything came back. Its world and `options.txt` go in `OUT_DIR`, so your own saves are never touched. It exits with an error if any check fails. On Windows or a Linux desktop, run it without `xvfb-run`. GitHub runs both on every push (the screenshot test on Linux only, since GitHub's Windows machines have no graphics card).
+The second command plays a scripted game and saves screenshots plus `report.txt` to `OUT_DIR`: it opens the title and options screens, creates a world from the Create New World screen, finds a cow, kills it, picks up and eats the beef, mines and places a block, crafts planks and a crafting table in the inventory screen, puts on a chestplate, crafts a pickaxe on a placed crafting table, takes a stack from the creative item picker, falls, mines stone by hand and with a pickaxe, takes a hit in full armor, shoots arrows into a wall, lights a fire, pours and scoops up water, flies, visits a desert, hills, a taiga and a torch-lit cave (checking for sandstone, spruces, frozen water and every ore), takes F5 (in armor) and F3 pictures, places a torch and glowstone and checks their light, takes pictures at night and at sunset, makes it rain, snow and thunder (checking that lightning hurts), places a bed, sleeps through the night in it and respawns by it, tills a field next to water, plants seeds, ripens wheat with bone meal and harvests it, eats a slice of cake, counts the wild plants and visits a meadow, fights every monster in a flat arena (a zombie's hit and knockback, a sword's hits and the invulnerability after them, a skeleton's arrow, a creeper's fuse and crater, a spider climbing a wall, a slime splitting, a zombie burning in the sun, a chain of TNT, a mob spawner, Peaceful, the death screen and natural spawning at midnight), opens the pause menu, changes a block, saves and quits to the title, and loads the world again to check that everything came back. Its world and `options.txt` go in `OUT_DIR`, so your own saves are never touched. It exits with an error if any check fails. On Windows or a Linux desktop, run it without `xvfb-run`. GitHub runs both on every push (the screenshot test on Linux only, since GitHub's Windows machines have no graphics card).
 
 ## Project layout
 
@@ -222,7 +229,7 @@ src/
   json.cpp         a small JSON reader and writer
   zlib.cpp         zlib compression and decompression (for saves and PNG screenshots)
   world.cpp        chunk storage, meshing (with ambient occlusion, light and biome colours), ray casting
-  worldgen.cpp     world generation: 3D noise terrain, biome surfaces, caves, lakes, dungeons, ores, trees
+  worldgen.cpp     world generation: 3D noise terrain, biome surfaces, caves, lakes, dungeons, ores, trees, plants
   biome.cpp        biomes from temperature and rainfall, grass and leaf colours
   light.cpp        sky light and block light: lighting new chunks and updating light after block changes
   sky.cpp          time of day: sun position, sky, fog and cloud colours, how dark the night is, the cloud map
@@ -233,6 +240,7 @@ src/
   hud.cpp          crosshair, hotbar, hearts, hunger, text and overlays
   physics.cpp      box-vs-voxel collision used by the player, cows and items
   survival.cpp     the inventory, health, hunger and saturation
+  farming.cpp      farmland, wheat, sugar cane, wild plants, cake, bone meal and Beta's random block ticks
   tools.cpp        Beta's tool rules: mining speed, which pickaxe a block needs, damage, wear, armor
   items.cpp        every item: names, stack sizes, durability, food, armor slots, icons
   icons.cpp        pixel art for item icons and the faces of item blocks
@@ -260,10 +268,11 @@ tests/             doctest logic tests (no window needed)
 - Lit TNT isn't saved. The death screen has no score yet.
 - The only sounds so far are the hiss and the blast; footsteps, hurt sounds, music and volume settings come in M16.
 - There is no obsidian yet (it comes with flowing lava in M6), so the diamond-pickaxe rule for it waits until then.
-- The fishing rod is only an item until fishing arrives in M15. The hoe can't till yet (farming is M8).
+- The fishing rod is only an item until fishing arrives in M15.
 - Flying arrows, and arrows stuck in blocks, aren't saved: they're gone when you load the world. Fires go on burning after loading.
 - Lava and water stand still and lava doesn't burn you yet (M6). Lava, water and ice are see-through for the crosshair, and ice drops nothing (like Beta).
-- No tall grass, flowers, mushrooms, sugar cane, cacti, pumpkins or snow layers yet: they need non-cube shapes and come in M11.
+- No cacti, pumpkins, dead bushes or snow layers yet (M6 and M11). Bone meal doesn't grow saplings yet (saplings come in M6). Plants only grow in chunks within 9 chunks of you, like Beta.
+- Raw porkchops and fish come with pigs (M9) and fishing (M15), cooked food with furnaces (M7), cocoa beans for cookies with dungeon chests, and eggs for cake with chickens (M9).
 - Worlds saved before world generation changed keep the chunks you visited, so there is a visible cliff where the old terrain meets the new.
 - No music, thunder or other sounds yet (M16).
 - Lightning doesn't start fires and rain doesn't put them out yet (M6). Snow doesn't pile up on the ground yet (snow layers come in M6).

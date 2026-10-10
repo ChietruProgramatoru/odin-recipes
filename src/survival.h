@@ -72,6 +72,7 @@ public:
     // Returns true if damage was applied.
     bool damage(int amount, bool ignore_cooldown = false);
     bool eat(ItemId item);
+    bool eat(const FoodInfo& food);  // false (and nothing eaten) when not hungry
     // Advance timers. Returns damage taken this tick (for the screen flash).
     int tick(double dt);
 };

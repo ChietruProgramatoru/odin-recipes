@@ -12,6 +12,7 @@
 #include <glm/vec2.hpp>
 
 #include "app.h"
+#include "farming.h"
 #include "bed.h"
 #include "game.h"
 #include "inventory_screen.h"
@@ -284,12 +285,13 @@ void AutoTest::play(App& app, Game& g) {
     }
     if (f >= 627 && f < 700) weather_and_beds(app, g);
     if (f >= 700 && f < 1200) monsters(app, g);
-    if (f == 1200) {
+    if (f >= 1200 && f < 1300) farming(app, g);
+    if (f == 1300) {
         app.pause();
         check("Escape menu pauses the game", g.paused && app.screen());
         shot(app, "7_pause.png");
     }
-    if (f == 1210) {
+    if (f == 1310) {
         // Change something, then save and quit to the title.
         marker_ = {static_cast<int>(std::floor(p.x)) + 2, static_cast<int>(std::floor(p.y)) + 1, static_cast<int>(std::floor(p.z))};
         g.renderer->rebuild(g.world.set_block(marker_.x, marker_.y, marker_.z, BRICK));
@@ -791,6 +793,162 @@ void AutoTest::monsters(App& app, Game& g) {
     }
 }
 
+void AutoTest::farming(App& app, Game& g) {
+    const long f = g.frame;
+    Body& p = g.player;
+    World& w = g.world;
+    const glm::ivec3 a = arena_;
+    auto set = [&](glm::ivec3 b, BlockId id, int data = 0) { g.renderer->rebuild(w.set_block(b.x, b.y, b.z, id, data)); };
+    // Look at the middle of a block's top and pick it as the target.
+    auto aim = [&](glm::ivec3 b) {
+        glm::vec3 e = g.eye();
+        glm::vec3 d = glm::vec3(b) + glm::vec3(0.5f, 0.95f, 0.5f) - e;
+        g.yaw = degrees(std::atan2(d.x, d.z));
+        g.pitch = -degrees(std::asin(d.y / glm::length(d)));
+        g.update_target();
+        return g.target && g.target->block == b;
+    };
+    auto hold = [&](ItemId item, int count = 1) { g.inventory.slots[g.inventory.selected] = Stack{item, count}; };
+    // The field: farmland in rows 2..4 in front of the player (+z) with water in the middle.
+    const glm::ivec3 water = a + glm::ivec3(0, -1, 4);
+
+    if (f == 1200) {
+        g.monsters.clear();
+        g.target_monster = nullptr;
+        g.arrows.clear();
+        g.drops.clear();
+        g.puffs.clear();
+        g.weather.clear();
+        g.creative = false;
+        g.vitals.reset();
+        g.level.time = 6000 + (g.level.time / DAY_TICKS) * DAY_TICKS;  // noon
+        p.x = a.x + 0.5;
+        p.y = a.y;
+        p.z = a.z + 0.5;
+        p.vx = p.vy = p.vz = 0;
+        g.fall_peak = p.y;
+        for (int dx = -4; dx <= 4; ++dx)
+            for (int dz = 1; dz <= 9; ++dz) {
+                set(a + glm::ivec3(dx, -1, dz), GRASS);
+                for (int dy = 0; dy <= 4; ++dy) set(a + glm::ivec3(dx, dy, dz), AIR);
+            }
+        // A hoe tills the grass in front of the player.
+        hold(WOOD_HOE);
+        const glm::ivec3 first = a + glm::ivec3(0, -1, 2);
+        check("aiming at the grass in front", aim(first));
+        g.use_item();
+        check("a hoe turns grass into farmland", w.get_block(first.x, first.y, first.z) == FARMLAND);
+        check("tilling wears the hoe", g.inventory.slots[g.inventory.selected]->damage == 1);
+        set(water, WATER);
+        FarmEvents ev;
+        for (int dx = -2; dx <= 2; ++dx)
+            for (int dz = 2; dz <= 6; ++dz) till(w, a + glm::ivec3(dx, -1, dz), ev);
+        g.apply(ev);
+        set(water, WATER);
+        // Seeds planted with a right click.
+        hold(SEEDS, 5);
+        check("aiming at the farmland", aim(first));
+        g.use_item();
+        check("seeds plant wheat on farmland", w.get_block(first.x, first.y + 1, first.z) == WHEAT_CROP &&
+                                                   g.inventory.slots[g.inventory.selected]->count == 4);
+        // Wheat in every stage across the field, ripest at the back.
+        for (int dx = -2; dx <= 2; ++dx)
+            for (int dz = 2; dz <= 6; ++dz) {
+                glm::ivec3 c = a + glm::ivec3(dx, 0, dz);
+                if (c + glm::ivec3(0, -1, 0) == water || c == first + glm::ivec3(0, 1, 0)) continue;
+                set(c, WHEAT_CROP, std::min(WHEAT_RIPE, (dz - 2) * 2 + (dx + 2) % 2));
+            }
+        // Sugar cane by the water, wild plants and a cake to the side.
+        for (int k = 0; k < 3; ++k) set(a + glm::ivec3(3, k, 4), SUGAR_CANE_PLANT);
+        set(a + glm::ivec3(2, -1, 4), DIRT);
+        set(a + glm::ivec3(3, -1, 5), WATER);
+        set(a + glm::ivec3(-3, 0, 2), TALL_GRASS);
+        set(a + glm::ivec3(-3, 0, 3), FERN);
+        set(a + glm::ivec3(-3, 0, 4), YELLOW_FLOWER);
+        set(a + glm::ivec3(-3, 0, 5), RED_ROSE);
+        set(a + glm::ivec3(-4, 0, 3), BROWN_MUSHROOM);
+        set(a + glm::ivec3(-4, 0, 4), RED_MUSHROOM);
+        set(a + glm::ivec3(-4, 0, 6), TALL_GRASS);
+        set(a + glm::ivec3(3, 0, 7), CAKE_BLOCK, 2);
+        // The field's wetness: everything near the water is wet after a few random ticks.
+        Rng rng(1);
+        for (int i = 0; i < 100; ++i)
+            for (int dx = -2; dx <= 2; ++dx)
+                for (int dz = 2; dz <= 6; ++dz) random_tick(w, a + glm::ivec3(dx, -1, dz), rng, {}, ev);
+        g.apply(ev);
+        check("farmland near water gets wet", w.get_data(first.x, first.y, first.z) == FARMLAND_WET);
+        g.yaw = 0;
+        g.pitch = 32;
+        g.hud->show_message("", 0);
+    }
+    if (f == 1202) shot(app, "m8_farm.png");
+    if (f == 1204) {
+        // Bone meal ripens a young crop; breaking ripe wheat drops wheat (and maybe seeds).
+        const glm::ivec3 young = a + glm::ivec3(-1, 0, 2);
+        set(young, WHEAT_CROP, 1);
+        hold(BONE_MEAL, 2);
+        check("aiming at a young crop", aim(young));
+        g.use_item();
+        check("bone meal ripens wheat at once", w.get_data(young.x, young.y, young.z) == WHEAT_RIPE &&
+                                                    g.inventory.slots[g.inventory.selected]->count == 1);
+        const size_t drops = g.drops.size();
+        g.break_block(young, WHEAT_CROP);
+        bool wheat = std::any_of(g.drops.begin() + static_cast<std::ptrdiff_t>(drops), g.drops.end(),
+                                 [](const auto& d) { return d->stack.item == WHEAT; });
+        check("harvesting ripe wheat drops wheat", wheat);
+        // Breaking the farmland under a crop pops the crop off.
+        const glm::ivec3 crop = a + glm::ivec3(1, 0, 3);
+        g.break_block(crop - glm::ivec3(0, 1, 0), FARMLAND);
+        check("a crop pops off when its farmland is broken", w.get_block(crop.x, crop.y, crop.z) == AIR);
+        // A slice of cake.
+        const glm::ivec3 cake = a + glm::ivec3(3, 0, 7);
+        p.x = cake.x + 0.5;
+        p.z = cake.z - 1.5;
+        g.vitals.hunger = 10;
+        hold(STICK);
+        check("aiming at the cake", aim(cake));
+        g.use_item();
+        check("eating a slice of cake fills 2 hunger and leaves 3 slices",
+              g.vitals.hunger == 12 && w.get_data(cake.x, cake.y, cake.z) == 3);
+        g.yaw = 0;
+        g.pitch = 45;
+    }
+    if (f == 1206) shot(app, "m8_cake.png");
+    if (f == 1208) {
+        // Wild plants in the generated world.
+        int grass = 0, flowers = 0, cane = 0;
+        for (Chunk* c : w.all_chunks())
+            for (BlockId b : c->blocks) {
+                grass += b == TALL_GRASS || b == FERN;
+                flowers += b == YELLOW_FLOWER || b == RED_ROSE;
+                cane += b == SUGAR_CANE_PLANT;
+            }
+        log("wild plants in the loaded world: " + std::to_string(grass) + " tall grass, " + std::to_string(flowers) +
+            " flowers, " + std::to_string(cane) + " sugar cane");
+        check("the world grows tall grass, flowers and sugar cane", grass > 50 && flowers > 0 && cane > 0);
+        g.creative = true;
+        if (auto at = find_biome(w.generator(), a.x, a.z, {Biome::PLAINS, Biome::RAINFOREST})) {
+            p.x = at->x + 0.5;
+            p.z = at->y + 0.5;
+            g.renderer->load_all(p.x, p.z, 2);
+            p.y = w.surface_y(at->x, at->y) + 1.5;
+            g.flying = true;
+            g.yaw = 30;
+            g.pitch = 25;
+        }
+        g.hud->show_message("", 0);
+    }
+    if (f == 1212) shot(app, "m8_meadow.png");
+    if (f == 1214) {
+        g.flying = false;
+        p.x = a.x + 0.5;
+        p.y = a.y;
+        p.z = a.z + 0.5;
+        g.fall_peak = p.y;
+        g.weather = Weather(WeatherState{true, false, 100000, 100000});  // the rain the save check looks for
+    }
+}
+
 void AutoTest::tour(App& app, Game& g) {
     const long f = g.frame;
     Body& p = g.player;
@@ -1166,6 +1324,10 @@ void AutoTest::reload(App& app) {
         Game& g = *app.game;
         check("blocks changed before quitting are still there",
               g.world.get_block(marker_.x, marker_.y, marker_.z) == BRICK);
+        const glm::ivec3 ripe = arena_ + glm::ivec3(2, 0, 6), wet = arena_ + glm::ivec3(-2, -1, 3);
+        check("wheat keeps its stage and farmland its wetness",
+              g.world.get_block(ripe.x, ripe.y, ripe.z) == WHEAT_CROP && g.world.get_data(ripe.x, ripe.y, ripe.z) == WHEAT_RIPE &&
+                  g.world.get_block(wet.x, wet.y, wet.z) == FARMLAND && g.world.get_data(wet.x, wet.y, wet.z) > 0);
         PlayerData now = g.player_data();
         check("player position, health, hunger and inventory are restored",
               std::abs(now.pos.x - saved_player_.pos.x) < 1e-6 && std::abs(now.pos.z - saved_player_.pos.z) < 1e-6 &&

@@ -66,6 +66,7 @@ constexpr int MAX_LIGHT = 15;
 struct Chunk {
     int cx, cz;
     std::array<BlockId, CHUNK * CHUNK * HEIGHT> blocks{};  // index (y << 8) | (z << 4) | x
+    std::array<uint8_t, CHUNK * CHUNK * HEIGHT> data{};    // each block's 4-bit data value, same index
     // Sky light in the high 4 bits, block light in the low 4 bits, same index as blocks.
     // Not saved: it is worked out again when a chunk is loaded.
     std::array<uint8_t, CHUNK * CHUNK * HEIGHT> light{};
@@ -161,7 +162,7 @@ struct MeshData {
               const std::array<float, 4>& sky, const std::array<float, 4>& block, Rgb8 tint = {255, 255, 255});
     // Quad from four absolute corner points (BL, BR, TR, TL) with one shade.
     void quad_points(const std::array<glm::vec3, 4>& pts, const std::array<float, 4>& uv, float shade,
-                     float sky = 1, float block = 0);
+                     float sky = 1, float block = 0, Rgb8 tint = {255, 255, 255});
 };
 
 struct ChunkMesh {
@@ -187,8 +188,8 @@ struct MeshOptions {
 
 // Mesh a padded chunk copy. Thread-safe: touches nothing but its arguments. The climate colours
 // grass and leaves (missing: the hotbar icon colours).
-ChunkMesh build_mesh(const Padded& P, const PaddedLight& light, int cx, int cz, int max_y, MeshOptions options = {},
-                     const Climate* climate = nullptr);
+ChunkMesh build_mesh(const Padded& P, const PaddedLight& light, const Padded& data, int cx, int cz, int max_y,
+                     MeshOptions options = {}, const Climate* climate = nullptr);
 
 // All chunks, keyed by chunk position. Only the main thread touches it; worker threads get
 // generated chunks handed over with insert() and mesh from padded copies.
@@ -211,8 +212,10 @@ public:
     size_t chunk_count() const { return chunks_.size(); }
 
     BlockId get_block(int x, int y, int z);
-    // Set a block and update the light around it. Returns the chunks whose meshes need rebuilding.
-    std::vector<ChunkPos> set_block(int x, int y, int z, BlockId block);
+    int get_data(int x, int y, int z);  // the block's 4-bit data value (0 outside the loaded world)
+    // Set a block (and its data value) and update the light around it. Returns the chunks whose
+    // meshes need rebuilding.
+    std::vector<ChunkPos> set_block(int x, int y, int z, BlockId block, int data = 0);
     // Light levels 0..15. Above the world (or in a chunk that isn't loaded) the sky is full.
     int sky_light(int x, int y, int z);
     int block_light(int x, int y, int z);
@@ -237,6 +240,7 @@ public:
     // Copy a chunk plus a one-block border from its 8 neighbours (loading or generating any that are missing).
     Padded padded(int cx, int cz);
     PaddedLight padded_light(int cx, int cz);
+    Padded padded_data(int cx, int cz);  // the data values, laid out the same
     // Mesh a chunk right now on this thread.
     ChunkMesh build_mesh_now(int cx, int cz, MeshOptions options = {});
 

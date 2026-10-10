@@ -225,6 +225,10 @@ std::vector<uint8_t> encode_chunk(const Chunk& c) {
     w.u8(c.mob_spawned ? 1 : 0);
     w.u16(HEIGHT);
     w.bytes(c.blocks.data(), c.blocks.size());
+    // Data values, two to a byte (low nibble first).
+    std::vector<uint8_t> packed(c.data.size() / 2);
+    for (size_t i = 0; i < packed.size(); ++i) packed[i] = static_cast<uint8_t>((c.data[2 * i] & 15) | (c.data[2 * i + 1] << 4));
+    w.bytes(packed.data(), packed.size());
     w.u16(static_cast<uint16_t>(std::min<size_t>(c.entities.size(), 0xFFFF)));
     for (size_t i = 0; i < c.entities.size() && i < 0xFFFF; ++i) {
         const EntityRecord& e = c.entities[i];
@@ -255,6 +259,14 @@ std::unique_ptr<Chunk> decode_chunk(const std::vector<uint8_t>& bytes, int cx, i
     const uint8_t* blocks = r.bytes(c->blocks.size());
     if (!blocks) return nullptr;
     for (size_t i = 0; i < c->blocks.size(); ++i) c->blocks[i] = blocks[i] < BLOCK_COUNT ? blocks[i] : static_cast<BlockId>(AIR);
+    if (version >= 4) {
+        const uint8_t* packed = r.bytes(c->data.size() / 2);
+        if (!packed) return nullptr;
+        for (size_t i = 0; i < c->data.size() / 2; ++i) {
+            c->data[2 * i] = packed[i] & 15;
+            c->data[2 * i + 1] = packed[i] >> 4;
+        }
+    }
     int n = r.u16();
     for (int i = 0; i < n && r.ok(); ++i) {
         EntityRecord e;

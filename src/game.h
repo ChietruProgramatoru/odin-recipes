@@ -10,6 +10,7 @@
 
 #include <glm/vec3.hpp>
 
+#include "farming.h"
 #include "hud.h"
 #include "inventory_screen.h"
 #include "mobs.h"
@@ -166,6 +167,10 @@ public:
     void wake_up(bool set_spawn);
     // One game tick (20 a second) of the world: weather, lightning and sleeping.
     void tick_world();
+    // Beta's random block ticks in the chunks around the player: crops grow, farmland dries out.
+    void random_ticks();
+    // Apply what a farming rule did: mesh the changed chunks again and drop its items.
+    void apply(const FarmEvents& events);
     // The sky for this frame, weather included.
     SkyState current_sky() const;
     // Lightning strikes at a spot: hurts what is near it and flashes the sky.
@@ -211,6 +216,8 @@ private:
     // Replace one of the selected stack with `item` (filling or emptying a bucket).
     void swap_selected(ItemId item);
     bool use_bucket(ItemId held);
+    // Right click with seeds, sugar cane, a flower or cake: plant or place it. False if it can't go there.
+    bool plant(BlockId block);
     void set_mouse_captured(bool captured);
     bool key_down(int key) const;
     bool action_down(KeyAction action) const { return !gui && key_down(options.keys[action]); }
@@ -232,4 +239,5 @@ private:
     double ticks_ = 0;  // fraction of a game tick not yet added to level.time
     Rng weather_rng_;   // its own random numbers, so weather doesn't change what cows do
     Rng monster_rng_;   // and its own for monsters, so they don't change what the rest does
+    Rng farm_rng_;      // and for random block ticks (crops growing, farmland drying)
 };
