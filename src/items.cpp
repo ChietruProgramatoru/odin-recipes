@@ -71,7 +71,6 @@ Table build() {
     t.cube(DIAMOND_BLOCK, "Block of Diamond", IT_DIAMOND_BLOCK, IT_DIAMOND_BLOCK, IT_DIAMOND_BLOCK);
     t.cube(LAPIS_BLOCK, "Lapis Lazuli Block", IT_LAPIS_BLOCK, IT_LAPIS_BLOCK, IT_LAPIS_BLOCK);
     t.cube(BOOKSHELF, "Bookshelf", T_PLANKS, IT_BOOKSHELF, IT_BOOKSHELF);
-    t.cube(TNT, "TNT", IT_TNT_TOP, IT_TNT_SIDE, IT_TNT_SIDE);
     t.cube(NOTE_BLOCK, "Note Block", IT_NOTE_BLOCK, IT_NOTE_BLOCK, IT_NOTE_BLOCK);
     t.cube(JUKEBOX, "Jukebox", IT_JUKEBOX_TOP, IT_NOTE_BLOCK, IT_NOTE_BLOCK);
     t.cube(DISPENSER, "Dispenser", IT_FURNACE_TOP, IT_DISPENSER_FRONT, IT_FURNACE_SIDE);
@@ -234,6 +233,7 @@ ItemId current_item_id(ItemId id) {
     if (id == OLD_GLOWSTONE_ITEM) return GLOWSTONE;
     if (id == OLD_SANDSTONE_ITEM) return SANDSTONE;
     if (id == OLD_CLAY_ITEM) return CLAY_BLOCK;
+    if (id == OLD_TNT_ITEM) return TNT;
     return id;
 }
 

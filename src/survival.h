@@ -20,6 +20,7 @@ constexpr double EXHAUST_REGEN = 3.0;
 
 constexpr double REGEN_INTERVAL = 4.0;   // seconds per half-heart healed when well fed
 constexpr double STARVE_INTERVAL = 4.0;  // seconds per half-heart lost when starving
+constexpr double PEACEFUL_REGEN_INTERVAL = 12.0;  // Peaceful heals half a heart this often, fed or not (Beta)
 
 struct Stack {
     ItemId item;
@@ -60,8 +61,10 @@ public:
 
     int health, hunger;
     double saturation, exhaustion;
-    double regen_timer, starve_timer;
+    double regen_timer, starve_timer, peaceful_timer;
     double hurt_timer;  // invulnerability after being hit
+    // Peaceful difficulty: health comes back by itself and hunger stands still (set by the game).
+    bool peaceful = false;
 
     bool dead() const { return health <= 0; }
     bool can_sprint() const { return hunger > 6; }

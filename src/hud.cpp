@@ -73,10 +73,6 @@ void Hud::draw(int width, int height, const HudState& st) {
     if (message_timer_ > 0) p_.text(message_, w / 2, h * 0.68f, font_scale(18), 0.5f, 0);
     p_.text(st.info, 10, h - 10, font_scale(12), 0, 1);
     if (show_help) p_.text(st.help, 10, h - 16 - text_lines(st.info) * 10 * font_scale(12), font_scale(11), 0, 1);
-
-    if (st.dead) {
-        p_.rect(0, 0, w, h, 115 / 255.f, 0, 0, 150 / 255.f);
-        p_.text("You died!\n\nPress R to respawn", w / 2, h / 2, font_scale(30), 0.5f, 0.5f, true);
-    }
+    // Dying shows the death screen (menu.cpp) over this.
     p_.end();
 }

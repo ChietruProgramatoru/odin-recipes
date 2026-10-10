@@ -74,10 +74,12 @@ void Vitals::reset() {
     exhaustion = 0.0;
     regen_timer = 0.0;
     starve_timer = 0.0;
+    peaceful_timer = 0.0;
     hurt_timer = 0.0;
 }
 
 void Vitals::exhaust(double amount) {
+    if (peaceful) return;
     exhaustion += amount;
     while (exhaustion >= 4.0) {
         exhaustion -= 4.0;
@@ -118,7 +120,16 @@ int Vitals::tick(double dt) {
     } else {
         regen_timer = 0.0;
     }
-    if (hunger == 0) {
+    if (peaceful && health < MAX_HEALTH) {
+        peaceful_timer += dt;
+        if (peaceful_timer >= PEACEFUL_REGEN_INTERVAL) {
+            peaceful_timer = 0.0;
+            health += 1;
+        }
+    } else {
+        peaceful_timer = 0.0;
+    }
+    if (hunger == 0 && !peaceful) {
         starve_timer += dt;
         if (starve_timer >= STARVE_INTERVAL) {
             starve_timer = 0.0;

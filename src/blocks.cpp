@@ -54,6 +54,8 @@ const BlockInfo BLOCKS[BLOCK_COUNT] = {
     {"Bed", {T_BED_TOP_HEAD, T_BED_SIDE_HEAD, T_PLANKS}, 0.2f, std::nullopt},
     {"Bed", {T_BED_TOP_HEAD, T_BED_SIDE_HEAD, T_PLANKS}, 0.2f, std::nullopt},
     {"Fire", {T_FIRE, T_FIRE, T_FIRE}, 0.0f, std::nullopt},
+    // Breaking TNT lights it instead of dropping it (see Game::break_block).
+    {"TNT", {IT_TNT_TOP, IT_TNT_SIDE, IT_TNT_TOP}, 0.0f, TNT},
 };
 
 }  // namespace

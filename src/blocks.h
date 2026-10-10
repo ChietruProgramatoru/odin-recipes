@@ -24,6 +24,8 @@ enum Block : BlockId {
     BED_HEAD_SOUTH, BED_HEAD_WEST, BED_HEAD_NORTH, BED_HEAD_EAST,
     // Tools (M3): fire lit with flint and steel. It burns out by itself; spreading comes in M6.
     FIRE,
+    // Monsters (M10): TNT, lit by breaking it, flint and steel or another explosion.
+    TNT,
     BLOCK_COUNT
 };
 
@@ -53,6 +55,8 @@ enum Tile : int {
     T_BED_TOP_FOOT, T_BED_TOP_HEAD, T_BED_SIDE_FOOT, T_BED_SIDE_HEAD, T_BED_END_FOOT, T_BED_END_HEAD,
     // Fire, then armor worn on the player model: leather, chain, iron, gold, diamond.
     T_FIRE, T_ARMOR_LEATHER, T_ARMOR_CHAIN, T_ARMOR_IRON, T_ARMOR_GOLD, T_ARMOR_DIAMOND,
+    // Monsters (M10) and the smoke of explosions.
+    T_ZOMBIE_SKIN, T_ZOMBIE_SHIRT, T_ZOMBIE_PANTS, T_BONE, T_CREEPER, T_SPIDER, T_SPIDER_EYE, T_SLIME, T_SMOKE,
     TILE_COUNT
 };
 

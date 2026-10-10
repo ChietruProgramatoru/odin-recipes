@@ -75,6 +75,8 @@ public:
     virtual void draw(Gui& gui) {}
     // Screens opened from the game show the game behind them instead of dirt.
     virtual bool over_game() const { return false; }
+    // The world stands still while the screen is open (not behind the death screen, like Beta).
+    virtual bool pauses_game() const { return true; }
 
     // Input, already converted to menu units.
     void mouse_down(double gx, double gy);
@@ -101,3 +103,5 @@ std::unique_ptr<Screen> options_screen(App& app, ScreenFactory back);
 std::unique_ptr<Screen> video_settings_screen(App& app, ScreenFactory back);
 std::unique_ptr<Screen> controls_screen(App& app, ScreenFactory back);
 std::unique_ptr<Screen> pause_screen(App& app);
+// "Game over!" with Respawn and Title menu, shown while the player is dead.
+std::unique_ptr<Screen> death_screen(App& app);

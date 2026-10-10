@@ -475,14 +475,15 @@ protected:
 class OptionsScreen : public SettingsScreen {
 public:
     using SettingsScreen::SettingsScreen;
-    enum { INVERT, SENSITIVITY, VIDEO = 10, CONTROLS };
+    enum { INVERT, SENSITIVITY, DIFFICULTY, VIDEO = 10, CONTROLS };
 
     void layout(int gw, int gh) override {
         const Options& o = app.options;
-        // Music, Sound and Difficulty join this screen once the game has sound and monsters.
+        // Music and Sound join this screen once the game has sound.
         widgets.push_back(button(INVERT, column_x(gw, 0), row_y(gh, 0), 150, "Invert Mouse: " + on_off(o.invert_mouse)));
         widgets.push_back(slider(SENSITIVITY, column_x(gw, 1), row_y(gh, 1), 150,
                                  "Sensitivity: " + percent(o.sensitivity * 2), o.sensitivity));
+        widgets.push_back(button(DIFFICULTY, column_x(gw, 2), row_y(gh, 2), 150, difficulty_label(o.difficulty)));
         widgets.push_back(button(VIDEO, gw / 2 - 100, gh / 6 + 96 + 12, 200, "Video Settings..."));
         widgets.push_back(button(CONTROLS, gw / 2 - 100, gh / 6 + 120 + 12, 200, "Controls..."));
         add_done(gw, gh);
@@ -501,6 +502,11 @@ public:
             a.options_changed();
             update_labels();
         }
+        if (id == DIFFICULTY) {
+            o.difficulty = (o.difficulty + 1) % DIFFICULTY_COUNT;
+            a.options_changed();
+            update_labels();
+        }
         auto self = [&a, back] { return options_screen(a, back); };
         if (id == VIDEO) a.open(video_settings_screen(a, self));
         if (id == CONTROLS) a.open(controls_screen(a, self));
@@ -515,7 +521,9 @@ private:
         const Options& o = app.options;
         find(SENSITIVITY)->label = "Sensitivity: " + percent(o.sensitivity * 2);
         find(INVERT)->label = "Invert Mouse: " + on_off(o.invert_mouse);
+        find(DIFFICULTY)->label = difficulty_label(o.difficulty);
     }
+    static std::string difficulty_label(int d) { return std::string("Difficulty: ") + difficulty_name(d); }
 };
 
 class VideoSettingsScreen : public SettingsScreen {
@@ -618,7 +626,46 @@ public:
     }
 };
 
+// --- Death ----------------------------------------------------------------------------------------------
+
+class DeathScreen : public Screen {
+public:
+    using Screen::Screen;
+    enum { RESPAWN, TITLE };
+
+    void layout(int gw, int gh) override {
+        widgets.push_back(button(RESPAWN, gw / 2 - 100, gh / 4 + 72, 200, "Respawn"));
+        widgets.push_back(button(TITLE, gw / 2 - 100, gh / 4 + 96, 200, "Title menu"));
+    }
+    void on_button(int id) override {
+        App& a = app;
+        if (id == RESPAWN && a.game) {
+            a.game->respawn();
+            a.close_screen();
+        }
+        if (id == TITLE) a.save_and_quit_to_title();
+    }
+    void update(double) override {
+        if (app.game && !app.game->vitals.dead()) app.close_screen();  // respawned some other way
+    }
+    bool over_game() const override { return true; }
+    bool pauses_game() const override { return false; }
+    void draw(Gui& g) override {
+        // Beta's dark red wash, darker at the bottom, and "Game over!" twice the usual size.
+        const float w = static_cast<float>(g.width()), h = static_cast<float>(g.height());
+        const int bands = 16;
+        for (int i = 0; i < bands; ++i) {
+            const float t = i / (bands - 1.0f);
+            g.rect(0, h * i / bands, w, h / bands + 1, {0.31f + 0.19f * t, 0.0f + 0.19f * t, 0.19f * t, 0.38f + 0.25f * t});
+        }
+        g.p.text("Game over!", std::floor(w / 2 * g.s), static_cast<float>(g.p.height()) - 60.0f * g.s, g.s * 2, 0.5f, 1, true,
+                 TEXT_WHITE);
+    }
+};
+
 }  // namespace
+
+std::unique_ptr<Screen> death_screen(App& app) { return std::make_unique<DeathScreen>(app); }
 
 std::unique_ptr<Screen> title_screen(App& app) { return std::make_unique<TitleScreen>(app); }
 std::unique_ptr<Screen> select_world_screen(App& app) { return std::make_unique<SelectWorldScreen>(app); }

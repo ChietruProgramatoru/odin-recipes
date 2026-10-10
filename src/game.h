@@ -1,4 +1,4 @@
-// One world being played: player input, mining/building, survival, cows, drawing and saving.
+// One world being played: player input, mining/building, survival, cows, monsters, drawing and saving.
 #pragma once
 #include <filesystem>
 #include <memory>
@@ -12,6 +12,7 @@
 #include "hud.h"
 #include "inventory_screen.h"
 #include "mobs.h"
+#include "monsters.h"
 #include "options.h"
 #include "physics.h"
 #include "renderer.h"
@@ -35,6 +36,7 @@ constexpr double FLY_SPEED = 11.0;
 constexpr double JUMP_SPEED = 8.4;
 constexpr double THIRD_PERSON_DISTANCE = 4.0;
 constexpr size_t MAX_COWS = 24;
+constexpr int MONSTER_SPAWN_CHUNKS = 8;  // monsters spawn in chunks this close to the player (Beta)
 
 struct GameSetup {
     std::filesystem::path world_dir;  // the world's folder in saves/
@@ -82,8 +84,17 @@ public:
     int sleep_dir = 0;  // facing of that bed (foot to head)
 
     std::vector<std::unique_ptr<Cow>> cows;
+    std::vector<std::unique_ptr<Monster>> monsters;
     std::vector<std::unique_ptr<ItemDrop>> drops;
     std::vector<std::unique_ptr<Arrow>> arrows;
+    std::vector<std::unique_ptr<PrimedTnt>> tnts;
+    std::vector<Puff> puffs;
+    // Mob spawners in the chunks shown so far, and ticks until each one's next try.
+    struct Spawner {
+        glm::ivec3 pos;
+        int delay = 20;
+    };
+    std::vector<Spawner> spawners;
     // Fires lit with flint and steel, and how many seconds each has left before it burns out.
     struct Fire {
         glm::ivec3 pos;
@@ -96,6 +107,7 @@ public:
     double attack_cooldown = 0, break_cooldown = 0, use_cooldown = 0;
     std::optional<RayHit> target;
     Cow* target_cow = nullptr;
+    Monster* target_monster = nullptr;
     bool paused = false;
     bool hud_hidden = false, debug_screen = false, third_person = false;  // F1, F3, F5
     double autosave_timer = 0;
@@ -103,6 +115,9 @@ public:
     double fps = 60;
 
     Inventory& active_inventory() { return creative ? creative_inventory : inventory; }
+    // The crosshair is on a cow or a monster (not a block).
+    bool targeting_mob() const { return target_cow || target_monster; }
+    int difficulty() const { return options.difficulty; }
     glm::vec3 eye() const;
     glm::vec3 forward() const;
     // Where the camera is: the eyes, or behind the player in third person.
@@ -113,8 +128,25 @@ public:
     void update_target();
     void break_block(glm::ivec3 pos, BlockId block);
     void use_item();
+    // Left click on a cow or monster in reach.
+    void try_attack();
     // Damage the player, less what their armor takes off. Returns true if it hurt.
     bool hurt_player(int amount, bool ignore_cooldown = false);
+    // A monster (or its arrow or blast) hits the player: scaled by the difficulty, and a hit
+    // knocks them away from (from_x, from_z).
+    bool hurt_player_by_monster(int amount, double from_x, double from_z);
+    // A monster at a spot, if it fits there. Returns nullptr if not.
+    Monster* spawn_monster(MobKind kind, double x, double y, double z, int size = 1);
+    // Could a monster appear with its feet at (x, y, z)? Natural spawns also need solid ground,
+    // and to be 24 blocks from the player and the world spawn; spawners only need room and darkness.
+    bool can_spawn_monster(MobKind kind, double x, double y, double z, int size, bool natural);
+    // A blast of `power` (creeper 3, TNT 4): hurts and pushes everything near, then destroys blocks.
+    void explode(glm::dvec3 center, double power, bool from_monster);
+    // Light TNT at a block (taking the block away) with a fuse in ticks.
+    void prime_tnt(glm::ivec3 pos, int fuse_ticks);
+    // Monsters spawning at random in the dark (each tick), and mob spawners near the player.
+    void spawn_monsters();
+    void tick_spawners();
     void drop_selected();
     void open_gui(InventoryScreen::Kind kind);
     void close_gui();
@@ -154,11 +186,14 @@ private:
     void spawn_entity(const EntityRecord& e);
     void stash_entity(const EntityRecord& e);
     void move(double dt);
-    void try_attack();
     void mine(double dt);
     void spawn_drop(ItemId item, double x, double y, double z);
     void on_death();
     void update_cows(double dt);
+    void update_monsters(double dt);
+    void update_tnts(double dt);
+    // A monster died: its drops, and a big slime's smaller slimes.
+    void loot(Monster& m, std::vector<std::unique_ptr<Monster>>& born);
     void update_drops(double dt);
     void update_arrows(double dt);
     void update_fires(double dt);
@@ -189,4 +224,5 @@ private:
     double cursor_x_ = 0, cursor_y_ = 0;
     double ticks_ = 0;  // fraction of a game tick not yet added to level.time
     Rng weather_rng_;   // its own random numbers, so weather doesn't change what cows do
+    Rng monster_rng_;   // and its own for monsters, so they don't change what the rest does
 };

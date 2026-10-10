@@ -322,6 +322,25 @@ Image cow_hide(Rng& rng) {
     return img;
 }
 
+// Creeper skin: green in blotches of lighter and darker green, like Beta's.
+Image creeper_skin(Rng& rng) {
+    Image img(TILE, TILE);
+    for (int y = 0; y < TILE; ++y)
+        for (int x = 0; x < TILE; ++x) {
+            const double r = rng.random();
+            const Rgb c = r < 0.18 ? Rgb{150, 215, 140} : r < 0.36 ? Rgb{40, 120, 40} : Rgb{85, 175, 75};
+            img.at(x, y) = shade(c, rng.uniform(0.92, 1.08));
+        }
+    return img;
+}
+
+// Spider: dark, hairy brown-grey with lighter flecks.
+Image spider_skin(Rng& rng) {
+    Image img = noise_tile(rng, {52, 45, 40}, 0.18);
+    for (int i = 0; i < 18; ++i) img.at(rng.below(TILE), rng.below(TILE)) = shade({95, 84, 74}, rng.uniform(0.9, 1.1));
+    return img;
+}
+
 // Torch: a stick in the two middle columns with a flame on top, see-through around it.
 // Only columns 7-8, rows 6-15 are drawn (see add_torch in world.cpp).
 Image torch(Rng& rng) {
@@ -552,6 +571,10 @@ std::map<int, Image> make_tiles(int seed) {
         {T_FIRE, fire}, {T_ARMOR_LEATHER, armor_tile({160, 101, 64})}, {T_ARMOR_CHAIN, armor_tile({150, 150, 155}, true)},
         {T_ARMOR_IRON, armor_tile({215, 215, 215})}, {T_ARMOR_GOLD, armor_tile({245, 205, 50})},
         {T_ARMOR_DIAMOND, armor_tile({90, 220, 210})},
+        {T_ZOMBIE_SKIN, solid({92, 140, 76}, 0.1)}, {T_ZOMBIE_SHIRT, solid({50, 150, 160}, 0.1)},
+        {T_ZOMBIE_PANTS, solid({70, 60, 150}, 0.1)}, {T_BONE, solid({200, 200, 195}, 0.08)}, {T_CREEPER, creeper_skin},
+        {T_SPIDER, spider_skin}, {T_SPIDER_EYE, solid({205, 20, 20}, 0)}, {T_SLIME, solid({110, 195, 95}, 0.12)},
+        {T_SMOKE, solid({210, 210, 210}, 0.1)},
         {T_BED_TOP_FOOT, [](Rng& rng) { return bed_top(rng, false); }},
         {T_BED_TOP_HEAD, [](Rng& rng) { return bed_top(rng, true); }},
         {T_BED_SIDE_FOOT, [](Rng& rng) { return bed_side(rng, false, true); }},

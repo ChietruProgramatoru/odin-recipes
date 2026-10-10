@@ -207,6 +207,7 @@ TEST_CASE("the cloud map has clouds and gaps and repeats without a seam") {
 TEST_CASE("torches and glowstone from M2 saves load as the new blocks, and torches still craft") {
     CHECK(current_item_id(OLD_TORCH_ITEM) == TORCH);
     CHECK(current_item_id(OLD_GLOWSTONE_ITEM) == GLOWSTONE);
+    CHECK(current_item_id(OLD_TNT_ITEM) == TNT);
     CHECK(current_item_id(REDSTONE_TORCH) == REDSTONE_TORCH);
     CHECK_FALSE(valid_item(OLD_TORCH_ITEM));
     CHECK(valid_item(TORCH));

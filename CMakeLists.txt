@@ -75,6 +75,8 @@ add_library(petrutz_core STATIC
   src/survival.cpp
   src/tools.cpp
   src/mobs.cpp
+  src/combat.cpp
+  src/monsters.cpp
   src/textures.cpp
   src/font.cpp
   src/png.cpp
@@ -124,6 +126,7 @@ add_executable(petrutz_tests
   tests/test_save.cpp
   tests/test_light.cpp
   tests/test_tools.cpp
-  tests/test_weather.cpp)
+  tests/test_weather.cpp
+  tests/test_monsters.cpp)
 target_link_libraries(petrutz_tests PRIVATE petrutz_core doctest_header)
 add_test(NAME logic COMMAND petrutz_tests)

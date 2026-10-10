@@ -53,6 +53,7 @@ uniform float fog_start;
 uniform float fog_end;
 uniform float alpha_cut;
 uniform float darkness;
+uniform vec4 overlay;  // models: a colour mixed in by its alpha (the red flash of a hurt mob)
 out vec4 out_color;
 void main() {
     vec4 c = texture(atlas, v_tex);
@@ -62,6 +63,7 @@ void main() {
         c.rgb *= v_tint;
         c.a = 1.0;
     }
+    c.rgb = mix(c.rgb, overlay.rgb, overlay.a);
     float level = clamp(max(v_light.x * 15.0 - darkness, v_light.y * 15.0), 0.0, 15.0);
     float f = 1.0 - level / 15.0;
     float bright = (1.0 - f) / (f * 3.0 + 1.0) * 0.95 + 0.05;
@@ -607,6 +609,8 @@ void WorldRenderer::draw(int width, int height, glm::vec3 eye, glm::vec3 forward
     GLint alpha_cut = program_.uniform("alpha_cut");
     GLint model = program_.uniform("model");
     GLint model_light = program_.uniform("model_light");
+    GLint overlay = program_.uniform("overlay");
+    glUniform4f(overlay, 0, 0, 0, 0);
     glUniform1f(alpha_cut, 0.5f);
     glUniformMatrix4fv(model, 1, GL_FALSE, glm::value_ptr(identity));
     glUniform2f(model_light, 1, 0);
@@ -623,10 +627,12 @@ void WorldRenderer::draw(int width, int height, glm::vec3 eye, glm::vec3 forward
         if (it == models_.end()) continue;
         glUniformMatrix4fv(model, 1, GL_FALSE, glm::value_ptr(part.transform));
         glUniform2f(model_light, part.sky, part.block);
+        glUniform4f(overlay, part.overlay.r, part.overlay.g, part.overlay.b, part.overlay.a);
         it->second.draw();
     }
     glUniformMatrix4fv(model, 1, GL_FALSE, glm::value_ptr(identity));
     glUniform2f(model_light, 1, 0);
+    glUniform4f(overlay, 0, 0, 0, 0);
     if (outline_) {
         // Rebuilt every frame: 12 edges, slightly bigger than the block.
         const float e = 0.003f;
@@ -689,11 +695,14 @@ void WorldRenderer::draw_models(const std::vector<ModelPart>& parts, int x, int 
     glFrontFace(GL_CW);
     glDisable(GL_BLEND);
     GLint model = program_.uniform("model");
+    GLint overlay = program_.uniform("overlay");
     for (const ModelPart& part : parts) {
         auto it = models_.find(part.model);
         if (it == models_.end()) continue;
         glUniformMatrix4fv(model, 1, GL_FALSE, glm::value_ptr(part.transform));
+        glUniform4f(overlay, part.overlay.r, part.overlay.g, part.overlay.b, part.overlay.a);
         it->second.draw();
     }
+    glUniform4f(overlay, 0, 0, 0, 0);
     glDisable(GL_SCISSOR_TEST);
 }

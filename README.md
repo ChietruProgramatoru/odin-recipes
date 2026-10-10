@@ -10,7 +10,7 @@ It runs on Windows (the main target) and Linux.
 ## Features
 
 - **Title screen and worlds**: Beta-style gray buttons on a dark dirt background, all drawn by the code. Singleplayer lists your worlds (newest first) and lets you create, rename and delete them. A new world takes a name and an optional seed: a number is used as is, any other text is turned into a number, and a blank seed picks a random one.
-- **Saving**: worlds are saved every 60 seconds, when you open the pause menu and when you quit. Blocks you changed, where you stand, health, hunger, your whole inventory and armor, your bed, the weather, cows and dropped items all come back when you load the world.
+- **Saving**: worlds are saved every 60 seconds, when you open the pause menu and when you quit. Blocks you changed, where you stand, health, hunger, your whole inventory and armor, your bed, the weather, cows, monsters and dropped items all come back when you load the world.
 - **Endless Beta-style terrain** from 3D Perlin noise: rolling hills, steep cliffs with overhangs, the odd floating island, oceans with sand and gravel beaches. The world is 128 blocks tall with the sea at height 64. Chunks are generated (or loaded from the save) and meshed on background threads as you walk, so the game doesn't stutter.
 - **Biomes** picked from temperature and rainfall like Beta: Rainforest, Swamp, Seasonal Forest, Forest, Savanna, Shrubland, Taiga, Desert, Plains, Ice Desert and Tundra. Grass and leaves change colour with the climate, deserts are sand with sandstone underneath, and water freezes over in Taiga, Tundra and Ice Desert. F3 shows the biome you are in.
 
@@ -19,14 +19,14 @@ It runs on Windows (the main target) and Linux.
   ![Taiga with spruces and a frozen lake](screenshots/taiga.png)
 - **Trees by biome**: oaks, big oaks with branches, birches in forests, spruces and tall pines in the taiga. Deserts, plains and tundra have hardly any trees.
 - **Underground**: winding caves and round cave rooms (filled with lava near the bottom), water and lava lakes underground and on the surface, pockets of dirt and gravel, clay under shallow water, and ores at Beta's depths: coal anywhere, iron below 64, gold and lapis lazuli below 32, redstone and diamond below 16.
-- **Dungeons**: small mossy cobblestone rooms around a monster spawner, hidden where caves meet. The spawner stays quiet until monsters arrive (M10), and the loot chests come once chests exist.
+- **Dungeons**: small mossy cobblestone rooms around a monster spawner, hidden where caves meet. The spawner (with a little monster spinning inside) makes zombies, skeletons or spiders while you are within 16 blocks, and the loot chests come once chests exist.
 - **Ores drop Beta's items**: coal, diamonds, 4–5 redstone, 4–8 lapis lazuli, and clay blocks give 4 clay. Iron and gold ore drop themselves, ready for smelting (M7).
 - **Building**: hold the left mouse button to mine a block. The block drops as an item that you pick up by walking over it. Right click places the selected block.
 - **Tools** like Beta 1.7.3: pickaxes, axes, shovels, hoes and swords in wood, stone, iron, gold and diamond. Mining takes Beta's time: 1.5 s per point of the block's hardness by hand (a log takes 3 s, dirt 0.75 s), divided by the tool's speed on the blocks it is made for (wood 2, stone 4, iron 6, diamond 8, gold 12): pickaxes for stone, cobblestone, sandstone and ores, axes for logs, planks and chests, shovels for grass, dirt, sand, gravel and clay. Mining is five times slower with your head under water and again while you are in the air.
 - **The right tool**: stone, cobblestone, bricks, sandstone, furnaces and ores drop nothing unless mined with a pickaxe, and take 5 s per point of hardness without one. Iron and lapis ore need a stone pickaxe or better; gold, diamond and redstone ore need iron or better.
 - **Wear**: tools have Beta's durability (wood 59 uses, stone 131, iron 250, gold 32, diamond 1561) and break when they run out. Digging uses up one use of a tool (two of a sword); hitting uses one of a sword and two of a tool.
 - **Weapons**: a fist hits for half a heart, swords for 2, 3, 4 and 5 hearts (wood and gold, stone, iron, diamond). Axes, pickaxes and shovels are weak weapons, between a fist and a sword (a diamond axe does 3 hearts).
-- **Bow and arrows**: right click with a bow fires an arrow at once, as in Beta (no drawing back), using one arrow from your inventory. Arrows fly in an arc, hit cows for 2 hearts, and stick in the block they hit; walk over a stuck arrow to pick it up. They vanish after a minute.
+- **Bow and arrows**: right click with a bow fires an arrow at once, as in Beta (no drawing back), using one arrow from your inventory. Arrows fly in an arc, hit cows and monsters for 2 hearts, and stick in the block they hit; walk over a stuck arrow to pick it up. They vanish after a minute.
 
   ![Arrows in a wall, and a fire](screenshots/arrows.png)
 
@@ -40,6 +40,23 @@ It runs on Windows (the main target) and Linux.
 - **Health and hunger**: you have 10 hearts and 10 drumsticks. Walking, sprinting, jumping, mining and fighting use up hunger. When you are well fed you slowly heal. When you are starving you slowly lose health, down to half a heart. Falls of more than 3 blocks hurt, and a big enough fall kills you.
 - **Cows** wander, graze and hop up ledges. Punch one and it panics and runs away. Each cow drops 1 to 3 beef, which you eat with a right click to restore 6 hunger.
 - Apples sometimes drop from leaves.
+- **Monsters** like Beta 1.7.3, with original blocky models:
+  - **Zombies** walk at you and hit for 2.5 hearts, and drop feathers.
+  - **Skeletons** keep their distance and shoot arrows; they drop arrows and bones.
+  - **Creepers** walk up to you, swell and flash white for a second and a half, then explode (step back to stop them). They drop gunpowder, unless they blew up. Lightning makes a charged creeper with a blue glow and twice the blast.
+  - **Spiders** climb walls and leap at you, but leave you alone in daylight unless you hit them. They drop string. One spider in a hundred carries a skeleton (a spider jockey).
+  - **Slimes** hop about deep underground (below height 16 in one chunk in ten). Big ones split into 2 to 4 smaller ones when they die; the smallest are harmless and drop slimeballs.
+- **Spawning**: monsters appear in the dark (light 7 or less) at least 24 blocks from you, up to Beta's cap. They vanish when you go more than 128 blocks away, and now and then when you stay away. Zombies and skeletons catch fire in sunlight unless they are in the shade or in water. You can't sleep with monsters close by.
+
+  ![Monsters](screenshots/monsters.png)
+- **Combat**: hits knock you and monsters back, a red flash shows the hurt, and for half a second after a hit only a harder hit does anything (just the difference). Dying monsters tip over, turn red and vanish in a puff of smoke, dropping their items.
+- **Explosions**: creepers and **TNT** blast holes in the ground, hurting and throwing everything nearby (less behind walls). Stone holds out better than dirt, and water, lava and bedrock stop a blast. Breaking TNT or using flint and steel on it lights it: it flashes for 4 seconds and blows up, and a blast lights other TNT nearby. 30% of the blocks a blast destroys drop.
+
+  ![A TNT crater](screenshots/tnt.png)
+- **Difficulty** (in Options): Peaceful (no monsters; health comes back by itself and hunger stays put), Easy (monsters do a third of their damage plus half a heart), Normal (the default) and Hard (half as much again).
+- **Death**: when you die a "Game over!" screen offers Respawn or Title menu. Your whole inventory and armor drop where you died, and you come back by your bed, or at the world spawn.
+
+  ![Game over](screenshots/death.png)
 - **Inventory and crafting** like Beta 1.7.3: press E for 27 storage slots, the 9-slot hotbar, 4 armor slots and a 2x2 crafting grid, with your character turning to look at the mouse. Place a **crafting table** and right-click it for the 3x3 grid. Every Beta recipe is there (tools, weapons, armor, doors, stairs, slabs, fences, ladders, signs, beds, boats, rails, dyes, wool and the rest), as a table in the code. Shaped recipes work anywhere in the grid and mirrored.
 
   ![Inventory](screenshots/inventory.png)
@@ -121,7 +138,7 @@ Deleting the `build` folder deletes these too, so copy `saves/` somewhere safe f
 
 The **Options** button on the title screen (or in the pause menu) has:
 
-- **Invert Mouse** and mouse **Sensitivity**. Music, Sound and Difficulty will be added along with sound and monsters.
+- **Invert Mouse**, mouse **Sensitivity** and **Difficulty** (Peaceful, Easy, Normal or Hard). Music and Sound will be added along with sound.
 - **Video Settings**: **Graphics** Fancy (see-through leaves, 3D clouds) or Fast (solid leaves, flat clouds), **Render Distance** Far (16 chunks), Normal (8, the default), Short (4) or Tiny (2), **Smooth Lighting** on or off, and **Clouds** on or off.
 - **Controls**: click a key, then press the new key for it. A key used twice turns red.
 
@@ -134,7 +151,7 @@ PetrutzCraft --fullscreen
 
 ## Controls
 
-These are the defaults. Every key except the F keys, Esc, H, R and 1–9 can be changed under Options > Controls.
+These are the defaults. Every key except the F keys, Esc, H and 1–9 can be changed under Options > Controls.
 
 | Key | Action |
 | --- | --- |
@@ -143,8 +160,8 @@ These are the defaults. Every key except the F keys, Esc, H, R and 1–9 can be 
 | Space | Jump, or swim up in water |
 | Left Shift | Sneak: walk slowly without falling off edges |
 | Double-tap W (and hold) | Sprint (not possible when hunger is 3 drumsticks or less; stops when you let go, sneak or hit a wall) |
-| Left mouse (hold) | Mine a block, or hit a cow (with the selected tool or weapon) |
-| Right mouse | Place the selected block (a torch goes on the top or side of the block you point at, a bed on top), eat the selected food, shoot the bow, light a fire with flint and steel, or fill, pour and drink from a bucket |
+| Left mouse (hold) | Mine a block, or hit a cow or monster (with the selected tool or weapon) |
+| Right mouse | Place the selected block (a torch goes on the top or side of the block you point at, a bed on top), eat the selected food, shoot the bow, light a fire or TNT with flint and steel, or fill, pour and drink from a bucket |
 | Right mouse on a bed | Sleep (at night or in a thunderstorm) |
 | 1–9 / mouse wheel | Choose a hotbar slot |
 | Q | Drop one of the selected item |
@@ -158,7 +175,6 @@ These are the defaults. Every key except the F keys, Esc, H, R and 1–9 can be 
 | F5 | Third-person view |
 | H | Show or hide the help text |
 | Esc | Pause menu (Back to Game, Options, Save and Quit to Title). The world is saved when it opens |
-| R | Respawn after dying (next to your bed, if you have slept in one) |
 
 In the inventory and crafting table screens (Beta's mouse rules):
 
@@ -178,6 +194,8 @@ In the inventory and crafting table screens (Beta's mouse rules):
 - Cows are found on grass. Five spawn near you at the start, and more appear as you explore.
 - Make a wooden pickaxe (3 planks over 2 sticks) before mining stone: by hand stone is slow and drops nothing. A stone pickaxe gets you iron.
 - Keep at least 9 drumsticks of hunger to regenerate health.
+- Light up your home with torches before night: monsters spawn in the dark. Back away from a hissing creeper.
+- Set the difficulty to Peaceful under Options if you just want to build.
 
 ## Tests
 
@@ -186,7 +204,7 @@ ctest --test-dir build --output-on-failure        # logic tests (add -C Release 
 xvfb-run -a -s "-screen 0 1280x720x24" ./build/PetrutzCraft --seed 7 --autotest OUT_DIR
 ```
 
-The second command plays a scripted game and saves screenshots plus `report.txt` to `OUT_DIR`: it opens the title and options screens, creates a world from the Create New World screen, finds a cow, kills it, picks up and eats the beef, mines and places a block, crafts planks and a crafting table in the inventory screen, puts on a chestplate, crafts a pickaxe on a placed crafting table, takes a stack from the creative item picker, falls, mines stone by hand and with a pickaxe, takes a hit in full armor, shoots arrows into a wall, lights a fire, pours and scoops up water, flies, visits a desert, hills, a taiga and a torch-lit cave (checking for sandstone, spruces, frozen water and every ore), takes F5 (in armor) and F3 pictures, places a torch and glowstone and checks their light, takes pictures at night and at sunset, makes it rain, snow and thunder (checking that lightning hurts), places a bed, sleeps through the night in it and respawns by it, opens the pause menu, changes a block, saves and quits to the title, and loads the world again to check that everything came back. Its world and `options.txt` go in `OUT_DIR`, so your own saves are never touched. It exits with an error if any check fails. On Windows or a Linux desktop, run it without `xvfb-run`. GitHub runs both on every push (the screenshot test on Linux only, since GitHub's Windows machines have no graphics card).
+The second command plays a scripted game and saves screenshots plus `report.txt` to `OUT_DIR`: it opens the title and options screens, creates a world from the Create New World screen, finds a cow, kills it, picks up and eats the beef, mines and places a block, crafts planks and a crafting table in the inventory screen, puts on a chestplate, crafts a pickaxe on a placed crafting table, takes a stack from the creative item picker, falls, mines stone by hand and with a pickaxe, takes a hit in full armor, shoots arrows into a wall, lights a fire, pours and scoops up water, flies, visits a desert, hills, a taiga and a torch-lit cave (checking for sandstone, spruces, frozen water and every ore), takes F5 (in armor) and F3 pictures, places a torch and glowstone and checks their light, takes pictures at night and at sunset, makes it rain, snow and thunder (checking that lightning hurts), places a bed, sleeps through the night in it and respawns by it, fights every monster in a flat arena (a zombie's hit and knockback, a sword's hits and the invulnerability after them, a skeleton's arrow, a creeper's fuse and crater, a spider climbing a wall, a slime splitting, a zombie burning in the sun, a chain of TNT, a mob spawner, Peaceful, the death screen and natural spawning at midnight), opens the pause menu, changes a block, saves and quits to the title, and loads the world again to check that everything came back. Its world and `options.txt` go in `OUT_DIR`, so your own saves are never touched. It exits with an error if any check fails. On Windows or a Linux desktop, run it without `xvfb-run`. GitHub runs both on every push (the screenshot test on Linux only, since GitHub's Windows machines have no graphics card).
 
 ## Project layout
 
@@ -197,7 +215,7 @@ src/
   app.cpp          the title screen, menus and options around the game, loading and quitting worlds
   menu.cpp         every menu screen (title, world list, create/rename/delete, options, controls, pause)
   ui.cpp           2D drawing: rectangles, icons and pixel text for the HUD and menus
-  game.cpp         controls, mining/building, survival rules, cows, item drops and saving one world
+  game.cpp         controls, mining/building, survival rules, cows, monsters, explosions, item drops and saving one world
   save.cpp         save files: level.json, region files, world folders, background saving
   options.cpp      options.txt and the key bindings
   json.cpp         a small JSON reader and writer
@@ -221,6 +239,8 @@ src/
   container.cpp    moving stacks in the inventory screens: click, split, shift-click, crafting
   inventory_screen.cpp  drawing the inventory, crafting table and creative picker screens
   mobs.cpp         cow AI and model, the player model and its armor, dropped items, arrows
+  combat.cpp       Beta's rules for monsters: difficulty, being hurt, stats, drops, spawning, sunlight, spawners, explosions
+  monsters.cpp     monster AI and models, lit TNT, smoke puffs
   textures.cpp     procedurally generated pixel-art textures
   font.cpp         the 5x7 pixel font
   blocks.cpp       block definitions
@@ -233,18 +253,20 @@ tests/             doctest logic tests (no window needed)
 
 ## Known limits
 
-- There are no hostile mobs yet.
+- Monsters have no pathfinding: they walk straight at you and hop up single blocks, so a wall or a ditch stops them.
+- Lit TNT isn't saved. The death screen has no score yet.
+- Creepers hiss only visually until sound arrives (M16).
 - There is no obsidian yet (it comes with flowing lava in M6), so the diamond-pickaxe rule for it waits until then.
 - The fishing rod is only an item until fishing arrives in M15. The hoe can't till yet (farming is M8).
 - Flying arrows, and arrows stuck in blocks, aren't saved: they're gone when you load the world. Fires go on burning after loading.
 - Lava and water stand still and lava doesn't burn you yet (M6). Lava, water and ice are see-through for the crosshair, and ice drops nothing (like Beta).
 - No tall grass, flowers, mushrooms, sugar cane, cacti, pumpkins or snow layers yet: they need non-cube shapes and come in M11.
 - Worlds saved before world generation changed keep the chunks you visited, so there is a visible cliff where the old terrain meets the new.
-- No sound, music or monsters yet, and no options for them until they arrive. So there's no thunder to hear, and sleeping is never stopped by monsters nearby.
+- No sound or music yet, and no options for them until they arrive. So there's no thunder or creeper hiss to hear.
 - Lightning doesn't start fires and rain doesn't put them out yet (M6). Snow doesn't pile up on the ground yet (snow layers come in M6).
 - Wool only comes from the creative item picker until sheep arrive (M10), so that's where beds start.
 - Doors and most other crafted things don't do anything yet; they arrive with M11 and the other milestones. Chests and furnaces are plain blocks for now.
-- Iron and gold need smelting (M7), and string, feathers and the like come from mobs (M10); until then the creative item picker has them.
+- Iron and gold need smelting (M7), and string, feathers, bones and gunpowder now come from monsters.
 - Glowstone drops itself when broken (Beta drops glowstone dust, which comes with the Nether in M14). Furnaces and jack-o'-lanterns will give off light once they exist; lava and fire already do.
 - Light levels are not stored in the save files: they are worked out again when a chunk is loaded.
 - The menus and text use only plain ASCII letters, numbers and symbols.
