@@ -1,4 +1,4 @@
-"""PyCraft - a small Minecraft-style survival game.
+"""PetrutzCraft - a small Minecraft-style survival game.
 
 Run:  python main.py            (random world)
       python main.py --seed 42  (same world every time)
@@ -8,7 +8,7 @@ import sys
 
 
 def main():
-    parser = argparse.ArgumentParser(description='PyCraft, a Minecraft-style voxel game')
+    parser = argparse.ArgumentParser(description='PetrutzCraft, a Minecraft-style voxel game')
     parser.add_argument('--seed', type=int, default=None, help='world seed (random if omitted)')
     parser.add_argument('--render-distance', type=int, default=6, help='view distance in chunks (default 6)')
     parser.add_argument('--fullscreen', action='store_true')
@@ -16,11 +16,11 @@ def main():
     args = parser.parse_args()
 
     import pyglet
-    from pycraft.game import Game
+    from petrutzcraft.game import Game
 
     autotest = None
     if args.autotest:
-        from pycraft.autotest import AutoTest
+        from petrutzcraft.autotest import AutoTest
         autotest = AutoTest(args.autotest)
     size = {} if args.fullscreen else {'width': 1280, 'height': 720}
     Game(seed=args.seed, render_distance=max(2, min(12, args.render_distance)), autotest=autotest,

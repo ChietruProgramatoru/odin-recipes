@@ -33,7 +33,7 @@ class Game(pyglet.window.Window):
     def __init__(self, seed=None, render_distance=6, autotest=None, **window_args):
         config = pyglet.gl.Config(double_buffer=True, depth_size=24, major_version=3, minor_version=3,
                                   forward_compatible=True)
-        super().__init__(caption='PyCraft', resizable=True, config=config, **window_args)
+        super().__init__(caption='PetrutzCraft', resizable=True, config=config, **window_args)
         self.keys = key.KeyStateHandler()
         self.push_handlers(self.keys)
         self.mouse_buttons = set()
