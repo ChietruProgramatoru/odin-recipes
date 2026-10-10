@@ -10,6 +10,8 @@ PFN_glEnable pc_glEnable = nullptr;
 PFN_glDisable pc_glDisable = nullptr;
 PFN_glBlendFunc pc_glBlendFunc = nullptr;
 PFN_glDepthMask pc_glDepthMask = nullptr;
+PFN_glDepthFunc pc_glDepthFunc = nullptr;
+PFN_glColorMask pc_glColorMask = nullptr;
 PFN_glFrontFace pc_glFrontFace = nullptr;
 PFN_glGetString pc_glGetString = nullptr;
 PFN_glGetError pc_glGetError = nullptr;
@@ -72,6 +74,8 @@ bool load_gl() {
     ok &= load(pc_glDisable, "glDisable");
     ok &= load(pc_glBlendFunc, "glBlendFunc");
     ok &= load(pc_glDepthMask, "glDepthMask");
+    ok &= load(pc_glDepthFunc, "glDepthFunc");
+    ok &= load(pc_glColorMask, "glColorMask");
     ok &= load(pc_glFrontFace, "glFrontFace");
     ok &= load(pc_glGetString, "glGetString");
     ok &= load(pc_glGetError, "glGetError");

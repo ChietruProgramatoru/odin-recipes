@@ -521,7 +521,7 @@ private:
 class VideoSettingsScreen : public SettingsScreen {
 public:
     using SettingsScreen::SettingsScreen;
-    enum { GRAPHICS, DISTANCE, SMOOTH };  // Clouds joins once the sky has clouds
+    enum { GRAPHICS, DISTANCE, SMOOTH, CLOUDS };
 
     void layout(int gw, int gh) override {
         const Options& o = app.options;
@@ -530,6 +530,7 @@ public:
         widgets.push_back(button(DISTANCE, column_x(gw, 1), row_y(gh, 1), 150,
                                  std::string("Render Distance: ") + view_distance_name(o.view_distance)));
         widgets.push_back(button(SMOOTH, column_x(gw, 2), row_y(gh, 2), 150, "Smooth Lighting: " + on_off(o.smooth_lighting)));
+        widgets.push_back(button(CLOUDS, column_x(gw, 3), row_y(gh, 3), 150, "Clouds: " + on_off(o.clouds)));
         add_done(gw, gh);
     }
     void on_button(int id) override {
@@ -541,6 +542,7 @@ public:
         if (id == GRAPHICS) o.fancy_graphics = !o.fancy_graphics;
         if (id == DISTANCE) o.view_distance = (o.view_distance + 1) % VIEW_COUNT;
         if (id == SMOOTH) o.smooth_lighting = !o.smooth_lighting;
+        if (id == CLOUDS) o.clouds = !o.clouds;
         app.options_changed();
         relabel();
     }

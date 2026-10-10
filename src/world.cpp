@@ -118,12 +118,12 @@ Chunk& World::chunk(int cx, int cz) {
 }
 
 std::unique_ptr<Chunk> World::load_or_generate(int cx, int cz) const {
-    if (store_)
-        if (auto c = store_->load(cx, cz)) {
-            c->climate = generator_.climate(cx, cz);
-            return c;
-        }
-    return generator_.generate(cx, cz);
+    std::unique_ptr<Chunk> c;
+    if (store_) c = store_->load(cx, cz);
+    if (c) c->climate = generator_.climate(cx, cz);
+    else c = generator_.generate(cx, cz);
+    light_chunk(*c);
+    return c;
 }
 
 std::vector<Chunk*> World::all_chunks() {
@@ -145,7 +145,10 @@ void Chunk::recompute_max_y() {
 
 void World::insert(std::unique_ptr<Chunk> chunk) {
     ChunkPos key{chunk->cx, chunk->cz};
-    chunks_.try_emplace(key, std::move(chunk));
+    if (chunks_.count(key)) return;
+    if (!chunk->lit) light_chunk(*chunk);
+    Chunk& c = *chunks_.emplace(key, std::move(chunk)).first->second;
+    join_light(c);
 }
 
 BlockId World::get_block(int x, int y, int z) {
@@ -172,8 +175,9 @@ std::vector<ChunkPos> World::set_block(int x, int y, int z, BlockId block) {
     if (lz == 15) zs.push_back(cz + 1);
     std::vector<ChunkPos> dirty;
     for (int a : xs)
-        for (int b : zs)
-            if (find(a, b)) dirty.push_back({a, b});
+        for (int b : zs) dirty.push_back({a, b});
+    relight(x, y, z, dirty);
+    std::erase_if(dirty, [&](ChunkPos p) { return !find(p.cx, p.cz); });
     return dirty;
 }
 
@@ -235,18 +239,23 @@ std::optional<RayHit> World::raycast(glm::vec3 origin, glm::vec3 direction, floa
 
 // --- Meshing ----------------------------------------------------------------------------
 
-Padded World::padded(int cx, int cz) {
-    Padded P(PADDED_SIZE, AIR);
-    std::fill(P.begin(), P.begin() + LAYER, static_cast<BlockId>(BEDROCK));  // y = -1
-    const auto& b = chunk(cx, cz).blocks;
-    const auto& nxm = chunk(cx - 1, cz).blocks;
-    const auto& nxp = chunk(cx + 1, cz).blocks;
-    const auto& nzm = chunk(cx, cz - 1).blocks;
-    const auto& nzp = chunk(cx, cz + 1).blocks;
-    const auto& dmm = chunk(cx - 1, cz - 1).blocks;
-    const auto& dpm = chunk(cx + 1, cz - 1).blocks;
-    const auto& dmp = chunk(cx - 1, cz + 1).blocks;
-    const auto& dpp = chunk(cx + 1, cz + 1).blocks;
+namespace {
+
+// Copy one per-block array of a chunk plus a one-block border from its 8 neighbours.
+template <typename T, typename Field>
+std::vector<T> pad(World& w, int cx, int cz, T below, T above, Field field) {
+    std::vector<T> P(PADDED_SIZE, T{});
+    std::fill(P.begin(), P.begin() + LAYER, below);  // y = -1
+    std::fill(P.end() - LAYER, P.end(), above);      // y = HEIGHT
+    const auto& b = field(w.chunk(cx, cz));
+    const auto& nxm = field(w.chunk(cx - 1, cz));
+    const auto& nxp = field(w.chunk(cx + 1, cz));
+    const auto& nzm = field(w.chunk(cx, cz - 1));
+    const auto& nzp = field(w.chunk(cx, cz + 1));
+    const auto& dmm = field(w.chunk(cx - 1, cz - 1));
+    const auto& dpm = field(w.chunk(cx + 1, cz - 1));
+    const auto& dmp = field(w.chunk(cx - 1, cz + 1));
+    const auto& dpp = field(w.chunk(cx + 1, cz + 1));
     for (int y = 0; y < HEIGHT; ++y) {
         int py = (y + 1) * LAYER;
         int sy = y << 8;
@@ -268,13 +277,60 @@ Padded World::padded(int cx, int cz) {
     return P;
 }
 
-ChunkMesh World::build_mesh_now(int cx, int cz, MeshOptions options) {
-    Padded P = padded(cx, cz);
-    const Chunk& c = chunk(cx, cz);
-    return build_mesh(P, cx, cz, c.max_y, options, &c.climate);
+}  // namespace
+
+Padded World::padded(int cx, int cz) {
+    return pad<BlockId>(*this, cx, cz, BEDROCK, AIR, [](Chunk& c) -> const auto& { return c.blocks; });
 }
 
-ChunkMesh build_mesh(const Padded& P, int cx, int cz, int max_y, MeshOptions options, const Climate* climate) {
+PaddedLight World::padded_light(int cx, int cz) {
+    // Dark below the world, open sky above it.
+    return pad<uint8_t>(*this, cx, cz, 0, MAX_LIGHT << 4, [](Chunk& c) -> const auto& { return c.light; });
+}
+
+ChunkMesh World::build_mesh_now(int cx, int cz, MeshOptions options) {
+    Padded P = padded(cx, cz);
+    PaddedLight L = padded_light(cx, cz);
+    const Chunk& c = chunk(cx, cz);
+    return build_mesh(P, L, cx, cz, c.max_y, options, &c.climate);
+}
+
+namespace {
+
+float sky_of(uint8_t l) { return static_cast<float>(l >> 4) / MAX_LIGHT; }
+float block_of(uint8_t l) { return static_cast<float>(l & 15) / MAX_LIGHT; }
+
+// A torch: a thin stick 2/16 wide and 10/16 tall. Wall torches lean out from their wall.
+void add_torch(MeshData& mesh, float wx, float wy, float wz, BlockId blk, uint8_t light) {
+    constexpr float W = 2.0f / 16, H = 10.0f / 16;
+    glm::vec3 lean(0);
+    if (blk == TORCH_WALL_WEST) lean = {1, 0, 0};
+    if (blk == TORCH_WALL_EAST) lean = {-1, 0, 0};
+    if (blk == TORCH_WALL_NORTH) lean = {0, 0, 1};
+    if (blk == TORCH_WALL_SOUTH) lean = {0, 0, -1};
+    const bool wall = blk != TORCH;
+    auto uv = tile_uv(T_TORCH);
+    auto sub = [&](float px0, float py0, float px1, float py1) {  // pixel rectangle of the tile, rows from the top
+        float du = (uv[2] - uv[0]) / 16, dv = (uv[3] - uv[1]) / 16;
+        return std::array<float, 4>{uv[0] + px0 * du, uv[3] - py1 * dv, uv[0] + px1 * du, uv[3] - py0 * dv};
+    };
+    const auto side_uv = sub(7, 6, 9, 16), cap_uv = sub(7, 6, 9, 8);
+    for (const FaceDef& f : face_defs()) {
+        std::array<glm::vec3, 4> pts;
+        for (int c = 0; c < 4; ++c) {
+            glm::vec3 k(f.corners[c]);
+            glm::vec3 p(0.5f + (k.x - 0.5f) * W, k.y * H, 0.5f + (k.z - 0.5f) * W);
+            if (wall) p += lean * (p.y * 0.4f - 0.35f) + glm::vec3(0, 0.2f, 0);
+            pts[c] = p + glm::vec3(wx, wy, wz);
+        }
+        mesh.quad_points(pts, f.slot == 1 ? side_uv : cap_uv, 1.0f, sky_of(light), block_of(light));
+    }
+}
+
+}  // namespace
+
+ChunkMesh build_mesh(const Padded& P, const PaddedLight& L, int cx, int cz, int max_y, MeshOptions options,
+                     const Climate* climate) {
     ChunkMesh mesh;
     const int ox = cx * CHUNK, oz = cz * CHUNK;
     const int up = off(0, 1, 0);
@@ -295,13 +351,18 @@ ChunkMesh build_mesh(const Padded& P, int cx, int cz, int max_y, MeshOptions opt
                 BlockId blk = P[i];
                 if (blk == AIR) continue;
                 float wx = static_cast<float>(ox + x), wy = static_cast<float>(y), wz = static_cast<float>(oz + z);
+                if (is_torch(blk)) {
+                    add_torch(mesh.solid, wx, wy, wz, blk, L[i]);
+                    continue;
+                }
                 if (blk == WATER) {
                     float h = P[i + up] == WATER ? 1.0f : LIQUID_SURFACE;
                     const auto& uv = BLOCK_UVS[WATER].uv[0];
                     for (const Face& f : FACES) {
-                        if (f.offset == -up || P[i + f.offset] != AIR) continue;
-                        float l = f.def->light;
-                        mesh.water.quad(wx, wy, wz, f.def->corners, h, uv, {l, l, l, l});
+                        BlockId nb = P[i + f.offset];
+                        if (f.offset == -up || (nb != AIR && !is_torch(nb) && !is_cutout(nb))) continue;
+                        float l = f.def->light, s = sky_of(L[i + f.offset]), b = block_of(L[i + f.offset]);
+                        mesh.water.quad(wx, wy, wz, f.def->corners, h, uv, {l, l, l, l}, {s, s, s, s}, {b, b, b, b});
                     }
                     continue;
                 }
@@ -312,8 +373,9 @@ ChunkMesh build_mesh(const Padded& P, int cx, int cz, int max_y, MeshOptions opt
                     for (const Face& f : FACES) {
                         BlockId nb = P[i + f.offset];
                         if (OPAQUE[nb] || nb == blk || (blk == ICE && nb == WATER)) continue;
-                        float l = f.def->light;
-                        out.quad(wx, wy, wz, f.def->corners, h, BLOCK_UVS[blk].uv[f.def->slot], {l, l, l, l});
+                        float l = f.def->light, s = sky_of(L[i + f.offset]), b = block_of(L[i + f.offset]);
+                        out.quad(wx, wy, wz, f.def->corners, h, BLOCK_UVS[blk].uv[f.def->slot], {l, l, l, l},
+                                 {s, s, s, s}, {b, b, b, b});
                     }
                     continue;
                 }
@@ -330,19 +392,36 @@ ChunkMesh build_mesh(const Padded& P, int cx, int cz, int max_y, MeshOptions opt
                     case BlockTint::NONE: break;
                 }
                 for (const Face& f : FACES) {
-                    BlockId nb = P[i + f.offset];
+                    const int front = i + f.offset;
+                    BlockId nb = P[front];
                     if (OPAQUE[nb] && !(LEAVES_TABLE[nb] && options.fancy_leaves)) continue;
                     if (nb == blk && is_cutout(blk)) continue;
-                    std::array<float, 4> shades;
+                    std::array<float, 4> shades, sky, block;
                     for (int c = 0; c < 4; ++c) {
                         int occ = 0;
+                        float s = sky_of(L[front]), b = block_of(L[front]);
                         if (options.smooth_lighting) {
-                            bool a = OPAQUE[P[i + f.ao[c][0]]], b = OPAQUE[P[i + f.ao[c][1]]];
-                            occ = (a && b) ? 3 : a + b + OPAQUE[P[i + f.ao[c][2]]];
+                            bool a = OPAQUE[P[i + f.ao[c][0]]], bb = OPAQUE[P[i + f.ao[c][1]]];
+                            bool d = OPAQUE[P[i + f.ao[c][2]]];
+                            occ = (a && bb) ? 3 : a + bb + d;
+                            // Smooth lighting: average the light of the open cells around the corner.
+                            int n = 1;
+                            auto add = [&](int j) {
+                                s += sky_of(L[j]);
+                                b += block_of(L[j]);
+                                ++n;
+                            };
+                            if (!a) add(i + f.ao[c][0]);
+                            if (!bb) add(i + f.ao[c][1]);
+                            if (!d && !(a && bb)) add(i + f.ao[c][2]);
+                            s /= n;
+                            b /= n;
                         }
                         shades[c] = f.def->light * AO_LEVELS[occ];
+                        sky[c] = s;
+                        block[c] = b;
                     }
-                    mesh.solid.quad(wx, wy, wz, f.def->corners, 1.0f, uvs[f.def->slot], shades, tint);
+                    mesh.solid.quad(wx, wy, wz, f.def->corners, 1.0f, uvs[f.def->slot], shades, sky, block, tint);
                 }
             }
         }
@@ -351,23 +430,34 @@ ChunkMesh build_mesh(const Padded& P, int cx, int cz, int max_y, MeshOptions opt
 
 void MeshData::quad(float x, float y, float z, const std::array<glm::ivec3, 4>& corners, float h,
                     const std::array<float, 4>& uv, const std::array<float, 4>& shades, Rgb8 tint) {
+    quad(x, y, z, corners, h, uv, shades, {1, 1, 1, 1}, {0, 0, 0, 0}, tint);
+}
+
+void MeshData::quad(float x, float y, float z, const std::array<glm::ivec3, 4>& corners, float h,
+                    const std::array<float, 4>& uv, const std::array<float, 4>& shades,
+                    const std::array<float, 4>& sky, const std::array<float, 4>& block, Rgb8 tint) {
     const float us[4] = {uv[0], uv[2], uv[2], uv[0]};
     const float vs[4] = {uv[1], uv[1], uv[3], uv[3]};
     const float r = tint.r / 255.0f, g = tint.g / 255.0f, b = tint.b / 255.0f;
     uint32_t n = static_cast<uint32_t>(vertices.size());
-    for (int c = 0; c < 4; ++c)
-        vertices.push_back({x + corners[c].x, y + corners[c].y * h, z + corners[c].z, shades[c], us[c], vs[c], r, g, b});
-    // Flip the quad's diagonal so occlusion gradients interpolate smoothly.
-    if (shades[0] + shades[2] < shades[1] + shades[3])
+    float bright[4];
+    for (int c = 0; c < 4; ++c) {
+        vertices.push_back(
+            {x + corners[c].x, y + corners[c].y * h, z + corners[c].z, shades[c], us[c], vs[c], sky[c], block[c], r, g, b});
+        bright[c] = shades[c] * (0.2f + std::max(sky[c], block[c]));
+    }
+    // Flip the quad's diagonal so occlusion and light gradients interpolate smoothly.
+    if (bright[0] + bright[2] < bright[1] + bright[3])
         indices.insert(indices.end(), {n + 1, n + 2, n + 3, n + 1, n + 3, n});
     else
         indices.insert(indices.end(), {n, n + 1, n + 2, n, n + 2, n + 3});
 }
 
-void MeshData::quad_points(const std::array<glm::vec3, 4>& pts, const std::array<float, 4>& uv, float shade) {
+void MeshData::quad_points(const std::array<glm::vec3, 4>& pts, const std::array<float, 4>& uv, float shade,
+                           float sky, float block) {
     const float us[4] = {uv[0], uv[2], uv[2], uv[0]};
     const float vs[4] = {uv[1], uv[1], uv[3], uv[3]};
     uint32_t n = static_cast<uint32_t>(vertices.size());
-    for (int c = 0; c < 4; ++c) vertices.push_back({pts[c].x, pts[c].y, pts[c].z, shade, us[c], vs[c]});
+    for (int c = 0; c < 4; ++c) vertices.push_back({pts[c].x, pts[c].y, pts[c].z, shade, us[c], vs[c], sky, block});
     indices.insert(indices.end(), {n, n + 1, n + 2, n, n + 2, n + 3});
 }

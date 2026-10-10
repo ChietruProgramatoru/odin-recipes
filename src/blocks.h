@@ -11,6 +11,10 @@ using ItemId = int;
 enum Block : BlockId {
     AIR, GRASS, DIRT, STONE, COBBLE, SAND, LOG, LEAVES, PLANKS, BEDROCK, WATER, BRICK,
     CRAFTING_TABLE, CHEST, FURNACE,
+    GLOWSTONE, TORCH,
+    // Torches on a wall, named by the side of the torch's cell the wall is on. They drop and
+    // show as TORCH; placing a torch on a wall picks one of these.
+    TORCH_WALL_WEST, TORCH_WALL_EAST, TORCH_WALL_NORTH, TORCH_WALL_SOUTH,
     // World generation (M4).
     GRAVEL, CLAY_BLOCK, SANDSTONE, COAL_ORE, IRON_ORE, GOLD_ORE, DIAMOND_ORE, REDSTONE_ORE, LAPIS_ORE,
     MOSSY_COBBLE, SPAWNER, LAVA, ICE, BIRCH_LOG, SPRUCE_LOG, BIRCH_LEAVES, SPRUCE_LEAVES,
@@ -28,6 +32,8 @@ enum Tile : int {
     T_COW_HIDE, T_WHITE, T_HOOF, T_COW_HEAD, T_SNOUT, T_BLACK, T_HORN, T_APPLE, T_BEEF,
     // Solid leaves for Fast graphics, then the player model.
     T_LEAVES_FAST, T_SKIN, T_HAIR, T_SHIRT, T_PANTS, T_SHOE, T_EYE,
+    // The torch in the world (its inventory icon is in icons.h).
+    T_TORCH,
     // World generation blocks.
     // (Sandstone and clay use the item table's tiles, see icons.h.)
     T_GRAVEL, T_COAL_ORE, T_IRON_ORE, T_GOLD_ORE,
@@ -66,5 +72,9 @@ bool is_fluid(BlockId id);  // water or lava: you can't target or break it
 bool is_leaves(BlockId id);
 // Drawn see-through in the solid pass (alpha-tested), so neighbouring faces stay visible.
 bool is_cutout(BlockId id);
+bool is_torch(BlockId id);  // floor or wall torch (drawn as a thin stick, not a cube)
+// Light (0-15): how much a block dims light passing into it, and how much it gives off.
+int light_opacity(BlockId id);
+int light_emission(BlockId id);
 
 // Item names, icons, stack sizes and the rest are in items.h.

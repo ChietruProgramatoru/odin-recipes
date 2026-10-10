@@ -245,3 +245,12 @@ TEST_CASE("lava and water don't stop the crosshair; lava, ice and spawners show 
     CHECK_FALSE(is_opaque(SPAWNER));
     CHECK(is_leaves(SPRUCE_LEAVES));
 }
+
+TEST_CASE("sandstone and clay items from M2 saves become the new blocks; lava glows, ice dims light") {
+    CHECK(current_item_id(OLD_SANDSTONE_ITEM) == SANDSTONE);
+    CHECK(current_item_id(OLD_CLAY_ITEM) == CLAY_BLOCK);
+    CHECK(light_emission(LAVA) == 15);
+    CHECK(light_opacity(ICE) == 3);
+    CHECK(light_opacity(BIRCH_LEAVES) == 1);
+    CHECK(light_opacity(GRAVEL) == 15);
+}

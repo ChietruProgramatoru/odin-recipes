@@ -186,7 +186,7 @@ std::optional<LevelData> level_from_json(const std::string& text) {
             if (const Json* inv = pj->get("inventory"); inv && inv->is_array())
                 for (const Json& s : inv->items()) {
                     int slot = static_cast<int>(s.number("slot", -1));
-                    int item = static_cast<int>(s.number("item", 0));
+                    int item = current_item_id(static_cast<int>(s.number("item", 0)));
                     int count = static_cast<int>(s.number("count", 0));
                     int damage = std::clamp(static_cast<int>(s.number("damage", 0)), 0, std::max(0, max_damage(item)));
                     if (!valid_item(item) || count < 1) continue;
@@ -247,7 +247,7 @@ std::unique_ptr<Chunk> decode_chunk(const std::vector<uint8_t>& bytes, int cx, i
         e.z = r.f64();
         e.yaw = r.f32();
         e.health = r.i32();
-        e.item = r.i32();
+        e.item = current_item_id(r.i32());
         e.age = r.f32();
         if (version >= 2) {
             e.count = r.i32();

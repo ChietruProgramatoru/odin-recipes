@@ -46,6 +46,7 @@ private:
     BlockId broken_block_ = 0;
     int hp_before_fall_ = 0;
     glm::dvec3 tour_start_{0};
+    std::optional<glm::ivec3> cave_;
     uint64_t seed_;
     // Saving and loading.
     int phase_ = 0;  // 0 menus, 1 playing, 2 back at the title, 3 playing again
@@ -53,4 +54,8 @@ private:
     glm::ivec3 marker_{0};
     PlayerData saved_player_;
     size_t saved_cows_ = 0;
+    // Light and day/night.
+    glm::ivec3 torch_{0}, glowstone_{0};
+    int64_t day_time_ = 0;
+    double ground_y_ = 0;
 };

@@ -43,8 +43,11 @@ enum Item : ItemId {
     FUTURE_BLOCKS = 512,
     WHITE_WOOL = FUTURE_BLOCKS, ORANGE_WOOL, MAGENTA_WOOL, LIGHT_BLUE_WOOL, YELLOW_WOOL, LIME_WOOL, PINK_WOOL,
     GRAY_WOOL, LIGHT_GRAY_WOOL, CYAN_WOOL, PURPLE_WOOL, BLUE_WOOL, BROWN_WOOL, GREEN_WOOL, RED_WOOL, BLACK_WOOL,
-    TORCH, REDSTONE_TORCH, GLOWSTONE, JACK_O_LANTERN, PUMPKIN,
-    SNOW_BLOCK, GOLD_BLOCK, IRON_BLOCK, DIAMOND_BLOCK, LAPIS_BLOCK,
+    // Torches and glowstone became real blocks in M5, sandstone and clay in M4 (see blocks.h).
+    // Their old ids stay reserved so the ids after them don't move; saves from M2 have them
+    // turned into the blocks on load.
+    OLD_TORCH_ITEM, REDSTONE_TORCH, OLD_GLOWSTONE_ITEM, JACK_O_LANTERN, PUMPKIN,
+    OLD_SANDSTONE_ITEM, SNOW_BLOCK, OLD_CLAY_ITEM, GOLD_BLOCK, IRON_BLOCK, DIAMOND_BLOCK, LAPIS_BLOCK,
     BOOKSHELF, TNT, NOTE_BLOCK, JUKEBOX, DISPENSER, PISTON, STICKY_PISTON,
     STONE_SLAB, SANDSTONE_SLAB, WOOD_SLAB, COBBLE_SLAB, WOOD_STAIRS, COBBLE_STAIRS,
     FENCE, LADDER, TRAPDOOR, LEVER, STONE_BUTTON, STONE_PLATE, WOOD_PLATE,
@@ -79,6 +82,9 @@ int icon_tile(ItemId id);  // the tile for a dropped item's model (a block's sid
 const std::vector<ItemId>& all_items();
 // Items in the creative hotbar of a new world.
 const std::vector<ItemId>& creative_items();
+
+// The id an item has now, for an id read from an older save.
+ItemId current_item_id(ItemId id);
 
 // Info for any item id, or nullptr for ids that aren't items (AIR, water, bedrock and unknown ids).
 const ItemInfo* item_info(ItemId id);

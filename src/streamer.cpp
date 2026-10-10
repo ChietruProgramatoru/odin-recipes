@@ -114,12 +114,13 @@ void ChunkStreamer::update(double px, double pz, int radius) {
         meshes_[key] = {State::Pending, ticket};
         ++in_flight_;
         auto padded = std::make_shared<Padded>(world_.padded(key.cx, key.cz));
+        auto light = std::make_shared<PaddedLight>(world_.padded_light(key.cx, key.cz));
         const Chunk* chunk = world_.find(key.cx, key.cz);
         int max_y = chunk->max_y;
         Climate climate = chunk->climate;
         MeshOptions options = options_;
-        pool_.submit([this, key, ticket, padded, max_y, options, climate] {
-            ChunkMesh mesh = build_mesh(*padded, key.cx, key.cz, max_y, options, &climate);
+        pool_.submit([this, key, ticket, padded, light, max_y, options, climate] {
+            ChunkMesh mesh = build_mesh(*padded, *light, key.cx, key.cz, max_y, options, &climate);
             std::lock_guard lock(done_mutex_);
             mesh_done_.push_back({key, ticket, std::move(mesh)});
             done_cv_.notify_all();

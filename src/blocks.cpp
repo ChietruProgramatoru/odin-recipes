@@ -21,6 +21,12 @@ const BlockInfo BLOCKS[BLOCK_COUNT] = {
     {"Crafting Table", {IT_CRAFT_TOP, IT_CRAFT_FRONT, T_PLANKS}, 1.8f, CRAFTING_TABLE},
     {"Chest", {IT_CHEST_TOP, IT_CHEST_FRONT, IT_CHEST_TOP}, 1.8f, CHEST},
     {"Furnace", {IT_FURNACE_TOP, IT_FURNACE_FRONT, IT_FURNACE_TOP}, 2.4f, FURNACE},
+    {"Glowstone", {IT_GLOWSTONE, IT_GLOWSTONE, IT_GLOWSTONE}, 0.45f, GLOWSTONE},
+    {"Torch", {T_TORCH, T_TORCH, T_TORCH}, 0.0f, TORCH},
+    {"Torch", {T_TORCH, T_TORCH, T_TORCH}, 0.0f, TORCH},
+    {"Torch", {T_TORCH, T_TORCH, T_TORCH}, 0.0f, TORCH},
+    {"Torch", {T_TORCH, T_TORCH, T_TORCH}, 0.0f, TORCH},
+    {"Torch", {T_TORCH, T_TORCH, T_TORCH}, 0.0f, TORCH},
     {"Gravel", {T_GRAVEL, T_GRAVEL, T_GRAVEL}, 0.6f, GRAVEL},
     {"Clay", {IT_CLAY, IT_CLAY, IT_CLAY}, 0.6f, CLAY_BALL, 4, 4},
     {"Sandstone", {IT_SANDSTONE_TOP, IT_SANDSTONE_SIDE, IT_SANDSTONE_TOP}, 0.8f, SANDSTONE},
@@ -50,8 +56,9 @@ const BlockInfo* block_info(ItemId id) {
 bool is_fluid(BlockId id) { return id == WATER || id == LAVA; }
 bool is_leaves(BlockId id) { return id == LEAVES || id == BIRCH_LEAVES || id == SPRUCE_LEAVES; }
 bool is_cutout(BlockId id) { return id == SPAWNER; }
-bool is_solid(BlockId id) { return id != AIR && !is_fluid(id); }
-bool is_opaque(BlockId id) { return id != AIR && !is_fluid(id) && id != ICE && !is_cutout(id); }
+bool is_torch(BlockId id) { return id >= TORCH && id <= TORCH_WALL_SOUTH; }
+bool is_solid(BlockId id) { return id != AIR && !is_fluid(id) && !is_torch(id); }
+bool is_opaque(BlockId id) { return id != AIR && !is_fluid(id) && id != ICE && !is_cutout(id) && !is_torch(id); }
 bool is_block(ItemId id) { return block_info(id) != nullptr; }
 
 BlockTint block_tint(BlockId id) {
@@ -62,4 +69,18 @@ BlockTint block_tint(BlockId id) {
         case SPRUCE_LEAVES: return BlockTint::SPRUCE;
         default: return BlockTint::NONE;
     }
+}
+
+// Beta's values: leaves dim light by 1, water and ice by 3, solid blocks stop it.
+int light_opacity(BlockId id) {
+    if (id == AIR || is_torch(id) || id == SPAWNER) return 0;
+    if (is_leaves(id)) return 1;
+    if (id == WATER || id == ICE) return 3;
+    return 15;
+}
+
+int light_emission(BlockId id) {
+    if (id == GLOWSTONE || id == LAVA) return 15;
+    if (is_torch(id)) return 14;
+    return 0;
 }
