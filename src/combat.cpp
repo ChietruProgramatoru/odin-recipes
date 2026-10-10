@@ -128,6 +128,7 @@ int spawner_delay(Rng& rng) { return 200 + rng.below(600); }
 float explosion_resistance(uint8_t block) {
     switch (block) {
         case AIR: return 0;
+        case GLASS: return 0.3f;
         case STONE: case COBBLE: case BRICK: case MOSSY_COBBLE: return 6;
         case PLANKS: return 3;
         case COAL_ORE: case IRON_ORE: case GOLD_ORE: case DIAMOND_ORE: case REDSTONE_ORE: case LAPIS_ORE: return 3;

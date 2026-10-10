@@ -20,8 +20,9 @@ bool axe_block(BlockId b) { return b == PLANKS || b == LOG || b == BIRCH_LOG || 
 
 // Stone-like blocks drop nothing unless mined with a pickaxe of at least this level.
 std::optional<int> pickaxe_needed(BlockId b) {
+    if (is_furnace(b)) return 0;
     switch (b) {
-        case STONE: case COBBLE: case BRICK: case FURNACE: case SANDSTONE: case MOSSY_COBBLE: case SPAWNER:
+        case STONE: case COBBLE: case BRICK: case SANDSTONE: case MOSSY_COBBLE: case SPAWNER:
         case COAL_ORE:
             return 0;
         case IRON_ORE: case LAPIS_ORE: return 1;

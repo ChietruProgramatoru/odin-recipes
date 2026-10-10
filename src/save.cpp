@@ -225,10 +225,6 @@ std::vector<uint8_t> encode_chunk(const Chunk& c) {
     w.u8(c.mob_spawned ? 1 : 0);
     w.u16(HEIGHT);
     w.bytes(c.blocks.data(), c.blocks.size());
-    // Data values, two to a byte (low half first).
-    std::vector<uint8_t> packed(c.data.size() / 2);
-    for (size_t i = 0; i < packed.size(); ++i) packed[i] = (c.data[2 * i] & 15) | (c.data[2 * i + 1] << 4);
-    w.bytes(packed.data(), packed.size());
     w.u16(static_cast<uint16_t>(std::min<size_t>(c.entities.size(), 0xFFFF)));
     for (size_t i = 0; i < c.entities.size() && i < 0xFFFF; ++i) {
         const EntityRecord& e = c.entities[i];
@@ -246,6 +242,25 @@ std::vector<uint8_t> encode_chunk(const Chunk& c) {
         w.u8(static_cast<uint8_t>(e.size));
         w.u8(static_cast<uint8_t>(e.flags));
     }
+    w.u16(static_cast<uint16_t>(std::min<size_t>(c.furnaces.size(), 0xFFFF)));
+    auto slot = [&](const std::optional<Stack>& st) {
+        w.i32(st ? st->item : 0);
+        w.i32(st ? st->count : 0);
+        w.i32(st ? st->damage : 0);
+    };
+    for (const auto& [index, f] : c.furnaces) {
+        w.i32(index);
+        slot(f.input);
+        slot(f.fuel);
+        slot(f.output);
+        w.i32(f.burn_left);
+        w.i32(f.burn_total);
+        w.i32(f.cook);
+    }
+    // Data values, two to a byte (low half first).
+    std::vector<uint8_t> packed(c.data.size() / 2);
+    for (size_t i = 0; i < packed.size(); ++i) packed[i] = (c.data[2 * i] & 15) | (c.data[2 * i + 1] << 4);
+    w.bytes(packed.data(), packed.size());
     return w.out;
 }
 
@@ -259,14 +274,6 @@ std::unique_ptr<Chunk> decode_chunk(const std::vector<uint8_t>& bytes, int cx, i
     const uint8_t* blocks = r.bytes(c->blocks.size());
     if (!blocks) return nullptr;
     for (size_t i = 0; i < c->blocks.size(); ++i) c->blocks[i] = blocks[i] < BLOCK_COUNT ? blocks[i] : static_cast<BlockId>(AIR);
-    if (version >= 4) {
-        const uint8_t* packed = r.bytes(c->data.size() / 2);
-        if (!packed) return nullptr;
-        for (size_t i = 0; i < c->data.size() / 2; ++i) {
-            c->data[2 * i] = packed[i] & 15;
-            c->data[2 * i + 1] = packed[i] >> 4;
-        }
-    }
     int n = r.u16();
     for (int i = 0; i < n && r.ok(); ++i) {
         EntityRecord e;
@@ -303,6 +310,34 @@ std::unique_ptr<Chunk> decode_chunk(const std::vector<uint8_t>& bytes, int cx, i
             e.damage = std::clamp(e.damage, 0, max_damage(e.item));
             e.kind = EntityRecord::ITEM;
             c->entities.push_back(e);
+        }
+    }
+    if (version >= 4) {
+        auto slot = [&]() -> std::optional<Stack> {
+            int item = current_item_id(r.i32()), count = r.i32(), damage = r.i32();
+            if (!valid_item(item) || count < 1) return std::nullopt;
+            return Stack{item, std::min(count, max_stack(item)), std::clamp(damage, 0, max_damage(item))};
+        };
+        int furnaces = r.u16();
+        for (int i = 0; i < furnaces && r.ok(); ++i) {
+            int index = r.i32();
+            Furnace f;
+            f.input = slot();
+            f.fuel = slot();
+            f.output = slot();
+            f.burn_left = std::max(0, r.i32());
+            f.burn_total = std::max(f.burn_left, r.i32());
+            f.cook = std::clamp(r.i32(), 0, SMELT_TICKS - 1);
+            // Only kept where a furnace still stands.
+            if (index >= 0 && index < static_cast<int>(c->blocks.size()) && is_furnace(c->blocks[index])) c->furnaces[index] = f;
+        }
+    }
+    if (version >= 5) {
+        const uint8_t* packed = r.bytes(c->data.size() / 2);
+        if (!packed) return nullptr;
+        for (size_t i = 0; i < c->data.size() / 2; ++i) {
+            c->data[2 * i] = packed[i] & 15;
+            c->data[2 * i + 1] = packed[i] >> 4;
         }
     }
     if (!r.ok()) return nullptr;

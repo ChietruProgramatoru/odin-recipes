@@ -10,6 +10,7 @@
 
 #include <glm/vec3.hpp>
 
+#include "hand.h"
 #include "blockupdate.h"
 #include "hud.h"
 #include "inventory_screen.h"
@@ -65,6 +66,7 @@ public:
     Inventory inventory, creative_inventory;
     // The inventory, a crafting table or the creative item picker, while one is open.
     std::unique_ptr<InventoryScreen> gui;
+    std::optional<glm::ivec3> furnace_open;  // the furnace whose screen is open
     Vitals vitals;
     bool creative = false, flying = false, sneaking = false;
 
@@ -74,6 +76,7 @@ public:
     double fall_peak;
     bool was_on_ground = true;
     double walk_phase = 0, walk_amount = 0;  // for the third-person model
+    Hand hand;  // the arm or held item in first person, and its swing
 
     // Weather (rain, snow, thunder) and the lightning bolts showing right now.
     Weather weather;
@@ -135,6 +138,8 @@ public:
     void update_target();
     void break_block(glm::ivec3 pos, BlockId block);
     void use_item();
+    // Right click: use_item(), swinging the hand if that changed a block or opened something (Beta).
+    void use_item_by_hand();
     // Left click on a cow or monster in reach.
     void try_attack();
     // Damage the player, less what their armor takes off. Returns true if it hurt.
@@ -156,6 +161,12 @@ public:
     void tick_spawners();
     void drop_selected();
     void open_gui(InventoryScreen::Kind kind);
+    // Right-clicking a furnace opens its screen.
+    void open_furnace(glm::ivec3 pos);
+    // Every furnace within the render distance burns and smelts for one tick (Beta: far ones wait).
+    void tick_furnaces();
+    // A furnace block is gone: what was in it falls out.
+    void drop_furnace_contents(glm::ivec3 pos);
     void close_gui();
     // Throw a stack forwards from the player's eyes, like Q does.
     void throw_stack(const Stack& stack);
@@ -222,6 +233,7 @@ private:
     void swap_selected(ItemId item);
     bool use_bucket(ItemId held);
     void set_mouse_captured(bool captured);
+    void show_gui(std::unique_ptr<InventoryScreen> screen);
     bool key_down(int key) const;
     bool action_down(KeyAction action) const { return !gui && key_down(options.keys[action]); }
     bool sprint_allowed() const { return !sneaking && !flying && (creative || vitals.can_sprint()); }

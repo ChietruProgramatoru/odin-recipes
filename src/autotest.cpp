@@ -134,12 +134,14 @@ void AutoTest::play(App& app, Game& g) {
         double d = dist_to(cow_);
         face(g, cow_->body.x, cow_->body.z, degrees(std::atan2(p.y + EYE_HEIGHT - (cow_->body.y + 0.8), d)));
     }
-    if (f == 155 && cow_) {
-        // Leaves or a hill between the player and the cow would hide it: clear the line of sight.
+    if ((f == 155 || f == 159) && cow_) {
+        // Leaves or a hill between the player and the cow would hide it: clear the line of sight,
+        // all the way to the middle of the cow (that point is inside the cow, so never in a block),
+        // and again just before the check in case the cow shuffled.
         glm::vec3 e = g.eye(), to(cow_->body.x, cow_->body.y + 0.8, cow_->body.z);
         float d = glm::length(to - e);
         glm::vec3 dir = (to - e) / d;
-        while (auto hit = g.world.raycast(e, dir, d - 0.7f)) {
+        while (auto hit = g.world.raycast(e, dir, d)) {
             log("cleared " + item_name(g.world.get_block(hit->block.x, hit->block.y, hit->block.z)) + " in front of the cow");
             g.renderer->rebuild(g.world.set_block(hit->block.x, hit->block.y, hit->block.z, AIR));
         }
@@ -209,6 +211,7 @@ void AutoTest::play(App& app, Game& g) {
         g.pitch = 10;
     }
     if (f == 344) crafting(app, g);
+    if (f >= 345 && f <= 349) furnaces(app, g);
     if (f == 360) {
         hp_before_fall_ = g.vitals.health;
         p.y += 12;
@@ -283,7 +286,8 @@ void AutoTest::play(App& app, Game& g) {
         g.flying = false;
     }
     if (f >= 627 && f < 700) weather_and_beds(app, g);
-    if (f >= 700 && f < 1200) monsters(app, g);
+    if (f >= 700 && f < 1194) monsters(app, g);
+    if (f >= 1194 && f < 1200) hand(app, g);
     if (f >= 1200 && f < 1350) fluids_and_fire(app, g);
     if (f == 1350) {
         app.pause();
@@ -295,6 +299,10 @@ void AutoTest::play(App& app, Game& g) {
         marker_ = {static_cast<int>(std::floor(p.x)) + 2, static_cast<int>(std::floor(p.y)) + 1, static_cast<int>(std::floor(p.z))};
         g.renderer->rebuild(g.world.set_block(marker_.x, marker_.y, marker_.z, BRICK));
         g.inventory.add(PLANKS, 7);
+        // A furnace on top of it, half way through smelting sand.
+        g.renderer->rebuild(g.world.set_block(marker_.x, marker_.y + 1, marker_.z, furnace_block(1, true)));
+        Furnace& fur = g.world.furnace(marker_ + glm::ivec3(0, 1, 0));
+        fur = Furnace{Stack{SAND, 5}, Stack{COAL, 2}, Stack{GLASS, 3}, 1000, 1600, 50};
         saved_player_ = g.player_data();
         saved_raining_ = g.weather.state.raining;
         saved_cows_ = g.cows.size();
@@ -1022,6 +1030,74 @@ void AutoTest::crafting(App& app, Game& g) {
     g.creative = false;
 }
 
+void AutoTest::furnaces(App& app, Game& g) {
+    const long f = g.frame;
+    World& w = g.world;
+    auto set = [&](glm::ivec3 c, BlockId b) { g.renderer->rebuild(w.set_block(c.x, c.y, c.z, b)); };
+    if (f == 345) {
+        // Place a furnace from the hotbar two blocks ahead (against a stone block), looking south.
+        g.yaw = 0;
+        g.pitch = 0;
+        const glm::vec3 e = g.eye();
+        furnace_ = {static_cast<int>(std::floor(e.x)), static_cast<int>(std::floor(e.y)), static_cast<int>(std::floor(e.z)) + 2};
+        set(furnace_ - glm::ivec3(0, 0, 1), AIR);
+        set(furnace_, AIR);
+        set(furnace_ + glm::ivec3(0, 0, 1), STONE);
+        set(furnace_ - glm::ivec3(0, 1, 0), STONE);
+        g.inventory.slots[2] = Stack{FURNACE, 1};
+        g.inventory.selected = 2;
+        g.update_target();
+        g.use_item();
+        check("a placed furnace faces the player", w.get_block(furnace_.x, furnace_.y, furnace_.z) == furnace_block(2, false));
+        g.update_target();
+        g.use_item();
+        check("right-clicking a furnace opens its screen", g.gui && g.gui->kind == InventoryScreen::Kind::Furnace);
+        if (!g.gui) return;
+        // Iron ore in, coal as fuel, then 10 seconds of game ticks.
+        CraftingMenu& menu = *g.gui->crafting;
+        g.inventory.slots[33] = Stack{IRON_ORE, 3};
+        g.inventory.slots[34] = Stack{COAL, 1};
+        menu.click({Slot::Inv, 33}, 0, false);
+        menu.click({Slot::Furnace, FURNACE_INPUT}, 0, false);
+        menu.click({Slot::Inv, 34}, 0, false);
+        menu.click({Slot::Furnace, FURNACE_FUEL}, 0, false);
+        for (int i = 0; i < SMELT_TICKS + 60; ++i) g.tick_furnaces();
+        const Furnace* fur = w.furnace_at(furnace_);
+        check("10 seconds in a lit furnace smelts iron ore into an ingot",
+              fur && fur->output == Stack{IRON_INGOT, 1} && fur->input == Stack{IRON_ORE, 2} && !fur->fuel);
+        check("a burning furnace is lit and glows (light " +
+                  std::to_string(w.block_light(furnace_.x, furnace_.y, furnace_.z - 1)) + " in front)",
+              is_lit_furnace(w.get_block(furnace_.x, furnace_.y, furnace_.z)) &&
+                  w.block_light(furnace_.x, furnace_.y, furnace_.z - 1) == 12);
+        shot(app, "m7_furnace_screen.png");
+        menu.click({Slot::Furnace, FURNACE_OUTPUT}, 0, true);
+        check("shift-clicking the output takes the ingot", g.inventory.count(IRON_INGOT) == 1 && !fur->output);
+        g.close_gui();
+        check("the furnace keeps smelting with its screen closed", !g.gui && w.furnace_at(furnace_)->burning());
+        // Glass next to it, and night, for a picture of the glowing furnace.
+        set(furnace_ + glm::ivec3(1, 0, 0), GLASS);
+        set(furnace_ + glm::ivec3(-1, 0, 0), GLASS);
+        furnace_time_ = g.level.time;
+        g.level.time = 18000;
+        g.hud->show_message("", 0);
+        g.player.z -= 1.5;
+        g.pitch = 15;
+    }
+    if (f == 347) shot(app, "m7_lit_furnace.png");
+    if (f == 348) {
+        g.level.time = furnace_time_;
+        g.player.z += 1.5;
+        const size_t before = g.drops.size();
+        g.break_block(furnace_, w.get_block(furnace_.x, furnace_.y, furnace_.z));
+        check("breaking a furnace drops what was in it",
+              g.drops.size() > before && g.drops.back()->stack == Stack{IRON_ORE, 2} && !w.furnace_at(furnace_));
+        const size_t after = g.drops.size();
+        g.break_block(furnace_ + glm::ivec3(1, 0, 0), GLASS);
+        g.break_block(furnace_ + glm::ivec3(-1, 0, 0), GLASS);
+        check("glass drops nothing", g.drops.size() == after);
+    }
+}
+
 void AutoTest::tools(App& app, Game& g) {
     const long f = g.frame;
     World& w = g.world;
@@ -1302,6 +1378,97 @@ void AutoTest::fluids_and_fire(App& app, Game& g) {
     }
 }
 
+void AutoTest::hand(App& app, Game& g) {
+    const long f = g.frame;
+    Inventory& inv = g.active_inventory();
+    World& w = g.world;
+    if (f == 1194) {
+        // A quiet, sunny moment: no monsters, no rain, no red flash or messages over the picture.
+        g.monsters.clear();
+        g.target_monster = nullptr;
+        hand_weather_ = g.weather;
+        g.weather = Weather(WeatherState{false, false, 100000, 100000});
+        hand_time_ = g.level.time;
+        g.level.time = 6000;
+        g.hud->update(10);
+        g.hud->show_help = false;
+        g.yaw = 30;
+        g.pitch = -10;
+        hand_slots_ = {inv.slots[0], inv.slots[1], inv.slots[2], inv.slots[3]};
+        hand_selected_ = inv.selected;
+        inv.slots[0].reset();
+        inv.slots[1] = Stack{GRASS, 10};
+        inv.slots[2] = Stack{DIAMOND_SWORD, 1};
+        inv.slots[3] = Stack{TORCH, 10};
+    }
+    if (f == 1196) {
+        // Let the hand settle on the selected slot, as it does over a few frames in play.
+        auto hold = [&](int slot) {
+            inv.selected = slot;
+            g.hand.update(1.0, inv.selected_item(), slot);
+        };
+        hold(0);
+        auto arm = g.hand.parts();
+        check("an empty hand shows the arm", arm.size() == 1 && arm[0].model == MODEL_PLAYER_ARM);
+        shot(app, "hand_empty.png");
+        hold(1);
+        auto held = g.hand.parts();
+        check("the selected block is held in the hand", held.size() == 1 && held[0].model == HELD_MODEL_BASE + GRASS);
+        shot(app, "hand_block.png");
+        hold(3);
+        shot(app, "hand_torch.png");
+        // Switching to the sword: the torch dips out of view, then the sword comes up.
+        inv.selected = 2;
+        g.hand.update(0.1, inv.selected_item(), 2);
+        check("switching items lowers the hand", g.hand.equipped() < 0.5f);
+        shot(app, "hand_switching.png");
+        hold(2);
+        check("the new item comes back up", g.hand.equipped() == 1 && g.hand.shown() == std::optional<ItemId>(DIAMOND_SWORD));
+        held = g.hand.parts();
+        shot(app, "hand_sword.png");
+
+        // A left click swings the hand, even at nothing.
+        check("the hand is still before a click", !g.hand.swinging());
+        g.on_mouse_button(GLFW_MOUSE_BUTTON_LEFT, GLFW_PRESS);
+        g.on_mouse_button(GLFW_MOUSE_BUTTON_LEFT, GLFW_RELEASE);
+        check("a left click swings the hand", g.hand.swinging());
+        g.hand.update(Hand::SWING_SECONDS * 0.4, inv.selected_item(), inv.selected);
+        auto swung = g.hand.parts();
+        check("the sword moves during the swing", swung[0].transform != held[0].transform);
+        shot(app, "hand_swing.png");
+        g.hand.update(Hand::SWING_SECONDS, inv.selected_item(), inv.selected);
+        check("the swing ends", !g.hand.swinging() && g.hand.swing_progress() == 0);
+
+        // Placing a block with a right click swings the hand; eating doesn't.
+        const glm::ivec3 spot(static_cast<int>(std::floor(g.player.x)), static_cast<int>(std::floor(g.player.y)),
+                              static_cast<int>(std::floor(g.player.z)) + 2);
+        for (int dy = -1; dy <= 1; ++dy) hand_blocks_.push_back({spot + glm::ivec3(0, dy, 0), w.get_block(spot.x, spot.y + dy, spot.z)});
+        g.renderer->rebuild(w.set_block(spot.x, spot.y - 1, spot.z, STONE));
+        g.renderer->rebuild(w.set_block(spot.x, spot.y, spot.z, AIR));
+        g.renderer->rebuild(w.set_block(spot.x, spot.y + 1, spot.z, AIR));
+        face(g, spot.x + 0.5, spot.z + 0.5, 0);
+        glm::vec3 e = g.eye();
+        g.pitch = degrees(std::atan2(e.y - spot.y, std::hypot(spot.x + 0.5 - e.x, spot.z + 0.5 - e.z)));
+        g.update_target();
+        inv.selected = 1;
+        g.use_item_by_hand();
+        check("placing a block with a right click swings the hand",
+              g.hand.swinging() && w.get_block(spot.x, spot.y, spot.z) == GRASS);
+        g.hand.update(Hand::SWING_SECONDS, inv.selected_item(), inv.selected);
+        inv.slots[1] = Stack{BREAD, 1};
+        g.use_item_by_hand();
+        check("eating doesn't swing the hand", !g.hand.swinging());
+
+        for (auto it = hand_blocks_.rbegin(); it != hand_blocks_.rend(); ++it)
+            g.renderer->rebuild(w.set_block(it->first.x, it->first.y, it->first.z, it->second));
+        for (int i = 0; i < 4; ++i) inv.slots[i] = hand_slots_[i];
+        inv.selected = hand_selected_;
+        g.weather = hand_weather_;
+        g.level.time = hand_time_;
+        g.pitch = 0;
+    }
+}
+
 void AutoTest::reload(App& app) {
     const long f = app.frame - phase_start_;
     if (phase_ == 2 && f == 2) app.open(select_world_screen(app));
@@ -1321,6 +1488,10 @@ void AutoTest::reload(App& app) {
         Game& g = *app.game;
         check("blocks changed before quitting are still there",
               g.world.get_block(marker_.x, marker_.y, marker_.z) == BRICK);
+        const Furnace* fur = g.world.furnace_at(marker_ + glm::ivec3(0, 1, 0));
+        check("a furnace keeps what is in it and its fire through saving",
+              fur && fur->input && fur->input->item == SAND && fur->output && fur->output->item == GLASS && fur->fuel &&
+                  fur->burning() && is_lit_furnace(g.world.get_block(marker_.x, marker_.y + 1, marker_.z)));
         PlayerData now = g.player_data();
         check("player position, health, hunger and inventory are restored",
               std::abs(now.pos.x - saved_player_.pos.x) < 1e-6 && std::abs(now.pos.z - saved_player_.pos.z) < 1e-6 &&
