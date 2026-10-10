@@ -220,7 +220,9 @@ public:
     bool box_in_water(double x0, double y0, double z0, double x1, double y1, double z1);
 
     // Voxel DDA ray cast. Air, water and lava don't stop the ray.
-    std::optional<RayHit> raycast(glm::vec3 origin, glm::vec3 direction, float max_dist);
+    // The first block along a ray that `stops` it: by default any block except air, water and lava
+    // (pass is_solid for arrows, which fly through torches and fire).
+    std::optional<RayHit> raycast(glm::vec3 origin, glm::vec3 direction, float max_dist, bool (*stops)(BlockId) = nullptr);
 
     // Copy a chunk plus a one-block border from its 8 neighbours (loading or generating any that are missing).
     Padded padded(int cx, int cz);

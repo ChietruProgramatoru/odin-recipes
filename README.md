@@ -22,6 +22,21 @@ It runs on Windows (the main target) and Linux.
 - **Dungeons**: small mossy cobblestone rooms around a monster spawner, hidden where caves meet. The spawner stays quiet until monsters arrive (M10), and the loot chests come once chests exist.
 - **Ores drop Beta's items**: coal, diamonds, 4–5 redstone, 4–8 lapis lazuli, and clay blocks give 4 clay. Iron and gold ore drop themselves, ready for smelting (M7).
 - **Building**: hold the left mouse button to mine a block. The block drops as an item that you pick up by walking over it. Right click places the selected block.
+- **Tools** like Beta 1.7.3: pickaxes, axes, shovels, hoes and swords in wood, stone, iron, gold and diamond. Mining takes Beta's time: 1.5 s per point of the block's hardness by hand (a log takes 3 s, dirt 0.75 s), divided by the tool's speed on the blocks it is made for (wood 2, stone 4, iron 6, diamond 8, gold 12): pickaxes for stone, cobblestone, sandstone and ores, axes for logs, planks and chests, shovels for grass, dirt, sand, gravel and clay. Mining is five times slower with your head under water and again while you are in the air.
+- **The right tool**: stone, cobblestone, bricks, sandstone, furnaces and ores drop nothing unless mined with a pickaxe, and take 5 s per point of hardness without one. Iron and lapis ore need a stone pickaxe or better; gold, diamond and redstone ore need iron or better.
+- **Wear**: tools have Beta's durability (wood 59 uses, stone 131, iron 250, gold 32, diamond 1561) and break when they run out. Digging uses up one use of a tool (two of a sword); hitting uses one of a sword and two of a tool.
+- **Weapons**: a fist hits for half a heart, swords for 2, 3, 4 and 5 hearts (wood and gold, stone, iron, diamond). Axes, pickaxes and shovels are weak weapons, between a fist and a sword (a diamond axe does 3 hearts).
+- **Bow and arrows**: right click with a bow fires an arrow at once, as in Beta (no drawing back), using one arrow from your inventory. Arrows fly in an arc, hit cows for 2 hearts, and stick in the block they hit; walk over a stuck arrow to pick it up. They vanish after a minute.
+
+  ![Arrows in a wall, and a fire](screenshots/arrows.png)
+
+- **Armor**: leather, chain, iron, gold and diamond helmets, chestplates, leggings and boots. As in Beta every material gives the same protection (a full set is the whole armor bar and takes 80% off damage, 4% per point) and better materials last longer. Armor wears down with every hit, protects less as it wears, and breaks when worn out. It also softens falls. The armor bar shows above the hearts while you wear armor, and you can see it on your character in third person and in the inventory.
+
+  ![Armor in third person](screenshots/armor.png)
+
+- **Flint and steel** lights a fire on top of a block. Fire gives light 15, burns you if you stand in it, and goes out by itself after 8 to 30 seconds (or when punched). Fire doesn't spread or burn blocks yet (M6).
+- **Buckets**: an empty bucket scoops up water or lava, a full one pours it out again. Right-click a cow with an empty bucket to milk it; drinking milk just gives the bucket back, as in Beta.
+- **Shears** cut leaves quickly and keep them as leaf blocks.
 - **Health and hunger**: you have 10 hearts and 10 drumsticks. Walking, sprinting, jumping, mining and fighting use up hunger. When you are well fed you slowly heal. When you are starving you slowly lose health, down to half a heart. Falls of more than 3 blocks hurt, and a big enough fall kills you.
 - **Cows** wander, graze and hop up ledges. Punch one and it panics and runs away. Each cow drops 1 to 3 beef, which you eat with a right click to restore 6 hunger.
 - Apples sometimes drop from leaves.
@@ -29,7 +44,7 @@ It runs on Windows (the main target) and Linux.
 
   ![Inventory](screenshots/inventory.png)
   ![Crafting table](screenshots/crafting_table.png)
-- **Stacks**: most items stack to 64; snowballs, eggs, signs and empty buckets to 16; tools, armor, cake and mushroom stew don't stack. Food stacks to 64 because hunger is kept. Tools and armor have Beta's durability (shown as a bar once they are worn; they start wearing out in M3).
+- **Stacks**: most items stack to 64; snowballs, eggs, signs and empty buckets to 16; tools, armor, cake and mushroom stew don't stack. Food stacks to 64 because hunger is kept. Tools and armor have Beta's durability, shown as a bar once they are worn.
 - Every Beta item exists with an icon drawn by the code (blocks show as little 3D cubes). Items whose use comes in a later milestone (tools mining faster, torches, doors, wool...) can be crafted and carried but not used or placed yet. The crafting table, chest and furnace can be placed; chests and furnaces open in later milestones.
 - **Creative mode** (a cheat key) gives you unlimited blocks, instant mining and flying. E opens an item picker with every item: click one to hold a full stack, Shift-click to put it straight in the hotbar, scroll with the mouse wheel.
 
@@ -118,8 +133,8 @@ These are the defaults. Every key except the F keys, Esc, H, R and 1–9 can be 
 | Space | Jump, or swim up in water |
 | Left Shift | Sneak: walk slowly without falling off edges |
 | Double-tap W (and hold) | Sprint (not possible when hunger is 3 drumsticks or less; stops when you let go, sneak or hit a wall) |
-| Left mouse (hold) | Mine a block, or hit a cow |
-| Right mouse | Place the selected block (a torch goes on the top or side of the block you point at), or eat the selected food |
+| Left mouse (hold) | Mine a block, or hit a cow (with the selected tool or weapon) |
+| Right mouse | Place the selected block (a torch goes on the top or side of the block you point at), eat the selected food, shoot the bow, light a fire with flint and steel, or fill, pour and drink from a bucket |
 | 1–9 / mouse wheel | Choose a hotbar slot |
 | Q | Drop one of the selected item |
 | E | Open or close the inventory (the item picker in creative) |
@@ -148,8 +163,9 @@ In the inventory and crafting table screens (Beta's mouse rules):
 ## Survival tips
 
 - Click **Singleplayer**, then **Create New World**.
-- Punch a tree (about 1.5 s per log), press **E** and put the logs in the crafting grid to make planks, then make a crafting table from 4 planks and build a shelter.
+- Punch a tree (about 3 s per log), press **E** and put the logs in the crafting grid to make planks, then make a crafting table from 4 planks and build a shelter.
 - Cows are found on grass. Five spawn near you at the start, and more appear as you explore.
+- Make a wooden pickaxe (3 planks over 2 sticks) before mining stone: by hand stone is slow and drops nothing. A stone pickaxe gets you iron.
 - Keep at least 9 drumsticks of hunger to regenerate health.
 
 ## Tests
@@ -159,7 +175,7 @@ ctest --test-dir build --output-on-failure        # logic tests (add -C Release 
 xvfb-run -a -s "-screen 0 1280x720x24" ./build/PetrutzCraft --seed 7 --autotest OUT_DIR
 ```
 
-The second command plays a scripted game and saves screenshots plus `report.txt` to `OUT_DIR`: it opens the title and options screens, creates a world from the Create New World screen, finds a cow, kills it, picks up and eats the beef, mines and places a block, crafts planks and a crafting table in the inventory screen, puts on a chestplate, crafts a pickaxe on a placed crafting table, takes a stack from the creative item picker, falls, flies, visits a desert, hills, a taiga and a torch-lit cave (checking for sandstone, spruces, frozen water and every ore), takes F5 and F3 pictures, places a torch and glowstone and checks their light, takes pictures at night and at sunset, opens the pause menu, changes a block, saves and quits to the title, and loads the world again to check that everything came back. Its world and `options.txt` go in `OUT_DIR`, so your own saves are never touched. It exits with an error if any check fails. On Windows or a Linux desktop, run it without `xvfb-run`. GitHub runs both on every push (the screenshot test on Linux only, since GitHub's Windows machines have no graphics card).
+The second command plays a scripted game and saves screenshots plus `report.txt` to `OUT_DIR`: it opens the title and options screens, creates a world from the Create New World screen, finds a cow, kills it, picks up and eats the beef, mines and places a block, crafts planks and a crafting table in the inventory screen, puts on a chestplate, crafts a pickaxe on a placed crafting table, takes a stack from the creative item picker, falls, mines stone by hand and with a pickaxe, takes a hit in full armor, shoots arrows into a wall, lights a fire, pours and scoops up water, flies, visits a desert, hills, a taiga and a torch-lit cave (checking for sandstone, spruces, frozen water and every ore), takes F5 (in armor) and F3 pictures, places a torch and glowstone and checks their light, takes pictures at night and at sunset, opens the pause menu, changes a block, saves and quits to the title, and loads the world again to check that everything came back. Its world and `options.txt` go in `OUT_DIR`, so your own saves are never touched. It exits with an error if any check fails. On Windows or a Linux desktop, run it without `xvfb-run`. GitHub runs both on every push (the screenshot test on Linux only, since GitHub's Windows machines have no graphics card).
 
 ## Project layout
 
@@ -185,12 +201,13 @@ src/
   hud.cpp          crosshair, hotbar, hearts, hunger, text and overlays
   physics.cpp      box-vs-voxel collision used by the player, cows and items
   survival.cpp     the inventory, health, hunger and saturation
+  tools.cpp        Beta's tool rules: mining speed, which pickaxe a block needs, damage, wear, armor
   items.cpp        every item: names, stack sizes, durability, food, armor slots, icons
   icons.cpp        pixel art for item icons and the faces of item blocks
   crafting.cpp     the recipe table and matching a crafting grid
   container.cpp    moving stacks in the inventory screens: click, split, shift-click, crafting
   inventory_screen.cpp  drawing the inventory, crafting table and creative picker screens
-  mobs.cpp         cow AI and model, the player model, dropped items
+  mobs.cpp         cow AI and model, the player model and its armor, dropped items, arrows
   textures.cpp     procedurally generated pixel-art textures
   font.cpp         the 5x7 pixel font
   blocks.cpp       block definitions
@@ -204,14 +221,16 @@ tests/             doctest logic tests (no window needed)
 ## Known limits
 
 - There are no hostile mobs yet.
-- Any block can be mined by hand for now; pickaxe rules come with tools (M3).
+- There is no obsidian yet (it comes with flowing lava in M6), so the diamond-pickaxe rule for it waits until then.
+- The fishing rod is only an item until fishing arrives in M15. The hoe can't till yet (farming is M8).
+- Flying arrows, and arrows stuck in blocks, aren't saved: they're gone when you load the world. Fires go on burning after loading.
 - Lava and water stand still and lava doesn't burn you yet (M6). Lava, water and ice are see-through for the crosshair, and ice drops nothing (like Beta).
 - No tall grass, flowers, mushrooms, sugar cane, cacti, pumpkins or snow layers yet: they need non-cube shapes and come in M11.
 - Worlds saved before world generation changed keep the chunks you visited, so there is a visible cliff where the old terrain meets the new.
 - No sound, music, weather or monsters yet, and no options for them until they arrive. Rain, snow, thunderstorms and beds come in a second M5 update.
-- Tools, armor, doors, beds and most other crafted things don't do anything yet; they arrive with M3, M5, M11 and the other milestones. Chests and furnaces are plain blocks for now.
+- Doors, beds and most other crafted things don't do anything yet; they arrive with M5, M11 and the other milestones. Chests and furnaces are plain blocks for now.
 - Iron and gold need smelting (M7), and string, feathers and the like come from mobs (M10); until then the creative item picker has them.
-- Glowstone drops itself when broken (Beta drops glowstone dust, which comes with the Nether in M14). Fire, furnaces and jack-o'-lanterns will give off light once they exist; lava already does.
+- Glowstone drops itself when broken (Beta drops glowstone dust, which comes with the Nether in M14). Furnaces and jack-o'-lanterns will give off light once they exist; lava and fire already do.
 - Light levels are not stored in the save files: they are worked out again when a chunk is loaded.
 - The menus and text use only plain ASCII letters, numbers and symbols.
 - Worlds saved by this version can't be read by the Python version (or by Minecraft).

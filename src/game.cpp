@@ -10,6 +10,7 @@
 #include <glm/gtc/matrix_transform.hpp>
 
 #include "textures.h"
+#include "tools.h"
 #include "torch.h"
 
 namespace {
@@ -17,6 +18,8 @@ constexpr double PI = 3.14159265358979323846;
 double radians(double d) { return d * PI / 180.0; }
 int ifloor(double v) { return static_cast<int>(std::floor(v)); }
 ChunkPos chunk_at(double x, double z) { return {chunk_of(ifloor(x)), chunk_of(ifloor(z))}; }
+// How long a fire burns before going out by itself.
+constexpr double FIRE_MIN_SECONDS = 8, FIRE_MAX_SECONDS = 30;
 }  // namespace
 
 Game::Game(GLFWwindow* win, GLuint atlas, Painter& painter, const Options& opts, GameSetup setup)
@@ -127,6 +130,13 @@ bool Game::spawn_cow_near(double x, double z, double rmin, double rmax) {
 void Game::on_chunk_shown(ChunkPos pos) {
     Chunk* chunk = world.find(pos.cx, pos.cz);
     if (!chunk) return;
+    // Fires that were burning when the world was saved go on burning down.
+    for (int i = 0; i < static_cast<int>(chunk->blocks.size()); ++i)
+        if (chunk->blocks[i] == FIRE) {
+            glm::ivec3 at(chunk->cx * CHUNK + (i & 15), i >> 8, chunk->cz * CHUNK + ((i >> 4) & 15));
+            if (std::none_of(fires.begin(), fires.end(), [&](const Fire& f) { return f.pos == at; }))
+                fires.push_back({at, rng.uniform(FIRE_MIN_SECONDS, FIRE_MAX_SECONDS)});
+        }
     // Cows and items that were saved here, or left behind when the player walked away.
     if (!chunk->entities.empty()) {
         auto entities = std::move(chunk->entities);
@@ -420,6 +430,8 @@ void Game::update(double dt) {
     if (!paused) {
         update_cows(dt);
         update_drops(dt);
+        update_arrows(dt);
+        update_fires(dt);
         ticks_ += dt * 20;
         level.time += static_cast<int64_t>(ticks_);
         ticks_ -= std::floor(ticks_);
@@ -446,8 +458,23 @@ void Game::update(double dt) {
         if (in_view(cow->body)) add_lit(cow->parts(), cow->body);
     for (const auto& drop : drops)
         if (in_view(drop->body)) add_lit(drop->parts(), drop->body);
+    for (const auto& arrow : arrows) {
+        int x = ifloor(arrow->pos.x), y = ifloor(arrow->pos.y), z = ifloor(arrow->pos.z);
+        if (arrow->stuck) {  // light from the open side, not from inside the block
+            glm::dvec3 back = arrow->pos - glm::dvec3(std::sin(radians(arrow->yaw)), 0, std::cos(radians(arrow->yaw))) * 0.3;
+            x = ifloor(back.x);
+            z = ifloor(back.z);
+            y = ifloor(back.y + std::sin(radians(arrow->pitch)) * 0.3);
+        }
+        for (ModelPart part : arrow->parts()) {
+            part.sky = world.sky_light(x, y, z) / static_cast<float>(MAX_LIGHT);
+            part.block = world.block_light(x, y, z) / static_cast<float>(MAX_LIGHT);
+            parts.push_back(part);
+        }
+    }
     if (third_person && !dead) {
         PlayerPose pose{player.x, player.y, player.z, yaw, pitch, walk_phase, walk_amount, sneaking};
+        pose.armor = worn_armor(inventory);
         add_lit(player_parts(pose), player);
     }
     renderer->set_instances(std::move(parts));
@@ -459,8 +486,8 @@ std::string Game::help_text() const {
     auto k = [&](KeyAction a) { return key_name(options.keys[a]); };
     return k(KEY_FORWARD) + k(KEY_LEFT) + k(KEY_BACK) + k(KEY_RIGHT) + " move   " + k(KEY_JUMP) + " jump/swim   " + k(KEY_SNEAK) +
            " sneak   double-tap " + k(KEY_FORWARD) + " sprint\n"
-           "Left mouse: mine block / hit cow (hold to mine)\n"
-           "Right mouse: place block / eat food\n"
+           "Left mouse: mine block / hit cow (hold to mine; stone needs a pickaxe)\n"
+           "Right mouse: place block / eat / shoot the bow / use flint and steel or a bucket\n"
            "1-9 or wheel: pick slot   " + k(KEY_DROP) + ": drop   " + k(KEY_INVENTORY) + ": inventory and crafting\n" +
            k(KEY_CREATIVE) + ": creative cheat (double-tap " + k(KEY_JUMP) + " to fly)\n"
            "F1 hide HUD   F2 screenshot   F3 debug   F5 third person\n"
@@ -506,7 +533,7 @@ void Game::draw(int w, int h) {
     bool underwater = world.get_block(ifloor(cam.x), ifloor(cam.y), ifloor(cam.z)) == WATER;
     std::string info = debug_screen ? debug_text() : "PetrutzCraft M5";
     if (!debug_screen && creative) info += flying ? "\nCreative (flying)" : "\nCreative";
-    hud->draw(w, h, {&active_inventory(), &vitals, creative, info, help_text(), underwater, vitals.dead()});
+    hud->draw(w, h, {&active_inventory(), &vitals, armor_value(inventory), creative, info, help_text(), underwater, vitals.dead()});
     if (gui && !vitals.dead()) {
         double mx, my;
         gui_mouse(mx, my);
@@ -523,6 +550,7 @@ void Game::draw_player_preview(int x, int y, int w, int h, float look_x, float l
     pose.yaw = std::clamp(std::atan(look_x * 2.0) * 40.0, -40.0, 40.0);
     pose.pitch = std::clamp(std::atan(look_y * 2.0) * 50.0, -50.0, 50.0);
     pose.sneaking = false;
+    pose.armor = worn_armor(inventory);
     const float aspect = static_cast<float>(w) / std::max(1, h);
     glm::mat4 proj = glm::ortho(-1.0f * aspect, 1.0f * aspect, -1.0f, 1.0f, 0.1f, 20.0f);
     glm::mat4 view = glm::lookAt(glm::vec3(0, 0.92f, 5), glm::vec3(0, 0.92f, 0), glm::vec3(0, 1, 0));
@@ -597,10 +625,7 @@ void Game::move(double dt) {
     } else {
         if (!was_on_ground) {
             int dmg = fall_damage(fall_peak - p.y);
-            if (dmg && vitals.damage(dmg, true)) {
-                hud->flash_damage();
-                if (vitals.dead()) on_death();
-            }
+            if (dmg) hurt_player(dmg, true);
         }
         fall_peak = p.y;
     }
@@ -629,8 +654,11 @@ void Game::update_target() {
 void Game::try_attack() {
     if (!target_cow || attack_cooldown > 0) return;
     attack_cooldown = 0.35;
-    target_cow->hurt(creative ? 10 : 2, player.x, player.z);
-    if (!creative) vitals.exhaust(EXHAUST_ATTACK);
+    const ItemId held = active_inventory().selected_item().value_or(AIR);
+    target_cow->hurt(creative ? 10 : attack_damage(held), player.x, player.z);
+    if (creative) return;
+    vitals.exhaust(EXHAUST_ATTACK);
+    wear_selected(wear_from_hit(held));
 }
 
 void Game::mine(double dt) {
@@ -643,7 +671,9 @@ void Game::mine(double dt) {
     glm::ivec3 pos = target->block;
     BlockId blk = world.get_block(pos.x, pos.y, pos.z);
     const BlockInfo* info = block_info(blk);
-    if (!info || (!info->hardness && !creative) || blk == BEDROCK) {
+    const ItemId held = active_inventory().selected_item().value_or(AIR);
+    const auto seconds = break_seconds(held, blk);
+    if (!info || (!seconds && !creative) || blk == BEDROCK) {
         hud->set_mining(std::nullopt);
         return;
     }
@@ -659,7 +689,11 @@ void Game::mine(double dt) {
         }
         return;
     }
-    mining_progress += dt / std::max(0.05, static_cast<double>(*info->hardness));
+    // Beta: digging is five times slower with your head under water, and again while off the ground.
+    double slow = 1;
+    if (world.get_block(ifloor(eye().x), ifloor(eye().y), ifloor(eye().z)) == WATER) slow *= 5;
+    if (!player.on_ground && !flying) slow *= 5;
+    mining_progress += *seconds <= 0 ? 1.0 : dt / (*seconds * slow);
     hud->set_mining(static_cast<float>(mining_progress));
     if (mining_progress >= 1.0) {
         break_block(pos, blk);
@@ -681,14 +715,17 @@ void Game::break_block(glm::ivec3 pos, BlockId blk) {
     }
     if (creative) return;
     vitals.exhaust(EXHAUST_BREAK);
-    if (blk == LEAVES && rng.random() < 0.1) {
+    const ItemId held = inventory.selected_item().value_or(AIR);
+    wear_selected(wear_from_breaking(held, blk));
+    if (blk == LEAVES && held != SHEARS && rng.random() < 0.1) {
         spawn_drop(APPLE, pos.x + 0.5, pos.y + 0.3, pos.z + 0.5);
         return;
     }
+    const auto drop = harvest_drop(held, blk);
+    if (!drop) return;
     const BlockInfo* info = block_info(blk);
-    if (!info || !info->drop) return;
-    int count = rng.randint(info->drop_min, info->drop_max);
-    for (int i = 0; i < count; ++i) spawn_drop(*info->drop, pos.x + 0.5, pos.y + 0.3, pos.z + 0.5);
+    int count = *drop == blk ? 1 : rng.randint(info->drop_min, info->drop_max);
+    for (int i = 0; i < count; ++i) spawn_drop(*drop, pos.x + 0.5, pos.y + 0.3, pos.z + 0.5);
 }
 
 void Game::spawn_drop(ItemId item, double x, double y, double z) {
@@ -725,6 +762,26 @@ void Game::use_item() {
     Inventory& inv = active_inventory();
     auto item = inv.selected_item();
     if (!item) return;
+    if (*item == BOW) {
+        shoot_arrow();
+        return;
+    }
+    if (*item == FLINT_AND_STEEL) {
+        if (target && !target_cow && target->before && light_fire(*target->before)) wear_selected(1);
+        return;
+    }
+    if (*item == BUCKET && target_cow) {  // milking
+        if (!creative) swap_selected(MILK_BUCKET);
+        return;
+    }
+    if (*item == MILK_BUCKET) {  // drinking: in Beta milk does nothing else
+        if (!creative) swap_selected(BUCKET);
+        return;
+    }
+    if (*item == BUCKET || *item == WATER_BUCKET || *item == LAVA_BUCKET) {
+        use_bucket(*item);
+        return;
+    }
     if (food_info(*item)) {
         if (!creative && vitals.eat(*item)) {
             inv.take_selected();
@@ -758,6 +815,77 @@ void Game::use_item() {
     if (!creative) inv.take_selected();
 }
 
+bool Game::hurt_player(int amount, bool ignore_cooldown) {
+    if (creative || amount <= 0 || vitals.dead() || (vitals.hurt_timer > 0 && !ignore_cooldown)) return false;
+    amount = absorb_with_armor(inventory, amount, armor_remainder);
+    if (!vitals.damage(amount, ignore_cooldown)) {
+        vitals.hurt_timer = 0.5;  // armor took it all; still a short invulnerability, like Beta
+        return false;
+    }
+    hud->flash_damage();
+    if (vitals.dead()) on_death();
+    return true;
+}
+
+void Game::wear_selected(int uses) {
+    if (creative || uses <= 0) return;
+    auto& slot = inventory.slots[inventory.selected];
+    if (slot && wear_out(*slot, uses)) slot.reset();
+}
+
+void Game::swap_selected(ItemId item) {
+    Inventory& inv = active_inventory();
+    auto& slot = inv.slots[inv.selected];
+    if (!slot) return;
+    if (slot->count == 1) {
+        slot = Stack{item, 1};
+        return;
+    }
+    --slot->count;
+    if (inv.add(item, 1)) throw_stack(Stack{item, 1});
+}
+
+bool Game::use_bucket(ItemId held) {
+    if (held == BUCKET) {
+        // An empty bucket scoops up the first water or lava it points at.
+        auto hit = world.raycast(eye(), forward(), REACH, [](BlockId b) { return b != AIR; });
+        if (!hit) return false;
+        BlockId b = world.get_block(hit->block.x, hit->block.y, hit->block.z);
+        if (!is_fluid(b)) return false;
+        renderer->rebuild(world.set_block(hit->block.x, hit->block.y, hit->block.z, AIR));
+        if (!creative) swap_selected(b == WATER ? WATER_BUCKET : LAVA_BUCKET);
+        return true;
+    }
+    // A full bucket pours where a block would be placed. Water and lava don't flow yet (M6).
+    if (!target || target_cow || !target->before) return false;
+    glm::ivec3 c = *target->before;
+    BlockId here = world.get_block(c.x, c.y, c.z);
+    if (here != AIR && !is_fluid(here) && here != FIRE) return false;
+    renderer->rebuild(world.set_block(c.x, c.y, c.z, held == WATER_BUCKET ? WATER : LAVA));
+    if (!creative) swap_selected(BUCKET);
+    return true;
+}
+
+bool Game::light_fire(glm::ivec3 pos) {
+    // Fire needs a solid block under it and an empty cell to burn in.
+    if (world.get_block(pos.x, pos.y, pos.z) != AIR || !is_opaque(world.get_block(pos.x, pos.y - 1, pos.z))) return false;
+    renderer->rebuild(world.set_block(pos.x, pos.y, pos.z, FIRE));
+    fires.push_back({pos, rng.uniform(FIRE_MIN_SECONDS, FIRE_MAX_SECONDS)});
+    return true;
+}
+
+void Game::shoot_arrow() {
+    // Beta's bow fires as soon as you click (no drawing back), using up an arrow.
+    if (!creative && !inventory.remove(ARROW, 1)) return;
+    glm::dvec3 dir(forward());
+    // Beta's slight random spread.
+    dir += glm::dvec3(rng.uniform(-1, 1), rng.uniform(-1, 1), rng.uniform(-1, 1)) * 0.0075;
+    dir = glm::normalize(dir);
+    glm::dvec3 from = glm::dvec3(eye()) + dir * 0.3;
+    arrows.push_back(std::make_unique<Arrow>(from, dir * Arrow::SPEED));
+    wear_selected(1);
+}
+
 void Game::on_death() {
     close_gui();
     hud->set_mining(std::nullopt);
@@ -767,6 +895,7 @@ void Game::on_death() {
 
 void Game::respawn() {
     vitals.reset();
+    armor_remainder = 0;
     player.x = spawn.x;
     player.y = spawn.y;
     player.z = spawn.z;
@@ -844,5 +973,53 @@ void Game::update_drops(double dt) {
             it = drops.erase(it);
         else
             ++it;
+    }
+}
+
+void Game::update_arrows(double dt) {
+    const double far_away = (renderer->render_distance + 3) * CHUNK;
+    for (auto it = arrows.begin(); it != arrows.end();) {
+        Arrow& a = **it;
+        bool remove = false;
+        if (!world.find(chunk_of(ifloor(a.pos.x)), chunk_of(ifloor(a.pos.z)))) {
+            remove = true;  // flew off the loaded world (arrows aren't saved)
+        } else if (Cow* cow = a.tick(dt, world, cows)) {
+            cow->hurt(ARROW_DAMAGE, a.pos.x - a.vel.x, a.pos.z - a.vel.z);
+            remove = true;
+        } else if (a.expired() || a.age > 120 || a.pos.y < -16 ||
+                   std::hypot(a.pos.x - player.x, a.pos.z - player.z) > far_away) {
+            remove = true;
+        } else if (a.stuck && !vitals.dead() && std::hypot(a.pos.x - player.x, a.pos.z - player.z) < 1.2 &&
+                   a.pos.y > player.y - 1 && a.pos.y < player.y + 2.5) {
+            remove = inventory.add(ARROW, 1) == 0;  // walk over a stuck arrow to pick it up
+        }
+        it = remove ? arrows.erase(it) : it + 1;
+    }
+}
+
+void Game::update_fires(double dt) {
+    // Fire burns out after a while, or when the block under it goes. Spreading is M6.
+    for (auto it = fires.begin(); it != fires.end();) {
+        Fire& f = *it;
+        if (!world.find(chunk_of(f.pos.x), chunk_of(f.pos.z))) {
+            ++it;
+            continue;
+        }
+        if (world.get_block(f.pos.x, f.pos.y, f.pos.z) != FIRE) {
+            it = fires.erase(it);
+            continue;
+        }
+        f.left -= dt;
+        if (f.left <= 0 || !is_opaque(world.get_block(f.pos.x, f.pos.y - 1, f.pos.z))) {
+            renderer->rebuild(world.set_block(f.pos.x, f.pos.y, f.pos.z, AIR));
+            it = fires.erase(it);
+            continue;
+        }
+        // Standing in fire burns.
+        const Body& p = player;
+        if (f.pos.x + 1 > p.x - p.half && f.pos.x < p.x + p.half && f.pos.z + 1 > p.z - p.half && f.pos.z < p.z + p.half &&
+            f.pos.y + 1 > p.y && f.pos.y < p.y + p.height)
+            hurt_player(1);
+        ++it;
     }
 }

@@ -46,7 +46,7 @@ Table build() {
     // Real blocks first (not water or lava). The crafting table, chest and furnace get their own icons
     // below; grass and leaves use coloured-in copies of their grey (biome-tinted) tiles.
     for (int b = GRASS; b < BLOCK_COUNT; ++b) {
-        if (b == WATER || b == LAVA || is_torch(b)) continue;  // the torch is a flat icon, added below
+        if (b == WATER || b == LAVA || b == FIRE || is_torch(b)) continue;  // the torch is a flat icon, added below
         const BlockInfo* info = block_info(b);
         t.cube(b, info->name, info->tiles[0], info->tiles[1], info->tiles[1]);
     }

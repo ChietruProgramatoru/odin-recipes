@@ -1,6 +1,6 @@
 // Scripted smoke test: `PetrutzCraft --seed 7 --autotest OUT_DIR`.
 // Drives the real program for a few hundred frames: the menus, creating a world, mining, building,
-// cows, eating, fall damage, a tour of the biomes and caves, the F3 and F5 views, the pause menu,
+// cows, eating, fall damage, tools, armor, the bow, fire and buckets, a tour of the biomes and caves, the F3 and F5 views, the pause menu,
 // then saving, quitting to the
 // title and loading the world again. Saves screenshots to OUT_DIR and writes OUT_DIR/report.txt.
 // The world and options.txt go to OUT_DIR too, so the real saves are never touched.
@@ -8,6 +8,7 @@
 #include <map>
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include <glm/vec3.hpp>
@@ -35,6 +36,7 @@ private:
     void play(App& app, Game& g);  // the first visit to the world
     void tour(App& app, Game& g);  // fly to a desert, a cold biome and into a cave
     void crafting(App& app, Game& g);  // the inventory, a crafting table and the creative item picker
+    void tools(App& app, Game& g);     // pickaxe rules, armor, the bow, flint and steel, buckets
     void reload(App& app);      // quit to the title and load the world again
 
     std::string out_;
@@ -58,4 +60,8 @@ private:
     glm::ivec3 torch_{0}, glowstone_{0};
     int64_t day_time_ = 0;
     double ground_y_ = 0;
+    // Tools: the little range built in front of the player (x, eye level, z of the player's cell).
+    glm::ivec3 range_{0};
+    int arrows_before_ = 0;
+    std::vector<std::pair<glm::ivec3, BlockId>> range_blocks_;
 };

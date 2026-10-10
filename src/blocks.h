@@ -18,6 +18,8 @@ enum Block : BlockId {
     // World generation (M4).
     GRAVEL, CLAY_BLOCK, SANDSTONE, COAL_ORE, IRON_ORE, GOLD_ORE, DIAMOND_ORE, REDSTONE_ORE, LAPIS_ORE,
     MOSSY_COBBLE, SPAWNER, LAVA, ICE, BIRCH_LOG, SPRUCE_LOG, BIRCH_LEAVES, SPRUCE_LEAVES,
+    // Tools (M3): fire lit with flint and steel. It burns out by itself; spreading comes in M6.
+    FIRE,
     BLOCK_COUNT
 };
 
@@ -42,14 +44,16 @@ enum Tile : int {
     // Grass and leaves tiles are grey and tinted by biome in the world (see BlockTint). These are
     // the same tiles coloured in, for hotbar icons and dropped items.
     T_GRASS_TOP_ICON, T_GRASS_ICON, T_LEAVES_ICON, T_BIRCH_LEAVES_ICON, T_SPRUCE_LEAVES_ICON,
+    // Fire, then armor worn on the player model: leather, chain, iron, gold, diamond.
+    T_FIRE, T_ARMOR_LEATHER, T_ARMOR_CHAIN, T_ARMOR_IRON, T_ARMOR_GOLD, T_ARMOR_DIAMOND,
     TILE_COUNT
 };
 
 struct BlockInfo {
     const char* name;
     int tiles[3];                 // tile index for top, sides, bottom
-    std::optional<float> hardness; // seconds to break by hand (empty = unbreakable)
-    std::optional<ItemId> drop;    // item dropped when broken (empty = nothing)
+    std::optional<float> hardness; // Beta's hardness; break time also depends on the tool, see tools.h (empty = unbreakable)
+    std::optional<ItemId> drop;    // item dropped when broken with the right tool (empty = nothing)
     int drop_min = 1, drop_max = 1; // how many are dropped
 };
 
@@ -73,6 +77,8 @@ bool is_leaves(BlockId id);
 // Drawn see-through in the solid pass (alpha-tested), so neighbouring faces stay visible.
 bool is_cutout(BlockId id);
 bool is_torch(BlockId id);  // floor or wall torch (drawn as a thin stick, not a cube)
+// Not a cube and nothing to bump into: torches and fire. Faces next to them are drawn.
+bool is_thin(BlockId id);
 // Light (0-15): how much a block dims light passing into it, and how much it gives off.
 int light_opacity(BlockId id);
 int light_emission(BlockId id);
