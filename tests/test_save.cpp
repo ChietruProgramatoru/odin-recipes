@@ -262,28 +262,22 @@ TEST_CASE("seeds from text") {
 TEST_CASE("options.txt keeps every setting and ignores junk") {
     Options o;
     CHECK(o.view_distance == VIEW_NORMAL);
-    CHECK(o.difficulty == NORMAL);
     CHECK(o.keys[KEY_SNEAK] == GLFW_KEY_LEFT_SHIFT);
-    CHECK(o.keys[KEY_SPRINT] == GLFW_KEY_LEFT_CONTROL);
     CHECK(o.degrees_per_pixel() == doctest::Approx(0.15));
 
-    o.music = 0.25f;
-    o.sound = 0;
     o.invert_mouse = true;
     o.sensitivity = 0.75f;
     o.view_distance = VIEW_TINY;
-    o.difficulty = HARD;
     o.fancy_graphics = false;
     o.smooth_lighting = false;
-    o.clouds = false;
     o.keys[KEY_JUMP] = GLFW_KEY_J;
     Options back = Options::from_text(o.to_text());
     CHECK(back.to_text() == o.to_text());
     CHECK(back.keys[KEY_JUMP] == GLFW_KEY_J);
-    CHECK(back.music == 0.25f);
+    CHECK(back.sensitivity == 0.75f);
 
-    Options junk = Options::from_text("music:loud\nviewDistance:9\nnonsense\nkey_key.jump:-5\r\nao:false\r\n");
-    CHECK(junk.music == 1.0f);
+    Options junk = Options::from_text("mouseSensitivity:fast\nviewDistance:9\nnonsense\nkey_key.jump:-5\r\nao:false\r\n");
+    CHECK(junk.sensitivity == 0.5f);
     CHECK(junk.view_distance == VIEW_TINY);  // clamped
     CHECK(junk.keys[KEY_JUMP] == GLFW_KEY_SPACE);
     CHECK_FALSE(junk.smooth_lighting);

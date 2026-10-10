@@ -269,6 +269,7 @@ void Game::on_key(int key, int action, int mods) {
         return;
     }
     if (paused) return;
+    if (key == options.keys[KEY_FORWARD]) sprint_.forward_pressed(glfwGetTime(), sprint_allowed());
     if (key >= GLFW_KEY_1 && key <= GLFW_KEY_9) {
         active_inventory().selected = key - GLFW_KEY_1;
         hud->show_item_name(active_inventory().selected_item());
@@ -384,7 +385,7 @@ void Game::update(double dt) {
 std::string Game::help_text() const {
     auto k = [&](KeyAction a) { return key_name(options.keys[a]); };
     return k(KEY_FORWARD) + k(KEY_LEFT) + k(KEY_BACK) + k(KEY_RIGHT) + " move   " + k(KEY_JUMP) + " jump/swim   " + k(KEY_SNEAK) +
-           " sneak   " + k(KEY_SPRINT) + " sprint\n"
+           " sneak   double-tap " + k(KEY_FORWARD) + " sprint\n"
            "Left mouse: mine block / hit cow (hold to mine)\n"
            "Right mouse: place block / eat food\n"
            "1-9 or wheel: pick slot   " + k(KEY_DROP) + ": drop   " + k(KEY_CRAFT) + ": craft 1 log -> 4 planks\n" +
@@ -448,7 +449,8 @@ void Game::move(double dt) {
 
     const bool down = action_down(KEY_SNEAK);
     sneaking = down && !flying;
-    bool sprint = action_down(KEY_SPRINT) && f > 0 && !sneaking && !flying && (creative || vitals.can_sprint());
+    sprint_.update(f > 0, sprint_allowed());
+    const bool sprint = sprint_.active;
     double speed = flying ? FLY_SPEED : sneaking ? SNEAK_SPEED : sprint ? SPRINT_SPEED : WALK_SPEED;
     if (p.in_water && !flying) speed *= 0.55;
     double accel = (p.on_ground || flying) ? 14 : 5;
@@ -475,7 +477,8 @@ void Game::move(double dt) {
     double dx = p.vx * dt, dz = p.vz * dt;
     // Sneaking on the ground never walks off an edge.
     if (sneaking && p.on_ground && !jumped && !p.in_water) p.clamp_to_edges(dx, dz);
-    p.move(dx, p.vy * dt, dz);
+    HitAxes hit = p.move(dx, p.vy * dt, dz);
+    if (hit.x || hit.z) sprint_.stop();  // running into a wall ends the sprint
     if (flying && p.on_ground && down) flying = false;
 
     double moved = std::hypot(p.x - ox, p.z - oz);

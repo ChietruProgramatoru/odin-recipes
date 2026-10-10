@@ -475,25 +475,20 @@ protected:
 class OptionsScreen : public SettingsScreen {
 public:
     using SettingsScreen::SettingsScreen;
-    enum { MUSIC, SOUND, INVERT, SENSITIVITY, DIFFICULTY, VIDEO = 10, CONTROLS };
+    enum { INVERT, SENSITIVITY, VIDEO = 10, CONTROLS };
 
     void layout(int gw, int gh) override {
         const Options& o = app.options;
-        widgets.push_back(slider(MUSIC, column_x(gw, 0), row_y(gh, 0), 150, "Music: " + (o.music ? percent(o.music) : "OFF"), o.music));
-        widgets.push_back(slider(SOUND, column_x(gw, 1), row_y(gh, 1), 150, "Sound: " + (o.sound ? percent(o.sound) : "OFF"), o.sound));
-        widgets.push_back(button(INVERT, column_x(gw, 2), row_y(gh, 2), 150, "Invert Mouse: " + on_off(o.invert_mouse)));
-        widgets.push_back(slider(SENSITIVITY, column_x(gw, 3), row_y(gh, 3), 150,
+        // Music, Sound and Difficulty join this screen once the game has sound and monsters.
+        widgets.push_back(button(INVERT, column_x(gw, 0), row_y(gh, 0), 150, "Invert Mouse: " + on_off(o.invert_mouse)));
+        widgets.push_back(slider(SENSITIVITY, column_x(gw, 1), row_y(gh, 1), 150,
                                  "Sensitivity: " + percent(o.sensitivity * 2), o.sensitivity));
-        widgets.push_back(button(DIFFICULTY, column_x(gw, 4), row_y(gh, 4), 150,
-                                 std::string("Difficulty: ") + difficulty_name(o.difficulty)));
         widgets.push_back(button(VIDEO, gw / 2 - 100, gh / 6 + 96 + 12, 200, "Video Settings..."));
         widgets.push_back(button(CONTROLS, gw / 2 - 100, gh / 6 + 120 + 12, 200, "Controls..."));
         add_done(gw, gh);
     }
     void on_slider(int id, float v) override {
         Options& o = app.options;
-        if (id == MUSIC) o.music = v;
-        if (id == SOUND) o.sound = v;
         if (id == SENSITIVITY) o.sensitivity = v;
         update_labels();
     }
@@ -501,9 +496,8 @@ public:
         Options& o = app.options;
         App& a = app;
         ScreenFactory back = back_;
-        if (id == INVERT) o.invert_mouse = !o.invert_mouse;
-        if (id == DIFFICULTY) o.difficulty = (o.difficulty + 1) % DIFFICULTY_COUNT;
-        if (id == INVERT || id == DIFFICULTY) {
+        if (id == INVERT) {
+            o.invert_mouse = !o.invert_mouse;
             a.options_changed();
             update_labels();
         }
@@ -519,18 +513,15 @@ public:
 private:
     void update_labels() {
         const Options& o = app.options;
-        find(MUSIC)->label = "Music: " + (o.music ? percent(o.music) : "OFF");
-        find(SOUND)->label = "Sound: " + (o.sound ? percent(o.sound) : "OFF");
         find(SENSITIVITY)->label = "Sensitivity: " + percent(o.sensitivity * 2);
         find(INVERT)->label = "Invert Mouse: " + on_off(o.invert_mouse);
-        find(DIFFICULTY)->label = std::string("Difficulty: ") + difficulty_name(o.difficulty);
     }
 };
 
 class VideoSettingsScreen : public SettingsScreen {
 public:
     using SettingsScreen::SettingsScreen;
-    enum { GRAPHICS, DISTANCE, SMOOTH, CLOUDS };
+    enum { GRAPHICS, DISTANCE, SMOOTH };  // Clouds joins once the sky has clouds
 
     void layout(int gw, int gh) override {
         const Options& o = app.options;
@@ -539,7 +530,6 @@ public:
         widgets.push_back(button(DISTANCE, column_x(gw, 1), row_y(gh, 1), 150,
                                  std::string("Render Distance: ") + view_distance_name(o.view_distance)));
         widgets.push_back(button(SMOOTH, column_x(gw, 2), row_y(gh, 2), 150, "Smooth Lighting: " + on_off(o.smooth_lighting)));
-        widgets.push_back(button(CLOUDS, column_x(gw, 3), row_y(gh, 3), 150, "Clouds: " + on_off(o.clouds)));
         add_done(gw, gh);
     }
     void on_button(int id) override {
@@ -551,7 +541,6 @@ public:
         if (id == GRAPHICS) o.fancy_graphics = !o.fancy_graphics;
         if (id == DISTANCE) o.view_distance = (o.view_distance + 1) % VIEW_COUNT;
         if (id == SMOOTH) o.smooth_lighting = !o.smooth_lighting;
-        if (id == CLOUDS) o.clouds = !o.clouds;
         app.options_changed();
         relabel();
     }

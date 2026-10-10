@@ -11,7 +11,7 @@
 
 // Rebindable controls, in the order the Controls screen lists them.
 enum KeyAction : int {
-    KEY_FORWARD, KEY_LEFT, KEY_BACK, KEY_RIGHT, KEY_JUMP, KEY_SNEAK, KEY_SPRINT,
+    KEY_FORWARD, KEY_LEFT, KEY_BACK, KEY_RIGHT, KEY_JUMP, KEY_SNEAK,
     KEY_INVENTORY, KEY_DROP, KEY_CRAFT, KEY_CREATIVE,
     KEY_ACTION_COUNT
 };
@@ -31,19 +31,12 @@ enum ViewDistance : int { VIEW_FAR, VIEW_NORMAL, VIEW_SHORT, VIEW_TINY, VIEW_COU
 int view_distance_chunks(int view);  // 16, 8, 4, 2
 const char* view_distance_name(int view);
 
-enum Difficulty : int { PEACEFUL, EASY, NORMAL, HARD, DIFFICULTY_COUNT };
-const char* difficulty_name(int difficulty);
-
 struct Options {
-    float music = 1.0f;
-    float sound = 1.0f;
     bool invert_mouse = false;
     float sensitivity = 0.5f;  // 0..1, shown as 0..200%
     int view_distance = VIEW_NORMAL;
-    int difficulty = NORMAL;
     bool fancy_graphics = true;
     bool smooth_lighting = true;
-    bool clouds = true;
     std::array<int, KEY_ACTION_COUNT> keys;
 
     Options();

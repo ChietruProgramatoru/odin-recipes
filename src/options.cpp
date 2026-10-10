@@ -14,7 +14,6 @@ const KeyActionInfo KEY_ACTIONS[KEY_ACTION_COUNT] = {
     {"key.right", "Right", GLFW_KEY_D},
     {"key.jump", "Jump", GLFW_KEY_SPACE},
     {"key.sneak", "Sneak", GLFW_KEY_LEFT_SHIFT},
-    {"key.sprint", "Sprint", GLFW_KEY_LEFT_CONTROL},
     {"key.inventory", "Inventory", GLFW_KEY_E},
     {"key.drop", "Drop", GLFW_KEY_Q},
     {"key.craft", "Craft Planks", GLFW_KEY_F},
@@ -111,11 +110,6 @@ const char* view_distance_name(int view) {
     return NAMES[std::clamp(view, 0, VIEW_COUNT - 1)];
 }
 
-const char* difficulty_name(int difficulty) {
-    static const char* NAMES[DIFFICULTY_COUNT] = {"Peaceful", "Easy", "Normal", "Hard"};
-    return NAMES[std::clamp(difficulty, 0, DIFFICULTY_COUNT - 1)];
-}
-
 Options::Options() {
     for (int i = 0; i < KEY_ACTION_COUNT; ++i) keys[i] = KEY_ACTIONS[i].default_key;
 }
@@ -128,15 +122,11 @@ double Options::degrees_per_pixel() const {
 std::string Options::to_text() const {
     std::ostringstream out;
     auto b = [](bool v) { return v ? "true" : "false"; };
-    out << "music:" << format_float(music) << "\n";
-    out << "sound:" << format_float(sound) << "\n";
     out << "invertYMouse:" << b(invert_mouse) << "\n";
     out << "mouseSensitivity:" << format_float(sensitivity) << "\n";
     out << "viewDistance:" << view_distance << "\n";
-    out << "difficulty:" << difficulty << "\n";
     out << "fancyGraphics:" << b(fancy_graphics) << "\n";
     out << "ao:" << b(smooth_lighting) << "\n";
-    out << "clouds:" << b(clouds) << "\n";
     for (int i = 0; i < KEY_ACTION_COUNT; ++i) out << "key_" << KEY_ACTIONS[i].id << ":" << keys[i] << "\n";
     return out.str();
 }
@@ -151,15 +141,11 @@ Options Options::from_text(const std::string& text) {
         if (colon == std::string::npos) continue;
         std::string key = line.substr(0, colon), value = line.substr(colon + 1);
         int n;
-        if (key == "music") parse_unit(value, o.music);
-        else if (key == "sound") parse_unit(value, o.sound);
-        else if (key == "invertYMouse") parse_bool(value, o.invert_mouse);
+        if (key == "invertYMouse") parse_bool(value, o.invert_mouse);
         else if (key == "mouseSensitivity") parse_unit(value, o.sensitivity);
         else if (key == "viewDistance" && parse_int(value, n)) o.view_distance = std::clamp(n, 0, VIEW_COUNT - 1);
-        else if (key == "difficulty" && parse_int(value, n)) o.difficulty = std::clamp(n, 0, DIFFICULTY_COUNT - 1);
         else if (key == "fancyGraphics") parse_bool(value, o.fancy_graphics);
         else if (key == "ao") parse_bool(value, o.smooth_lighting);
-        else if (key == "clouds") parse_bool(value, o.clouds);
         else if (key.rfind("key_", 0) == 0 && parse_int(value, n) && n > 0 && n <= GLFW_KEY_LAST)
             for (int i = 0; i < KEY_ACTION_COUNT; ++i)
                 if (key.substr(4) == KEY_ACTIONS[i].id) o.keys[i] = n;

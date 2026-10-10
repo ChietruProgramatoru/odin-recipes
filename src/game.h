@@ -124,6 +124,7 @@ private:
     void set_mouse_captured(bool captured);
     bool key_down(int key) const;
     bool action_down(KeyAction action) const { return key_down(options.keys[action]); }
+    bool sprint_allowed() const { return !sneaking && !flying && (creative || vitals.can_sprint()); }
     bool mouse_down(int button) const { return mouse_buttons_.count(button) > 0; }
     std::string debug_text();
     std::string help_text() const;
@@ -131,6 +132,7 @@ private:
     bool scripted_;
     std::set<int> mouse_buttons_;
     double last_space_ = -1.0;
+    SprintControl sprint_;
     bool have_cursor_ = false;
     double cursor_x_ = 0, cursor_y_ = 0;
     double ticks_ = 0;  // fraction of a game tick not yet added to level.time

@@ -18,7 +18,7 @@ It runs on Windows (the main target) and Linux.
 - Apples sometimes drop from leaves.
 - Crafting: turn 1 log into 4 planks.
 - **Creative mode** (a cheat key) gives you unlimited blocks, instant mining and flying.
-- **Sneaking** (Shift) makes you slower and stops you from walking off edges. **Sprinting** is on Left Ctrl.
+- **Sneaking** (Shift) makes you slower and stops you from walking off edges. **Sprinting**: double-tap W and keep holding it.
 - **Third-person view** (F5) shows your character: an original blocky figure with a red shirt and jeans.
 
   ![Third person](screenshots/third_person.png)
@@ -72,8 +72,8 @@ Deleting the `build` folder deletes these too, so copy `saves/` somewhere safe f
 
 The **Options** button on the title screen (or in the pause menu) has:
 
-- **Music** and **Sound** volume, **Invert Mouse**, mouse **Sensitivity** and **Difficulty** (Peaceful, Easy, Normal, Hard). The game has no sound, monsters or clouds yet, so music, sound, difficulty and clouds are saved but don't change anything until those arrive.
-- **Video Settings**: **Graphics** Fancy (see-through leaves) or Fast (solid leaves), **Render Distance** Far (16 chunks), Normal (8, the default), Short (4) or Tiny (2), **Smooth Lighting** on or off, and **Clouds**.
+- **Invert Mouse** and mouse **Sensitivity**. Music, Sound, Difficulty and Clouds will be added along with sound, monsters and clouds.
+- **Video Settings**: **Graphics** Fancy (see-through leaves) or Fast (solid leaves), **Render Distance** Far (16 chunks), Normal (8, the default), Short (4) or Tiny (2), and **Smooth Lighting** on or off.
 - **Controls**: click a key, then press the new key for it. A key used twice turns red.
 
 Command line:
@@ -93,7 +93,7 @@ These are the defaults. Every key except the F keys, Esc, H, R and 1–9 can be 
 | W A S D | Move |
 | Space | Jump, or swim up in water |
 | Left Shift | Sneak: walk slowly without falling off edges |
-| Left Ctrl (with W) | Sprint (not possible when hunger is 3 drumsticks or less) |
+| Double-tap W (and hold) | Sprint (not possible when hunger is 3 drumsticks or less; stops when you let go, sneak or hit a wall) |
 | Left mouse (hold) | Mine a block, or hit a cow |
 | Right mouse | Place the selected block, or eat the selected food |
 | 1–9 / mouse wheel | Choose a hotbar slot |
@@ -160,7 +160,7 @@ tests/             doctest logic tests (no window needed)
 ## Known limits
 
 - There are no tools, furnaces, day/night cycle, caves or hostile mobs yet.
-- No sound, music, clouds or monsters yet, so those options do nothing for now. The F3 screen shows only whether the sky is open (real light levels come in M5).
+- No sound, music, clouds or monsters yet, and no options for them until they arrive. The F3 screen shows only whether the sky is open (real light levels come in M5).
 - Pressing E shows a message: the inventory screen comes with crafting in M2.
 - The menus and text use only plain ASCII letters, numbers and symbols.
 - Worlds saved by this version can't be read by the Python version (or by Minecraft).
