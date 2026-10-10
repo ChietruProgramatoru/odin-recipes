@@ -20,7 +20,7 @@ const BlockInfo BLOCKS[BLOCK_COUNT] = {
     {"Bricks", {T_BRICK, T_BRICK, T_BRICK}, 2.0f, BRICK},
     {"Crafting Table", {IT_CRAFT_TOP, IT_CRAFT_FRONT, T_PLANKS}, 2.5f, CRAFTING_TABLE},
     {"Chest", {IT_CHEST_TOP, IT_CHEST_FRONT, IT_CHEST_TOP}, 2.5f, CHEST},
-    {"Furnace", {IT_FURNACE_TOP, IT_FURNACE_FRONT, IT_FURNACE_TOP}, 3.5f, FURNACE},
+    {"Furnace", {IT_FURNACE_TOP, IT_FURNACE_SIDE, IT_FURNACE_TOP}, 3.5f, FURNACE},
     {"Glowstone", {IT_GLOWSTONE, IT_GLOWSTONE, IT_GLOWSTONE}, 0.3f, GLOWSTONE},
     {"Torch", {T_TORCH, T_TORCH, T_TORCH}, 0.0f, TORCH},
     {"Torch", {T_TORCH, T_TORCH, T_TORCH}, 0.0f, TORCH},
@@ -56,6 +56,16 @@ const BlockInfo BLOCKS[BLOCK_COUNT] = {
     {"Fire", {T_FIRE, T_FIRE, T_FIRE}, 0.0f, std::nullopt},
     // Breaking TNT lights it instead of dropping it (see Game::break_block).
     {"TNT", {IT_TNT_TOP, IT_TNT_SIDE, IT_TNT_TOP}, 0.0f, TNT},
+    // The other furnace facings and the lit furnaces. The mesher draws the front on one side.
+    {"Furnace", {IT_FURNACE_TOP, IT_FURNACE_SIDE, IT_FURNACE_TOP}, 3.5f, FURNACE},
+    {"Furnace", {IT_FURNACE_TOP, IT_FURNACE_SIDE, IT_FURNACE_TOP}, 3.5f, FURNACE},
+    {"Furnace", {IT_FURNACE_TOP, IT_FURNACE_SIDE, IT_FURNACE_TOP}, 3.5f, FURNACE},
+    {"Furnace", {IT_FURNACE_TOP, IT_FURNACE_SIDE, IT_FURNACE_TOP}, 3.5f, FURNACE},
+    {"Furnace", {IT_FURNACE_TOP, IT_FURNACE_SIDE, IT_FURNACE_TOP}, 3.5f, FURNACE},
+    {"Furnace", {IT_FURNACE_TOP, IT_FURNACE_SIDE, IT_FURNACE_TOP}, 3.5f, FURNACE},
+    {"Furnace", {IT_FURNACE_TOP, IT_FURNACE_SIDE, IT_FURNACE_TOP}, 3.5f, FURNACE},
+    // Glass drops nothing when broken (Beta).
+    {"Glass", {IT_GLASS, IT_GLASS, IT_GLASS}, 0.3f, std::nullopt},
 };
 
 }  // namespace
@@ -67,9 +77,21 @@ const BlockInfo* block_info(ItemId id) {
 
 bool is_fluid(BlockId id) { return id == WATER || id == LAVA; }
 bool is_leaves(BlockId id) { return id == LEAVES || id == BIRCH_LEAVES || id == SPRUCE_LEAVES; }
-bool is_cutout(BlockId id) { return id == SPAWNER; }
+bool is_cutout(BlockId id) { return id == SPAWNER || id == GLASS; }
 bool is_torch(BlockId id) { return id >= TORCH && id <= TORCH_WALL_SOUTH; }
 bool is_bed(BlockId id) { return id >= BED_FOOT_SOUTH && id <= BED_HEAD_EAST; }
+bool is_furnace(BlockId id) { return id == FURNACE || (id >= FURNACE_WEST && id <= LIT_FURNACE_EAST); }
+bool is_lit_furnace(BlockId id) { return id >= LIT_FURNACE_SOUTH && id <= LIT_FURNACE_EAST; }
+int furnace_dir(BlockId id) {
+    if (id == FURNACE) return 0;
+    if (is_lit_furnace(id)) return id - LIT_FURNACE_SOUTH;
+    return id - FURNACE_WEST + 1;
+}
+BlockId furnace_block(int dir, bool lit) {
+    dir &= 3;
+    if (lit) return static_cast<BlockId>(LIT_FURNACE_SOUTH + dir);
+    return dir == 0 ? static_cast<BlockId>(FURNACE) : static_cast<BlockId>(FURNACE_WEST + dir - 1);
+}
 float block_height(BlockId id) { return is_bed(id) ? 9.0f / 16 : 1.0f; }
 bool is_thin(BlockId id) { return is_torch(id) || id == FIRE; }
 bool is_solid(BlockId id) { return id != AIR && !is_fluid(id) && !is_thin(id); }
@@ -90,7 +112,7 @@ BlockTint block_tint(BlockId id) {
 
 // Beta's values: leaves dim light by 1, water and ice by 3, solid blocks stop it.
 int light_opacity(BlockId id) {
-    if (id == AIR || is_thin(id) || is_bed(id) || id == SPAWNER) return 0;
+    if (id == AIR || is_thin(id) || is_bed(id) || id == SPAWNER || id == GLASS) return 0;
     if (is_leaves(id)) return 1;
     if (id == WATER || id == ICE) return 3;
     return 15;
@@ -99,5 +121,6 @@ int light_opacity(BlockId id) {
 int light_emission(BlockId id) {
     if (id == GLOWSTONE || id == LAVA || id == FIRE) return 15;
     if (is_torch(id)) return 14;
+    if (is_lit_furnace(id)) return 13;
     return 0;
 }

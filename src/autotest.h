@@ -1,6 +1,6 @@
 // Scripted smoke test: `PetrutzCraft --seed 7 --autotest OUT_DIR`.
 // Drives the real program for a few hundred frames: the menus, creating a world, mining, building,
-// cows, eating, fall damage, tools, armor, the bow, fire and buckets, a tour of the biomes and caves, the F3 and F5 views,
+// cows, eating, fall damage, furnaces, tools, armor, the bow, fire and buckets, a tour of the biomes and caves, the F3 and F5 views,
 // monsters, explosions and dying, the first-person hand, the pause menu,
 // then saving, quitting to the
 // title and loading the world again. Saves screenshots to OUT_DIR and writes OUT_DIR/report.txt.
@@ -40,6 +40,7 @@ private:
     void play(App& app, Game& g);  // the first visit to the world
     void tour(App& app, Game& g);  // fly to a desert, a cold biome and into a cave
     void crafting(App& app, Game& g);  // the inventory, a crafting table and the creative item picker
+    void furnaces(App& app, Game& g);  // placing a furnace, smelting, the lit furnace, glass, breaking it
     void tools(App& app, Game& g);     // pickaxe rules, armor, the bow, flint and steel, buckets
     void weather_and_beds(App& app, Game& g);  // rain, snow, a thunderstorm, sleeping in a bed
     void monsters(App& app, Game& g);  // each monster, fighting, creepers and TNT, spawners, difficulty, dying
@@ -88,4 +89,7 @@ private:
     std::vector<std::pair<glm::ivec3, BlockId>> hand_blocks_;
     Weather hand_weather_;
     int64_t hand_time_ = 0;
+    // Furnaces: the one placed in front of the player, and one left smelting for the reload.
+    glm::ivec3 furnace_{0};
+    int64_t furnace_time_ = 0;
 };
