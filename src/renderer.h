@@ -100,11 +100,15 @@ public:
     void set_mesh_options(MeshOptions options);
     // Rebuild these chunks right now (after a block edit).
     void rebuild(const std::vector<ChunkPos>& chunks);
+    // How many times blocks have been changed (rebuild() calls), so a click can tell whether it did anything.
+    long edit_count() const { return edits_; }
     size_t mesh_count() const { return meshes_.size(); }
     int jobs_in_flight() const { return streamer_.jobs_in_flight(); }
 
     void set_instances(std::vector<ModelPart> instances) { instances_ = std::move(instances); }
     void set_outline(std::optional<glm::ivec3> block) { outline_ = block; }
+    // View bobbing: applied to the camera after it is pointed (identity: none).
+    void set_view_bob(const glm::mat4& bob) { view_bob_ = bob; }
     // Falling rain and snow around the player, and lightning bolts (position and zigzag seed).
     // `seconds` moves the drops down.
     struct Bolt {
@@ -121,6 +125,9 @@ public:
     // Draw models on their own into part of the window (like the player in the inventory screen),
     // seen through `view_proj`, without fog. Leaves the viewport on that part of the window.
     void draw_models(const std::vector<ModelPart>& parts, int x, int y, int width, int height, const glm::mat4& view_proj);
+    // The first-person hand over the world: parts in camera space (x right, y up, looking down -z),
+    // with a depth buffer of their own, no fog, and the sky darkened by `darkness` levels like the world.
+    void draw_hand(const std::vector<ModelPart>& parts, int width, int height, float darkness);
 
 private:
     void draw_sky(const glm::mat4& proj_rot, const SkyState& sky, float far_dist);
@@ -139,6 +146,8 @@ private:
     std::map<int, GpuMesh> models_;
     std::vector<ModelPart> instances_;
     std::optional<glm::ivec3> outline_;
+    long edits_ = 0;
+    glm::mat4 view_bob_{1.0f};
     GpuMesh outline_mesh_;
 
     ShaderProgram sky_program_;

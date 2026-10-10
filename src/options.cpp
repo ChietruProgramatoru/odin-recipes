@@ -127,6 +127,7 @@ std::string Options::to_text() const {
     out << "fancyGraphics:" << b(fancy_graphics) << "\n";
     out << "ao:" << b(smooth_lighting) << "\n";
     out << "clouds:" << b(clouds) << "\n";
+    out << "bobView:" << b(view_bobbing) << "\n";
     out << "difficulty:" << difficulty << "\n";
     for (int i = 0; i < KEY_ACTION_COUNT; ++i) out << "key_" << KEY_ACTIONS[i].id << ":" << keys[i] << "\n";
     return out.str();
@@ -148,6 +149,7 @@ Options Options::from_text(const std::string& text) {
         else if (key == "fancyGraphics") parse_bool(value, o.fancy_graphics);
         else if (key == "ao") parse_bool(value, o.smooth_lighting);
         else if (key == "clouds") parse_bool(value, o.clouds);
+        else if (key == "bobView") parse_bool(value, o.view_bobbing);
         else if (key == "difficulty" && parse_int(value, n)) o.difficulty = std::clamp(n, 0, 3);
         else if (key.rfind("key_", 0) == 0 && parse_int(value, n) && n > 0 && n <= GLFW_KEY_LAST)
             for (int i = 0; i < KEY_ACTION_COUNT; ++i)

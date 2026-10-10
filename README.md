@@ -75,6 +75,10 @@ It runs on Windows (the main target) and Linux.
 
   ![Creative item picker](screenshots/creative_items.png)
 - **Sneaking** (Shift) makes you slower and stops you from walking off edges. **Sprinting**: double-tap W and keep holding it.
+- **Your hand** in first person: an empty hand shows your arm, and the item selected in the hotbar is held in it in 3D, like Beta: blocks as little cubes (slabs and stairs in their shape), tools and other items as their icon one pixel thick. The hand swings when you hit something (or nothing), while you mine, and when a right click places a block or uses something on one. Eating and the bow don't swing it. When you pick another hotbar slot the hand dips out of view and comes back up with the new item, and while you walk the view and the hand bob gently, as in Beta (View Bobbing in Video Settings turns that off). Every item gets its held model from its icon, so new items show up in the hand by themselves.
+
+  ![Holding a diamond sword](screenshots/hand_sword.png)
+  ![Holding a grass block](screenshots/hand_block.png)
 - **Third-person view** (F5) shows your character: an original blocky figure with a red shirt and jeans.
 
   ![Third person](screenshots/third_person.png)
