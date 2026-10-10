@@ -1,0 +1,47 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  linux:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install build tools and a software OpenGL driver
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev libgl-dev \
+            libgl1-mesa-dri xvfb
+      - name: Configure
+        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+      - name: Build
+        run: cmake --build build
+      - name: Logic tests
+        run: ctest --test-dir build --output-on-failure
+      - name: Autotest (headless, with screenshots)
+        run: xvfb-run -a -s "-screen 0 1280x720x24" ./build/PetrutzCraft --seed 7 --autotest autotest-out
+      - name: Upload screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: autotest-linux
+          path: autotest-out
+
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure
+        run: cmake -S . -B build -A x64
+      - name: Build
+        run: cmake --build build --config Release
+      - name: Logic tests
+        run: ctest --test-dir build -C Release --output-on-failure
+      - name: Upload the game
+        uses: actions/upload-artifact@v4
+        with:
+          name: PetrutzCraft-windows-x64
+          path: build/Release/PetrutzCraft.exe
