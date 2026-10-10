@@ -101,9 +101,9 @@ void ChunkStreamer::update(double px, double pz, int radius) {
                 if (generating_.count(n) || in_flight_ >= max_in_flight_) continue;
                 generating_.insert(n);
                 ++in_flight_;
-                const TerrainGenerator* gen = &world_.generator();
-                pool_.submit([this, gen, n] {
-                    auto chunk = gen->generate(n.cx, n.cz);
+                const World* world = &world_;
+                pool_.submit([this, world, n] {
+                    auto chunk = world->load_or_generate(n.cx, n.cz);
                     std::lock_guard lock(done_mutex_);
                     gen_done_.push_back({std::move(chunk)});
                     done_cv_.notify_all();
@@ -115,8 +115,9 @@ void ChunkStreamer::update(double px, double pz, int radius) {
         ++in_flight_;
         auto padded = std::make_shared<Padded>(world_.padded(key.cx, key.cz));
         int max_y = world_.find(key.cx, key.cz)->max_y;
-        pool_.submit([this, key, ticket, padded, max_y] {
-            ChunkMesh mesh = build_mesh(*padded, key.cx, key.cz, max_y);
+        MeshOptions options = options_;
+        pool_.submit([this, key, ticket, padded, max_y, options] {
+            ChunkMesh mesh = build_mesh(*padded, key.cx, key.cz, max_y, options);
             std::lock_guard lock(done_mutex_);
             mesh_done_.push_back({key, ticket, std::move(mesh)});
             done_cv_.notify_all();
@@ -134,7 +135,15 @@ ReadyMesh ChunkStreamer::rebuild_now(ChunkPos pos) {
     meshes_[pos] = {State::Meshed, next_ticket_++};
     // Drop any queued result for this chunk: the fresh mesh replaces it.
     std::erase_if(ready_, [&](const ReadyMesh& r) { return r.pos == pos; });
-    return {pos, world_.build_mesh_now(pos.cx, pos.cz)};
+    return {pos, world_.build_mesh_now(pos.cx, pos.cz, options_)};
+}
+
+void ChunkStreamer::set_mesh_options(MeshOptions options) {
+    if (options == options_) return;
+    options_ = options;
+    // Every mesh is out of date. Results still in flight carry old tickets and get dropped.
+    meshes_.clear();
+    ready_.clear();
 }
 
 void ChunkStreamer::forget(ChunkPos pos) {

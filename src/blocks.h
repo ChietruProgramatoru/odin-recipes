@@ -22,6 +22,8 @@ enum Tile : int {
     T_LEAVES, T_PLANKS, T_BEDROCK, T_WATER, T_BRICK,
     // Tiles for cows, dropped food and the block outline.
     T_COW_HIDE, T_WHITE, T_HOOF, T_COW_HEAD, T_SNOUT, T_BLACK, T_HORN, T_APPLE, T_BEEF,
+    // Solid leaves for Fast graphics, then the player model.
+    T_LEAVES_FAST, T_SKIN, T_HAIR, T_SHIRT, T_PANTS, T_SHOE, T_EYE,
     TILE_COUNT
 };
 
