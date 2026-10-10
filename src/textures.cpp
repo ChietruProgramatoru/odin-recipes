@@ -257,6 +257,15 @@ Image lava(Rng& rng) {
     return img;
 }
 
+Image obsidian(Rng& rng) {
+    Image img = noise_tile(rng, {20, 18, 30}, 0.25);
+    for (int i = 0; i < 10; ++i) {
+        int x = rng.below(TILE), y = rng.below(TILE);
+        for (int k = 0; k < 2; ++k) img.at((x + k) % TILE, y) = shade({70, 45, 105}, rng.uniform(0.85, 1.1));
+    }
+    return img;
+}
+
 Image ice(Rng& rng) {
     Image img = noise_tile(rng, {165, 195, 250}, 0.04, 165);
     for (int i = 0; i < 4; ++i) {
@@ -480,6 +489,16 @@ const std::vector<const char*> HEART = {
     "...krk...",
     "....k....",
 };
+const std::vector<const char*> BUBBLE = {
+    "..kkkk...",
+    ".kbbbbk..",
+    "kbwbbbbk.",
+    "kbwbbbbk.",
+    "kbbbbbbk.",
+    "kbbbbbbk.",
+    ".kbbbbk..",
+    "..kkkk...",
+};
 const std::vector<const char*> CHESTPLATE = {
     "kkk...kkk",
     "kwwk.kwwk",
@@ -574,7 +593,7 @@ std::map<int, Image> make_tiles(int seed) {
         {T_ZOMBIE_SKIN, solid({92, 140, 76}, 0.1)}, {T_ZOMBIE_SHIRT, solid({50, 150, 160}, 0.1)},
         {T_ZOMBIE_PANTS, solid({70, 60, 150}, 0.1)}, {T_BONE, solid({200, 200, 195}, 0.08)}, {T_CREEPER, creeper_skin},
         {T_SPIDER, spider_skin}, {T_SPIDER_EYE, solid({205, 20, 20}, 0)}, {T_SLIME, solid({110, 195, 95}, 0.12)},
-        {T_SMOKE, solid({210, 210, 210}, 0.1)},
+        {T_SMOKE, solid({210, 210, 210}, 0.1)}, {T_OBSIDIAN, obsidian},
         {T_BED_TOP_FOOT, [](Rng& rng) { return bed_top(rng, false); }},
         {T_BED_TOP_HEAD, [](Rng& rng) { return bed_top(rng, true); }},
         {T_BED_SIDE_FOOT, [](Rng& rng) { return bed_side(rng, false, true); }},
@@ -608,6 +627,7 @@ std::map<std::string, Image> make_hud_icons() {
         {"armor_full", armor_full}, {"armor_half", halve(armor_full, armor_empty)}, {"armor_empty", armor_empty},
         {"heart_full", heart_full}, {"heart_half", halve(heart_full, heart_empty)}, {"heart_empty", heart_empty},
         {"food_full", food_full}, {"food_half", halve(food_full, food_empty)}, {"food_empty", food_empty},
+        {"bubble", sprite(BUBBLE, {{'k', {30, 60, 140, 255}}, {'b', {90, 150, 240, 230}}, {'w', {240, 250, 255, 255}}})},
     };
 }
 

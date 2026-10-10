@@ -3,6 +3,7 @@
 #pragma once
 #include <array>
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <unordered_map>
@@ -45,7 +46,7 @@ inline int chunk_of(int block) { return block >> 4; }
 // A cow, monster or dropped item stored with the chunk it is in (in a save file, or while the
 // player is too far away for it to be simulated).
 struct EntityRecord {
-    enum Kind : uint8_t { COW = 1, ITEM = 2, MONSTER = 3 };
+    enum Kind : uint8_t { COW = 1, ITEM = 2, MONSTER = 3, FALLING = 4 };  // FALLING: sand or gravel in the air (item = the block)
     enum Flags : uint8_t { POWERED = 1, JOCKEY = 2 };  // a charged creeper; a spider with a skeleton riding it
     Kind kind = COW;
     double x = 0, y = 0, z = 0;
@@ -66,6 +67,9 @@ constexpr int MAX_LIGHT = 15;
 struct Chunk {
     int cx, cz;
     std::array<BlockId, CHUNK * CHUNK * HEIGHT> blocks{};  // index (y << 8) | (z << 4) | x
+    // A 4-bit value per block (0-15), Beta's block metadata: how far water and lava have flowed,
+    // how old a fire is. Same index as blocks; saved packed two to a byte.
+    std::array<uint8_t, CHUNK * CHUNK * HEIGHT> data{};
     // Sky light in the high 4 bits, block light in the low 4 bits, same index as blocks.
     // Not saved: it is worked out again when a chunk is loaded.
     std::array<uint8_t, CHUNK * CHUNK * HEIGHT> light{};
@@ -186,9 +190,10 @@ struct MeshOptions {
 };
 
 // Mesh a padded chunk copy. Thread-safe: touches nothing but its arguments. The climate colours
-// grass and leaves (missing: the hotbar icon colours).
+// grass and leaves (missing: the hotbar icon colours). The data values shape flowing water and
+// lava (missing: all still).
 ChunkMesh build_mesh(const Padded& P, const PaddedLight& light, int cx, int cz, int max_y, MeshOptions options = {},
-                     const Climate* climate = nullptr);
+                     const Climate* climate = nullptr, const Padded* data = nullptr);
 
 // All chunks, keyed by chunk position. Only the main thread touches it; worker threads get
 // generated chunks handed over with insert() and mesh from padded copies.
@@ -211,8 +216,16 @@ public:
     size_t chunk_count() const { return chunks_.size(); }
 
     BlockId get_block(int x, int y, int z);
-    // Set a block and update the light around it. Returns the chunks whose meshes need rebuilding.
-    std::vector<ChunkPos> set_block(int x, int y, int z, BlockId block);
+    int get_data(int x, int y, int z);  // the block's 4-bit data value (0 outside the loaded world)
+    // Set a block (and its data value) and update the light around it. Returns the chunks whose
+    // meshes need rebuilding.
+    std::vector<ChunkPos> set_block(int x, int y, int z, BlockId block, int data = 0);
+    // Change only the data value (no light change). Returns the chunks to rebuild. Without
+    // `notify` the neighbours aren't told and no mesh changes (a fire getting older).
+    std::vector<ChunkPos> set_data(int x, int y, int z, int data, bool notify = true);
+    // Every cell set since the last call, in order (block updates react to them, see blockupdate.h).
+    std::vector<glm::ivec3> take_changes();
+    bool is_loaded(int x, int z) { return find(chunk_of(x), chunk_of(z)) != nullptr; }
     // Light levels 0..15. Above the world (or in a chunk that isn't loaded) the sky is full.
     int sky_light(int x, int y, int z);
     int block_light(int x, int y, int z);
@@ -227,15 +240,22 @@ public:
     bool box_collides(double x0, double y0, double z0, double x1, double y1, double z1);
     // The highest top of the solid blocks a box overlaps (for landing on beds and full blocks).
     double box_top(double x0, double y0, double z0, double x1, double y1, double z1);
-    bool box_in_water(double x0, double y0, double z0, double x1, double y1, double z1);
+    bool box_in_water(double x0, double y0, double z0, double x1, double y1, double z1) {
+        return box_in(WATER, x0, y0, z0, x1, y1, z1);
+    }
+    bool box_in(BlockId block, double x0, double y0, double z0, double x1, double y1, double z1);
 
     // Voxel DDA ray cast. Air, water and lava don't stop the ray.
     // The first block along a ray that `stops` it: by default any block except air, water and lava
     // (pass is_solid for arrows, which fly through torches and fire).
     std::optional<RayHit> raycast(glm::vec3 origin, glm::vec3 direction, float max_dist, bool (*stops)(BlockId) = nullptr);
+    // Same, deciding by the cell and its block (to look at data values too).
+    std::optional<RayHit> raycast(glm::vec3 origin, glm::vec3 direction, float max_dist,
+                                  const std::function<bool(glm::ivec3, BlockId)>& stops);
 
     // Copy a chunk plus a one-block border from its 8 neighbours (loading or generating any that are missing).
     Padded padded(int cx, int cz);
+    Padded padded_data(int cx, int cz);  // the data values, laid out the same
     PaddedLight padded_light(int cx, int cz);
     // Mesh a chunk right now on this thread.
     ChunkMesh build_mesh_now(int cx, int cz, MeshOptions options = {});
@@ -250,4 +270,6 @@ private:
     ChunkStore* store_ = nullptr;
     std::unordered_map<ChunkPos, std::unique_ptr<Chunk>, ChunkPosHash> chunks_;
     Chunk* last_ = nullptr;  // tiny cache for get_block
+    std::vector<glm::ivec3> changes_;
+    std::vector<ChunkPos> neighbours_to_rebuild(int x, int y, int z);
 };

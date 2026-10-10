@@ -298,8 +298,10 @@ bool Monster::tick(double dt, World& world, const MonsterSenses& s, Rng& rng, Mo
     knock_x *= decay;
     knock_z *= decay;
     b.check_water();
+    b.vx += b.current.x * CURRENT_SPEED;
+    b.vz += b.current.z * CURRENT_SPEED;
     b.apply_gravity(dt);
-    if (b.in_water) b.vy = std::max(b.vy, 2.0);
+    if (b.in_liquid()) b.vy = std::max(b.vy, 2.0);
     const HitAxes hit = b.move(b.vx * dt, b.vy * dt, b.vz * dt);
     bool climbing = false;
     if ((hit.x || hit.z) && want_speed_ > 0.3) {
@@ -432,6 +434,8 @@ bool PrimedTnt::tick(double dt) {
     fuse -= dt;
     Body& b = body;
     b.check_water();
+    b.vx += b.current.x * CURRENT_PUSH * dt;
+    b.vz += b.current.z * CURRENT_PUSH * dt;
     b.vy -= 16.0 * dt;  // Beta: 0.04 per tick per tick
     const double drag = std::pow(0.98, dt * 20);
     b.vx *= drag;

@@ -10,6 +10,7 @@
 
 #include <glm/vec3.hpp>
 
+#include "blockupdate.h"
 #include "hud.h"
 #include "inventory_screen.h"
 #include "mobs.h"
@@ -102,12 +103,11 @@ public:
         int delay = 20;
     };
     std::vector<Spawner> spawners;
-    // Fires lit with flint and steel, and how many seconds each has left before it burns out.
-    struct Fire {
-        glm::ivec3 pos;
-        double left;
-    };
-    std::vector<Fire> fires;
+    // Flowing water and lava, falling sand and gravel, and fire (M6), and the sand and gravel
+    // falling right now.
+    BlockUpdater blocks{world};
+    std::vector<std::unique_ptr<FallingBlock>> falling;
+    int burn_ticks = 0;  // the player is on fire for this many more ticks
     int armor_remainder = 0;  // fraction of a damage point armor carries to the next hit (in 25ths)
     std::optional<glm::ivec3> mining_pos;
     double mining_progress = 0;
@@ -203,7 +203,17 @@ private:
     void loot(Monster& m, std::vector<std::unique_ptr<Monster>>& born);
     void update_drops(double dt);
     void update_arrows(double dt);
-    void update_fires(double dt);
+    void update_falling(double dt);
+    // Block ticks, random ticks and what they set off; the player breathing and burning.
+    void tick_blocks();
+    void tick_player_fire_and_air();
+    void apply_block_events(BlockEvents& events);
+    // Rain is falling on this cell (it puts fire out there).
+    bool rain_at(glm::ivec3 p);
+    // The player's eyes are under the surface of water.
+    bool head_under_water();
+    // Set the player alight for at least `ticks` (Beta adds to a fire already burning).
+    void set_player_on_fire(int ticks);
     void shoot_arrow();
     bool light_fire(glm::ivec3 pos);
     // Wear the selected hotbar item by `uses` (survival only); it breaks when worn out.

@@ -15,6 +15,8 @@ struct HudState {
     std::string info;   // top left: the game name, or the F3 debug lines
     std::string help;   // controls, while show_help is on
     bool underwater, dead;
+    bool burning = false;  // the player is on fire
+    int bubbles = -1;      // air bubbles to show (0-10) while under water, -1 for none
 };
 
 class Hud {

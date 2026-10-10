@@ -1108,7 +1108,7 @@ void AutoTest::tools(App& app, Game& g) {
         g.pitch = degrees(std::atan2(e.y - (floor.y + 1), std::hypot(floor.x + 0.5 - e.x, floor.z + 0.5 - e.z)));
         g.update_target();
         g.use_item();
-        check("flint and steel lights a fire", w.get_block(floor.x, floor.y + 1, floor.z) == FIRE && g.fires.size() == 1);
+        check("flint and steel lights a fire", w.get_block(floor.x, floor.y + 1, floor.z) == FIRE);
         check("fire gives light 15", w.block_light(floor.x, floor.y + 1, floor.z) == 15);
 
         // A water bucket pours water next to it; an empty bucket scoops it up again.
@@ -1142,7 +1142,6 @@ void AutoTest::tools(App& app, Game& g) {
         range_blocks_.clear();
         for (const auto& a : g.arrows) inv.add(ARROW, 1);  // picked up, as if walked over
         g.arrows.clear();
-        g.fires.clear();
         g.pitch = 0;
     }
 }

@@ -56,6 +56,7 @@ const BlockInfo BLOCKS[BLOCK_COUNT] = {
     {"Fire", {T_FIRE, T_FIRE, T_FIRE}, 0.0f, std::nullopt},
     // Breaking TNT lights it instead of dropping it (see Game::break_block).
     {"TNT", {IT_TNT_TOP, IT_TNT_SIDE, IT_TNT_TOP}, 0.0f, TNT},
+    {"Obsidian", {T_OBSIDIAN, T_OBSIDIAN, T_OBSIDIAN}, 10.0f, OBSIDIAN},
 };
 
 }  // namespace
@@ -71,6 +72,7 @@ bool is_cutout(BlockId id) { return id == SPAWNER; }
 bool is_torch(BlockId id) { return id >= TORCH && id <= TORCH_WALL_SOUTH; }
 bool is_bed(BlockId id) { return id >= BED_FOOT_SOUTH && id <= BED_HEAD_EAST; }
 float block_height(BlockId id) { return is_bed(id) ? 9.0f / 16 : 1.0f; }
+bool falls(BlockId id) { return id == SAND || id == GRAVEL; }
 bool is_thin(BlockId id) { return is_torch(id) || id == FIRE; }
 bool is_solid(BlockId id) { return id != AIR && !is_fluid(id) && !is_thin(id); }
 bool is_opaque(BlockId id) {

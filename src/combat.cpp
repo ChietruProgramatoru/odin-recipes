@@ -132,6 +132,7 @@ float explosion_resistance(uint8_t block) {
         case PLANKS: return 3;
         case COAL_ORE: case IRON_ORE: case GOLD_ORE: case DIAMOND_ORE: case REDSTONE_ORE: case LAPIS_ORE: return 3;
         case WATER: case LAVA: return 100;
+        case OBSIDIAN: return 1200;
         case BEDROCK: return 3600000;
         default: break;
     }

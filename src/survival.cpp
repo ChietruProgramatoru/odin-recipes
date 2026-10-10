@@ -1,6 +1,7 @@
 #include "survival.h"
 
 #include <algorithm>
+#include <cmath>
 
 bool stackable(const Stack& a, const Stack& b) {
     return a.item == b.item && a.damage == b.damage && max_stack(a.item) > 1;
@@ -76,6 +77,22 @@ void Vitals::reset() {
     starve_timer = 0.0;
     peaceful_timer = 0.0;
     hurt_timer = 0.0;
+    air = MAX_AIR;
+}
+
+int Vitals::breathe(bool head_under_water) {
+    if (!head_under_water) {
+        air = MAX_AIR;
+        return 0;
+    }
+    if (--air > -20) return 0;
+    air = 0;
+    return DROWN_DAMAGE;
+}
+
+int Vitals::bubbles() const {
+    // Beta: ceil((air - 2) * 10 / 300) whole bubbles.
+    return std::max(0, static_cast<int>(std::ceil((air - 2) * 10.0 / MAX_AIR)));
 }
 
 void Vitals::exhaust(double amount) {

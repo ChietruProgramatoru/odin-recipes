@@ -20,7 +20,14 @@ constexpr double EXHAUST_REGEN = 3.0;
 
 constexpr double REGEN_INTERVAL = 4.0;   // seconds per half-heart healed when well fed
 constexpr double STARVE_INTERVAL = 4.0;  // seconds per half-heart lost when starving
-constexpr double PEACEFUL_REGEN_INTERVAL = 12.0;  // Peaceful heals half a heart this often, fed or not (Beta)
+constexpr double PEACEFUL_REGEN_INTERVAL = 12.0;
+// Drowning (Beta): 15 seconds of breath, then 2 damage every second until you surface.
+constexpr int MAX_AIR = 300;       // ticks
+constexpr int DROWN_DAMAGE = 2;
+// Burning (Beta): fire lasts this many ticks after you leave it, and hurts 1 every second.
+constexpr int FIRE_BURN_TICKS = 300;
+constexpr int LAVA_BURN_TICKS = 600;
+constexpr int LAVA_DAMAGE = 4;  // Peaceful heals half a heart this often, fed or not (Beta)
 
 struct Stack {
     ItemId item;
@@ -63,6 +70,7 @@ public:
     double saturation, exhaustion;
     double regen_timer, starve_timer, peaceful_timer;
     double hurt_timer;  // invulnerability after being hit
+    int air;            // ticks of breath left under water (MAX_AIR when breathing)
     // Peaceful difficulty: health comes back by itself and hunger stands still (set by the game).
     bool peaceful = false;
 
@@ -74,6 +82,10 @@ public:
     bool eat(ItemId item);
     // Advance timers. Returns damage taken this tick (for the screen flash).
     int tick(double dt);
+    // One game tick of breathing. Returns the drowning damage to deal this tick (0 or DROWN_DAMAGE).
+    int breathe(bool head_under_water);
+    // Air bubbles to show under water (0-10).
+    int bubbles() const;
 };
 
 // Sprinting starts with a quick double tap of the forward key and lasts while it stays held.
