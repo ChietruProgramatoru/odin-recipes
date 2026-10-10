@@ -140,7 +140,9 @@ void AutoTest::play(App& app, Game& g) {
         glm::vec3 e = g.eye(), to(cow_->body.x, cow_->body.y + 0.8, cow_->body.z);
         float d = glm::length(to - e);
         glm::vec3 dir = (to - e) / d;
-        while (auto hit = g.world.raycast(e, dir, d - 0.7f)) {
+        // Up to where the ray meets the cow's box (a leaf just in front of it would still hide it).
+        const float reach = cow_->ray_hit(e, dir, d + 1).value_or(d - 0.7f);
+        while (auto hit = g.world.raycast(e, dir, reach)) {
             log("cleared " + item_name(g.world.get_block(hit->block.x, hit->block.y, hit->block.z)) + " in front of the cow");
             g.renderer->rebuild(g.world.set_block(hit->block.x, hit->block.y, hit->block.z, AIR));
         }
@@ -148,6 +150,15 @@ void AutoTest::play(App& app, Game& g) {
     if (f == 160 && cow_) {
         shot(app, "2_cow.png");
         check("cow is targetable by the crosshair", g.target_cow == cow_);
+        if (g.target_cow != cow_) {
+            auto d = cow_->ray_hit(g.eye(), g.forward(), 10.0f);
+            char buf[200];
+            std::snprintf(buf, sizeof buf, "  cow ray distance %.2f, crosshair block %s at %.2f, other cow %s",
+                          d ? *d : -1.0f,
+                          g.target ? item_name(g.world.get_block(g.target->block.x, g.target->block.y, g.target->block.z)).c_str() : "none",
+                          g.target ? g.target->distance : -1.0f, g.target_cow ? "yes" : "no");
+            log(buf);
+        }
     }
     if (f == 200 && cow_) {
         double moved = std::hypot(cow_->body.x - cow_start_x_, cow_->body.z - cow_start_z_);
