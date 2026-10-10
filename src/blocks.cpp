@@ -1,5 +1,7 @@
 #include "blocks.h"
 
+#include "icons.h"
+
 namespace {
 
 const BlockInfo BLOCKS[BLOCK_COUNT] = {
@@ -15,10 +17,10 @@ const BlockInfo BLOCKS[BLOCK_COUNT] = {
     {"Bedrock", {T_BEDROCK, T_BEDROCK, T_BEDROCK}, std::nullopt, std::nullopt},
     {"Water", {T_WATER, T_WATER, T_WATER}, std::nullopt, std::nullopt},
     {"Bricks", {T_BRICK, T_BRICK, T_BRICK}, 2.0f, BRICK},
+    {"Crafting Table", {IT_CRAFT_TOP, IT_CRAFT_FRONT, T_PLANKS}, 1.8f, CRAFTING_TABLE},
+    {"Chest", {IT_CHEST_TOP, IT_CHEST_FRONT, IT_CHEST_TOP}, 1.8f, CHEST},
+    {"Furnace", {IT_FURNACE_TOP, IT_FURNACE_FRONT, IT_FURNACE_TOP}, 2.4f, FURNACE},
 };
-
-const FoodInfo APPLE_FOOD{4, 2.4f};
-const FoodInfo BEEF_FOOD{6, 4.0f};
 
 }  // namespace
 
@@ -27,41 +29,6 @@ const BlockInfo* block_info(ItemId id) {
     return &BLOCKS[id];
 }
 
-const FoodInfo* food_info(ItemId id) {
-    if (id == APPLE) return &APPLE_FOOD;
-    if (id == BEEF) return &BEEF_FOOD;
-    return nullptr;
-}
-
-std::string item_name(ItemId id) {
-    if (id == APPLE) return "Apple";
-    if (id == BEEF) return "Beef";
-    if (const BlockInfo* b = block_info(id)) return b->name;
-    return "";
-}
-
 bool is_solid(BlockId id) { return id != AIR && id != WATER; }
 bool is_opaque(BlockId id) { return id != AIR && id != WATER; }
 bool is_block(ItemId id) { return block_info(id) != nullptr; }
-
-int icon_tile(ItemId id) {
-    if (id == APPLE) return T_APPLE;
-    if (id == BEEF) return T_BEEF;
-    return block_info(id)->tiles[1];
-}
-
-const std::vector<ItemId>& all_items() {
-    static const std::vector<ItemId> items = [] {
-        std::vector<ItemId> v;
-        for (int b = GRASS; b < BLOCK_COUNT; ++b) v.push_back(b);
-        v.push_back(APPLE);
-        v.push_back(BEEF);
-        return v;
-    }();
-    return items;
-}
-
-const std::vector<ItemId>& creative_items() {
-    static const std::vector<ItemId> items = {GRASS, DIRT, STONE, COBBLE, SAND, LOG, PLANKS, BRICK, LEAVES};
-    return items;
-}

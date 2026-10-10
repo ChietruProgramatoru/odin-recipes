@@ -7,6 +7,7 @@
 #include <unordered_map>
 
 #include <GLFW/glfw3.h>
+#include <glm/gtc/matrix_transform.hpp>
 
 #include "textures.h"
 
@@ -25,6 +26,7 @@ Game::Game(GLFWwindow* win, GLuint atlas, Painter& painter, const Options& opts,
       world(level.seed),
       rng(setup.scripted ? 0 : std::random_device{}()),
       player(world, 0, 0, 0, 0.3, 1.8),
+      painter_(painter),
       scripted_(setup.scripted) {
     world.set_store(&saver->store());
     renderer = std::make_unique<WorldRenderer>(world, atlas, view_distance_chunks(options.view_distance), SKY);
@@ -147,7 +149,7 @@ void Game::spawn_entity(const EntityRecord& e) {
         cow->health = std::clamp(e.health, 1, COW_MAX_HEALTH);
         cows.push_back(std::move(cow));
     } else {
-        auto drop = std::make_unique<ItemDrop>(world, e.item, e.x, e.y, e.z, rng);
+        auto drop = std::make_unique<ItemDrop>(world, Stack{e.item, e.count, e.damage}, e.x, e.y, e.z, rng);
         drop->body.vx = drop->body.vy = drop->body.vz = 0;
         drop->age = e.age;
         drops.push_back(std::move(drop));
@@ -177,7 +179,9 @@ EntityRecord drop_record(const ItemDrop& d) {
     e.x = d.body.x;
     e.y = d.body.y;
     e.z = d.body.z;
-    e.item = d.item;
+    e.item = d.stack.item;
+    e.count = d.stack.count;
+    e.damage = d.stack.damage;
     e.age = static_cast<float>(d.age);
     return e;
 }
@@ -251,7 +255,39 @@ void Game::set_mouse_captured(bool captured) {
 void Game::set_paused(bool p) {
     paused = p;
     mouse_buttons_.clear();
-    set_mouse_captured(!p && !vitals.dead());
+    set_mouse_captured(!p && !vitals.dead() && !gui);
+}
+
+void Game::open_gui(InventoryScreen::Kind kind) {
+    if (gui) close_gui();
+    gui = std::make_unique<InventoryScreen>(kind, kind == InventoryScreen::Kind::Creative ? creative_inventory : active_inventory());
+    mouse_buttons_.clear();
+    mining_pos.reset();
+    hud->set_mining(std::nullopt);
+    set_mouse_captured(false);
+    if (!scripted_) {
+        // Start with the mouse in the middle of the window, like Beta.
+        int ww, wh;
+        glfwGetWindowSize(window, &ww, &wh);
+        glfwSetCursorPos(window, ww / 2.0, wh / 2.0);
+        cursor_x_ = ww / 2.0;
+        cursor_y_ = wh / 2.0;
+    }
+}
+
+void Game::close_gui() {
+    if (!gui) return;
+    for (const Stack& s : gui->close()) throw_stack(s);
+    gui.reset();
+    set_mouse_captured(!paused && !vitals.dead());
+}
+
+void Game::gui_mouse(double& x, double& y) const {
+    int ww, wh, fw, fh;
+    glfwGetWindowSize(window, &ww, &wh);
+    glfwGetFramebufferSize(window, &fw, &fh);
+    x = cursor_x_ * fw / std::max(1, ww);
+    y = cursor_y_ * fh / std::max(1, wh);
 }
 
 void Game::apply_options() {
@@ -269,6 +305,18 @@ void Game::on_key(int key, int action, int mods) {
         return;
     }
     if (paused) return;
+    if (gui) {
+        if (key == options.keys[KEY_INVENTORY]) {
+            close_gui();
+        } else if (key == options.keys[KEY_DROP]) {
+            int w, h;
+            glfwGetFramebufferSize(window, &w, &h);
+            double mx, my;
+            gui_mouse(mx, my);
+            if (auto s = gui->drop_hovered(w, h, mx, my)) throw_stack(*s);
+        }
+        return;
+    }
     if (key == options.keys[KEY_FORWARD]) sprint_.forward_pressed(glfwGetTime(), sprint_allowed());
     if (key >= GLFW_KEY_1 && key <= GLFW_KEY_9) {
         active_inventory().selected = key - GLFW_KEY_1;
@@ -277,13 +325,10 @@ void Game::on_key(int key, int action, int mods) {
         creative = !creative;
         flying = false;
         hud->show_message(creative ? "Creative mode" : "Survival mode");
-    } else if (key == options.keys[KEY_CRAFT] && !creative) {
-        bool ok = inventory.craft_planks();
-        hud->show_message(ok ? "Crafted 4 planks" : "Need 1 oak log (and a free slot) to craft planks", 2);
     } else if (key == options.keys[KEY_DROP]) {
         drop_selected();
     } else if (key == options.keys[KEY_INVENTORY]) {
-        hud->show_message("The inventory screen isn't built yet", 2);
+        open_gui(creative ? InventoryScreen::Kind::Creative : InventoryScreen::Kind::Inventory);
     } else if (key == GLFW_KEY_H) {
         hud->show_help = !hud->show_help;
     } else if (key == options.keys[KEY_JUMP] && creative) {
@@ -301,7 +346,7 @@ void Game::on_cursor(double x, double y) {
     cursor_x_ = x;
     cursor_y_ = y;
     have_cursor_ = true;
-    if (paused || vitals.dead() || scripted_) return;
+    if (paused || vitals.dead() || scripted_ || gui) return;
     double k = options.degrees_per_pixel();
     yaw -= dx * k;
     pitch = std::clamp(pitch + dy * k * (options.invert_mouse ? -1 : 1), -89.9, 89.9);  // screen y grows downwards
@@ -313,6 +358,16 @@ void Game::on_mouse_button(int button, int action) {
         return;
     }
     if (vitals.dead() || paused) return;
+    if (gui) {
+        if (button != GLFW_MOUSE_BUTTON_LEFT && button != GLFW_MOUSE_BUTTON_RIGHT) return;
+        int w, h;
+        glfwGetFramebufferSize(window, &w, &h);
+        double mx, my;
+        gui_mouse(mx, my);
+        bool shift = key_down(GLFW_KEY_LEFT_SHIFT) || key_down(GLFW_KEY_RIGHT_SHIFT);
+        for (const Stack& s : gui->click(w, h, mx, my, button == GLFW_MOUSE_BUTTON_LEFT ? 0 : 1, shift)) throw_stack(s);
+        return;
+    }
     mouse_buttons_.insert(button);
     if (button == GLFW_MOUSE_BUTTON_LEFT) {
         break_cooldown = 0.0;
@@ -326,8 +381,12 @@ void Game::on_mouse_button(int button, int action) {
 
 void Game::on_scroll(double dy) {
     if (paused || vitals.dead() || dy == 0) return;
+    if (gui) {
+        gui->scroll(dy);
+        return;
+    }
     Inventory& inv = active_inventory();
-    inv.selected = (inv.selected + (dy > 0 ? -1 : 1) + Inventory::SIZE) % Inventory::SIZE;
+    inv.selected = (inv.selected + (dy > 0 ? -1 : 1) + Inventory::HOTBAR) % Inventory::HOTBAR;
     hud->show_item_name(inv.selected_item());
 }
 
@@ -341,9 +400,13 @@ void Game::update(double dt) {
 
     if (!paused && !dead) {
         move(dt);
-        update_target();
-        mine(dt);
-        if (mouse_down(GLFW_MOUSE_BUTTON_RIGHT) && use_cooldown <= 0) use_item();
+        if (gui) {
+            target.reset();
+        } else {
+            update_target();
+            mine(dt);
+            if (mouse_down(GLFW_MOUSE_BUTTON_RIGHT) && use_cooldown <= 0) use_item();
+        }
         use_cooldown -= dt;
         break_cooldown -= dt;
         attack_cooldown -= dt;
@@ -388,7 +451,7 @@ std::string Game::help_text() const {
            " sneak   double-tap " + k(KEY_FORWARD) + " sprint\n"
            "Left mouse: mine block / hit cow (hold to mine)\n"
            "Right mouse: place block / eat food\n"
-           "1-9 or wheel: pick slot   " + k(KEY_DROP) + ": drop   " + k(KEY_CRAFT) + ": craft 1 log -> 4 planks\n" +
+           "1-9 or wheel: pick slot   " + k(KEY_DROP) + ": drop   " + k(KEY_INVENTORY) + ": inventory and crafting\n" +
            k(KEY_CREATIVE) + ": creative cheat (double-tap " + k(KEY_JUMP) + " to fly)\n"
            "F1 hide HUD   F2 screenshot   F3 debug   F5 third person\n"
            "ESC: menu   H: hide this help";
@@ -405,7 +468,7 @@ std::string Game::debug_text() {
     for (int y = ifloor(eye().y); y < HEIGHT; ++y)
         if (is_opaque(world.get_block(bx, y, bz))) sky = 0;
     std::snprintf(buf, sizeof buf,
-                  "PetrutzCraft M1 (%.0f fps, %d chunk updates)\n"
+                  "PetrutzCraft M2 (%.0f fps, %d chunk updates)\n"
                   "x: %.3f (block %d)\ny: %.3f (feet, block %d)\nz: %.3f (block %d)\n"
                   "Chunk: %d %d (at %d %d in it)\n"
                   "Facing: %s (f: %d)\n"
@@ -427,9 +490,32 @@ void Game::draw(int w, int h) {
 
     if (hud_hidden && !vitals.dead()) return;
     bool underwater = world.get_block(ifloor(cam.x), ifloor(cam.y), ifloor(cam.z)) == WATER;
-    std::string info = debug_screen ? debug_text() : "PetrutzCraft M1";
+    std::string info = debug_screen ? debug_text() : "PetrutzCraft M2";
     if (!debug_screen && creative) info += flying ? "\nCreative (flying)" : "\nCreative";
     hud->draw(w, h, {&active_inventory(), &vitals, creative, info, help_text(), underwater, vitals.dead()});
+    if (gui && !vitals.dead()) {
+        double mx, my;
+        gui_mouse(mx, my);
+        painter_.begin(w, h);
+        gui->draw(painter_, w, h, mx, my,
+                  [this](int x, int y, int pw, int ph, float lx, float ly) { draw_player_preview(x, y, pw, ph, lx, ly); });
+        painter_.end();
+    }
+}
+
+void Game::draw_player_preview(int x, int y, int w, int h, float look_x, float look_y) {
+    // The player stands at the origin facing the camera (+z) and turns towards the mouse.
+    PlayerPose pose;
+    pose.yaw = std::clamp(std::atan(look_x * 2.0) * 40.0, -40.0, 40.0);
+    pose.pitch = std::clamp(std::atan(look_y * 2.0) * 50.0, -50.0, 50.0);
+    pose.sneaking = false;
+    const float aspect = static_cast<float>(w) / std::max(1, h);
+    glm::mat4 proj = glm::ortho(-1.0f * aspect, 1.0f * aspect, -1.0f, 1.0f, 0.1f, 20.0f);
+    glm::mat4 view = glm::lookAt(glm::vec3(0, 0.92f, 5), glm::vec3(0, 0.92f, 0), glm::vec3(0, 1, 0));
+    renderer->draw_models(player_parts(pose), x, y, w, h, proj * view);
+    int fw, fh;
+    glfwGetFramebufferSize(window, &fw, &fh);
+    glViewport(0, 0, fw, fh);
 }
 
 void Game::move(double dt) {
@@ -578,16 +664,22 @@ void Game::break_block(glm::ivec3 pos, BlockId blk) {
 }
 
 void Game::spawn_drop(ItemId item, double x, double y, double z) {
-    drops.push_back(std::make_unique<ItemDrop>(world, item, x, y, z, rng));
+    drops.push_back(std::make_unique<ItemDrop>(world, Stack{item, 1}, x, y, z, rng));
 }
 
 void Game::drop_selected() {
     Inventory& inv = active_inventory();
-    auto item = inv.selected_item();
-    if (!item) return;
-    if (!creative) inv.take_selected();
+    auto& slot = inv.slots[inv.selected];
+    if (!slot) return;
+    Stack one = *slot;
+    one.count = 1;
+    if (!creative && --slot->count == 0) slot.reset();
+    throw_stack(one);
+}
+
+void Game::throw_stack(const Stack& stack) {
     glm::vec3 e = eye(), f = forward();
-    auto drop = std::make_unique<ItemDrop>(world, *item, e.x, e.y - 0.3, e.z, rng);
+    auto drop = std::make_unique<ItemDrop>(world, stack, e.x, e.y - 0.3, e.z, rng);
     drop->body.vx = f.x * 6;
     drop->body.vy = f.y * 6 + 1.5;
     drop->body.vz = f.z * 6;
@@ -597,14 +689,24 @@ void Game::drop_selected() {
 
 void Game::use_item() {
     use_cooldown = 0.25;
+    if (target && !target_cow && world.get_block(target->block.x, target->block.y, target->block.z) == CRAFTING_TABLE) {
+        mouse_buttons_.erase(GLFW_MOUSE_BUTTON_RIGHT);
+        open_gui(InventoryScreen::Kind::CraftingTable);
+        return;
+    }
     Inventory& inv = active_inventory();
     auto item = inv.selected_item();
     if (!item) return;
     if (food_info(*item)) {
         if (!creative && vitals.eat(*item)) {
             inv.take_selected();
+            if (*item == MUSHROOM_STEW && !inv.slots[inv.selected]) inv.slots[inv.selected] = Stack{BOWL, 1};
             hud->show_message("Yum!", 1);
         }
+        return;
+    }
+    if (*item >= FUTURE_BLOCKS && target && !target_cow && target->before) {
+        hud->show_message(item_name(*item) + " can't be placed yet", 2);
         return;
     }
     if (!is_block(*item) || !target || target_cow || !target->before) return;
@@ -622,6 +724,7 @@ void Game::use_item() {
 }
 
 void Game::on_death() {
+    close_gui();
     hud->set_mining(std::nullopt);
     mouse_buttons_.clear();
     set_mouse_captured(false);
@@ -690,9 +793,12 @@ void Game::update_drops(double dt) {
         double horiz = std::hypot(dx, dz);
         bool vert_ok = player.y - 1.2 < b.y && b.y < player.y + 2.2;
         if (drop.age > drop.pickup_delay && !vitals.dead() && vert_ok && horiz < 2.5) {
-            if (horiz < 1.2 && inventory.add(drop.item, 1) == 0) {
-                it = drops.erase(it);
-                continue;
+            if (horiz < 1.2) {
+                drop.stack.count = inventory.add(drop.stack);
+                if (drop.stack.count == 0) {
+                    it = drops.erase(it);
+                    continue;
+                }
             }
             // Pull nearby items towards the player.
             double pull = 6.0 * dt / std::max(horiz, 0.3);

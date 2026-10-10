@@ -10,6 +10,7 @@ using ItemId = int;
 
 enum Block : BlockId {
     AIR, GRASS, DIRT, STONE, COBBLE, SAND, LOG, LEAVES, PLANKS, BEDROCK, WATER, BRICK,
+    CRAFTING_TABLE, CHEST, FURNACE,
     BLOCK_COUNT
 };
 
@@ -39,17 +40,11 @@ struct FoodInfo {
     float saturation;
 };
 
-// Info for a real block (GRASS..BRICK); nullptr for AIR and anything else.
+// Info for a real block (GRASS and up); nullptr for AIR and anything else.
 const BlockInfo* block_info(ItemId id);
-const FoodInfo* food_info(ItemId id);
-std::string item_name(ItemId id);
 
 bool is_solid(BlockId id);  // can't walk through
-bool is_block(ItemId id);   // placeable block (not food)
+bool is_block(ItemId id);   // placeable block
 bool is_opaque(BlockId id); // hides the faces behind it
-int icon_tile(ItemId id);   // tile used to draw an item in the hotbar and as a dropped item
 
-// Every item that has a model or icon (all blocks, then the foods).
-const std::vector<ItemId>& all_items();
-// Items shown in the creative hotbar.
-const std::vector<ItemId>& creative_items();
+// Item names, icons, stack sizes and the rest are in items.h.

@@ -43,24 +43,15 @@ void Hud::draw(int width, int height, const HudState& st) {
     // Hotbar
     const Inventory& inv = *st.inventory;
     p_.rect(x0 + inv.selected * slot, y0, slot, slot, 1, 1, 1, 240 / 255.f);
-    for (int i = 0; i < Inventory::SIZE; ++i)
+    for (int i = 0; i < Inventory::HOTBAR; ++i)
         p_.rect(x0 + i * slot + 3, y0 + 3, slot - 6, slot - 6, 25 / 255.f, 25 / 255.f, 25 / 255.f, 200 / 255.f);
     if (mining_) {
         p_.rect(w / 2 - 50, h / 2 - 34, 100, 8, 0, 0, 0, 150 / 255.f);
         p_.rect(w / 2 - 48, h / 2 - 32, 96 * std::min(1.0f, *mining_), 4, 1, 1, 1, 230 / 255.f);
     }
-    for (int i = 0; i < Inventory::SIZE; ++i) {
-        const auto& s = inv.slots[i];
-        if (!s) continue;
-        float sx = x0 + i * slot;
-        p_.item(s->item, sx + slot * 0.18f, y0 + slot * 0.18f, slot * 0.64f);
-    }
-    const int count_scale = font_scale(std::max(9, static_cast<int>(slot) / 5));
-    for (int i = 0; i < Inventory::SIZE; ++i) {
-        const auto& s = inv.slots[i];
-        if (!s || st.creative || s->count == 1) continue;
-        p_.text(std::to_string(s->count), x0 + i * slot + slot - 5, y0 + 5, count_scale, 1, 0);
-    }
+    const int count_scale = st.creative ? 0 : font_scale(std::max(9, static_cast<int>(slot) / 5));
+    for (int i = 0; i < Inventory::HOTBAR; ++i)
+        if (const auto& s = inv.slots[i]) p_.stack(*s, x0 + i * slot + slot * 0.18f, y0 + slot * 0.18f, slot * 0.64f, count_scale);
 
     // Hearts and hunger
     const float size = slot * 0.42f;

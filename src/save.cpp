@@ -19,7 +19,6 @@ namespace fs = std::filesystem;
 
 namespace {
 
-bool valid_item(int id) { return is_block(id) || food_info(id); }
 
 // --- Little-endian byte writing and reading -------------------------------------------
 
@@ -115,7 +114,7 @@ int region_index(int cx, int cz) { return (cz & (REGION_SIZE - 1)) * REGION_SIZE
 bool PlayerData::operator==(const PlayerData& o) const {
     return pos == o.pos && yaw == o.yaw && pitch == o.pitch && health == o.health && hunger == o.hunger &&
            saturation == o.saturation && exhaustion == o.exhaustion && creative == o.creative && flying == o.flying &&
-           inventory.slots == o.inventory.slots && inventory.selected == o.inventory.selected;
+           inventory == o.inventory;
 }
 
 // --- level.json ------------------------------------------------------------------------
@@ -142,15 +141,17 @@ std::string level_to_json(const LevelData& level) {
         pj["flying"] = p.flying;
         pj["selected"] = p.inventory.selected;
         Json inv = Json::array();
-        for (int i = 0; i < Inventory::SIZE; ++i) {
-            const auto& s = p.inventory.slots[i];
-            if (!s) continue;
+        auto put = [&](int index, const std::optional<Stack>& s) {
+            if (!s) return;
             Json slot = Json::object();
-            slot["slot"] = i;
+            slot["slot"] = index;
             slot["item"] = s->item;
             slot["count"] = s->count;
+            if (s->damage) slot["damage"] = s->damage;
             inv.push(std::move(slot));
-        }
+        };
+        for (int i = 0; i < Inventory::SIZE; ++i) put(i, p.inventory.slots[i]);
+        for (int i = 0; i < Inventory::ARMOR; ++i) put(ARMOR_SLOT_BASE + i, p.inventory.armor[i]);
         pj["inventory"] = std::move(inv);
     }
     return j.dump();
@@ -181,14 +182,20 @@ std::optional<LevelData> level_from_json(const std::string& text) {
             p.exhaustion = std::clamp(pj->number("exhaustion", 0), 0.0, 4.0);
             p.creative = pj->boolean("creative", false);
             p.flying = p.creative && pj->boolean("flying", false);
-            p.inventory.selected = std::clamp(static_cast<int>(pj->number("selected", 0)), 0, Inventory::SIZE - 1);
+            p.inventory.selected = std::clamp(static_cast<int>(pj->number("selected", 0)), 0, Inventory::HOTBAR - 1);
             if (const Json* inv = pj->get("inventory"); inv && inv->is_array())
                 for (const Json& s : inv->items()) {
                     int slot = static_cast<int>(s.number("slot", -1));
                     int item = static_cast<int>(s.number("item", 0));
                     int count = static_cast<int>(s.number("count", 0));
-                    if (slot < 0 || slot >= Inventory::SIZE || !valid_item(item) || count < 1) continue;
-                    p.inventory.slots[slot] = Stack{item, std::min(count, STACK)};
+                    int damage = std::clamp(static_cast<int>(s.number("damage", 0)), 0, std::max(0, max_damage(item)));
+                    if (!valid_item(item) || count < 1) continue;
+                    Stack stack{item, std::min(count, max_stack(item)), damage};
+                    if (slot >= 0 && slot < Inventory::SIZE)
+                        p.inventory.slots[slot] = stack;
+                    else if (slot >= ARMOR_SLOT_BASE && slot < ARMOR_SLOT_BASE + Inventory::ARMOR &&
+                             armor_slot(item) == slot - ARMOR_SLOT_BASE)
+                        p.inventory.armor[slot - ARMOR_SLOT_BASE] = Stack{item, 1, damage};
                 }
             level.player = p;
         }
@@ -215,13 +222,16 @@ std::vector<uint8_t> encode_chunk(const Chunk& c) {
         w.i32(e.health);
         w.i32(e.item);
         w.f32(e.age);
+        w.i32(e.count);
+        w.i32(e.damage);
     }
     return w.out;
 }
 
 std::unique_ptr<Chunk> decode_chunk(const std::vector<uint8_t>& bytes, int cx, int cz) {
     ByteReader r(bytes.data(), bytes.size());
-    if (r.u8() != CHUNK_FORMAT) return nullptr;
+    const int version = r.u8();
+    if (version < 1 || version > CHUNK_FORMAT) return nullptr;
     auto c = std::make_unique<Chunk>(cx, cz);
     c->mob_spawned = r.u8() & 1;
     if (r.u16() != HEIGHT) return nullptr;
@@ -239,11 +249,17 @@ std::unique_ptr<Chunk> decode_chunk(const std::vector<uint8_t>& bytes, int cx, i
         e.health = r.i32();
         e.item = r.i32();
         e.age = r.f32();
+        if (version >= 2) {
+            e.count = r.i32();
+            e.damage = r.i32();
+        }
         bool finite = std::isfinite(e.x) && std::isfinite(e.y) && std::isfinite(e.z);
         if (kind == EntityRecord::COW && finite && e.health > 0) {
             e.kind = EntityRecord::COW;
             c->entities.push_back(e);
-        } else if (kind == EntityRecord::ITEM && finite && valid_item(e.item)) {
+        } else if (kind == EntityRecord::ITEM && finite && valid_item(e.item) && e.count >= 1) {
+            e.count = std::min(e.count, max_stack(e.item));
+            e.damage = std::clamp(e.damage, 0, max_damage(e.item));
             e.kind = EntityRecord::ITEM;
             c->entities.push_back(e);
         }
