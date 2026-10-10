@@ -28,7 +28,9 @@ bool Body::move_axis(int axis, double delta) {
         x = delta > 0 ? std::floor(x + half - E) - half : std::floor(x - half) + 1 + half;
         vx = 0;
     } else if (axis == 1) {
-        y = delta > 0 ? std::floor(y + height - E) - height : std::floor(y) + 1;
+        // Landing: stand on the highest block top below (a bed is lower than a full block).
+        y = delta > 0 ? std::floor(y + height - E) - height
+                      : world->box_top(x - half, y, z - half, x + half - E, y + height - E, z + half - E);
         vy = 0;
     } else {
         z = delta > 0 ? std::floor(z + half - E) - half : std::floor(z - half) + 1 + half;

@@ -13,7 +13,7 @@ const char* biome_name(Biome b);
 // Beta's lookup: temperature and rainfall both in [0, 1].
 Biome biome_for(double temperature, double rainfall);
 
-// Water freezes (and, from M11, snow falls) in these.
+// Water freezes and snow falls instead of rain in these.
 bool is_cold(Biome b);
 
 struct Rgb8 {

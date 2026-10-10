@@ -24,6 +24,7 @@ public:
 
     void flash_damage() { damage_alpha_ = 0.45f; }
     void show_message(const std::string& text, float seconds = 2.5f);
+    bool has_message() const { return message_timer_ > 0; }
     void show_item_name(std::optional<ItemId> item);
     void set_mining(std::optional<float> progress) { mining_ = progress; }
     void update(float dt);

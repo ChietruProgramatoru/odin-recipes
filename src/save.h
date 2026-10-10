@@ -1,7 +1,7 @@
 // Saving and loading worlds.
 //
 // Each world is a folder in saves/:
-//   level.json        name, seed, play time, spawn point and the player (see level_to_json)
+//   level.json        name, seed, play time, spawn point, weather and the player (see level_to_json)
 //   region/r.X.Z.pcr  32x32 chunks per file, each chunk zlib-compressed (see encode_chunk)
 // Chunks carry their blocks plus the cows and dropped items standing in them.
 #pragma once
@@ -21,6 +21,7 @@
 #include <glm/vec3.hpp>
 
 #include "survival.h"
+#include "weather.h"
 #include "world.h"
 
 constexpr int LEVEL_FORMAT = 1;
@@ -36,6 +37,7 @@ struct PlayerData {
     double saturation = 5, exhaustion = 0;
     bool creative = false, flying = false;
     Inventory inventory;
+    std::optional<glm::ivec3> bed;  // head of the bed last slept in: where the player respawns
     bool operator==(const PlayerData&) const;
 };
 
@@ -45,6 +47,7 @@ struct LevelData {
     int64_t time = 0;         // game ticks played, 20 per second
     int64_t last_played = 0;  // milliseconds since 1970
     std::optional<glm::dvec3> spawn;
+    WeatherState weather;
     std::optional<PlayerData> player;  // missing until the world is first saved from the game
 };
 

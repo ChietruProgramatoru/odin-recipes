@@ -17,5 +17,9 @@ std::array<float, 4> tile_uv(int index);
 std::map<int, Image> make_tiles(int seed = 1234);
 Image make_atlas(const std::map<int, Image>& tiles);
 
+// Rain streaks and snowflakes, drawn repeating on the columns of falling weather.
+Image make_rain_image();
+Image make_snow_image();
+
 // HUD icons: heart_full, heart_half, heart_empty, food_full, food_half, food_empty (9x8 each).
 std::map<std::string, Image> make_hud_icons();

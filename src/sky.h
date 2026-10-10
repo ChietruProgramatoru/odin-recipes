@@ -42,8 +42,17 @@ struct SkyState {
     double cloud_offset = 0;  // how far the clouds have drifted towards +x, in blocks (wraps)
     bool show_clouds = true;
     bool fancy_clouds = true;
+    // Weather: rain and thunder strength (0..1), how much the sun, moon and stars show through
+    // the rain clouds, and a lightning flash (0..1).
+    float rain = 0, thunder = 0, sun_alpha = 1, flash = 0;
 };
-SkyState sky_state(double time);
+// How bright a light level (0..15) looks, Beta's curve (the same one the world shader uses).
+float light_brightness(float level);
+
+// Rain and thunder darken the sky and turn it grey; a lightning flash turns it white for a moment.
+SkyState sky_state(double time, float rain = 0, float thunder = 0, float flash = 0);
+// sky_darkness with the weather: rain takes 5/16 off the daylight, thunder another 5/16.
+float weather_darkness(float angle, float rain, float thunder);
 
 // Which pixels of the cloud map are cloud (index y * CLOUD_MAP + x). Same map in every world.
 const std::vector<uint8_t>& cloud_map();
