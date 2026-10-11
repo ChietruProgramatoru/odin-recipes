@@ -17,7 +17,7 @@ namespace {
 std::unique_ptr<Chunk> ground_chunk(int cx, int cz, BlockId top) {
     auto c = std::make_unique<Chunk>(cx, cz);
     for (int y = 0; y < 10; ++y)
-        for (int i = 0; i < CHUNK * CHUNK; ++i) c->blocks[(y << 8) | i] = y == 9 ? top : STONE;
+        for (int i = 0; i < CHUNK * CHUNK; ++i) c->blocks[(y << 8) | i] = y == 9 ? top : BlockId(STONE);
     c->max_y = 10;
     // A warm, wet climate (the default all-zero climate is a cold one).
     c->climate.temperature.fill(230);

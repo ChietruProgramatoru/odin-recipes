@@ -15,6 +15,7 @@
 #include "animals.h"
 #include "combat.h"
 #include "json.h"
+#include "vehicles.h"
 #include "zlib.h"
 
 namespace fs = std::filesystem;
@@ -242,6 +243,22 @@ std::vector<uint8_t> encode_chunk(const Chunk& c) {
         w.u8(static_cast<uint8_t>(e.mob));
         w.u8(static_cast<uint8_t>(e.size));
         w.u8(static_cast<uint8_t>(e.flags));
+        if (e.kind == EntityRecord::VEHICLE) {
+            w.i32(e.fuel);
+            w.f32(e.push_x);
+            w.f32(e.push_z);
+            // A storage minecart's chest: the slots that hold something.
+            std::vector<int> used;
+            for (size_t k = 0; k < e.chest.size() && k < 255; ++k)
+                if (e.chest[k]) used.push_back(static_cast<int>(k));
+            w.u8(static_cast<uint8_t>(used.size()));
+            for (int k : used) {
+                w.u8(static_cast<uint8_t>(k));
+                w.i32(e.chest[k]->item);
+                w.i32(e.chest[k]->count);
+                w.i32(e.chest[k]->damage);
+            }
+        }
     }
     w.u16(static_cast<uint16_t>(std::min<size_t>(c.furnaces.size(), 0xFFFF)));
     auto slot = [&](const std::optional<Stack>& st) {
@@ -295,6 +312,19 @@ std::unique_ptr<Chunk> decode_chunk(const std::vector<uint8_t>& bytes, int cx, i
             e.size = r.u8();
             e.flags = r.u8();
         }
+        if (version >= 6 && kind == EntityRecord::VEHICLE) {
+            e.fuel = r.i32();
+            e.push_x = r.f32();
+            e.push_z = r.f32();
+            const int used = r.u8();
+            for (int k = 0; k < used && r.ok(); ++k) {
+                const int index = r.u8();
+                const int item = current_item_id(r.i32()), count = r.i32(), damage = r.i32();
+                if (index >= CHEST_SLOTS || !valid_item(item) || count < 1) continue;
+                if (static_cast<int>(e.chest.size()) <= index) e.chest.resize(index + 1);
+                e.chest[index] = Stack{item, std::min(count, max_stack(item)), std::clamp(damage, 0, max_damage(item))};
+            }
+        }
         bool finite = std::isfinite(e.x) && std::isfinite(e.y) && std::isfinite(e.z);
         if (kind == EntityRecord::ANIMAL && finite && e.health > 0 && e.mob >= 0 && e.mob < ANIMAL_KIND_COUNT) {
             e.kind = EntityRecord::ANIMAL;
@@ -303,6 +333,9 @@ std::unique_ptr<Chunk> decode_chunk(const std::vector<uint8_t>& bytes, int cx, i
         } else if (kind == EntityRecord::MONSTER && finite && e.health > 0 && e.mob < MOB_KIND_COUNT) {
             e.kind = EntityRecord::MONSTER;
             e.size = e.mob == static_cast<int>(MobKind::Slime) ? (e.size >= 4 ? 4 : e.size >= 2 ? 2 : 1) : 1;
+            c->entities.push_back(e);
+        } else if (kind == EntityRecord::VEHICLE && finite && e.mob < VEHICLE_KIND_COUNT) {
+            e.kind = EntityRecord::VEHICLE;
             c->entities.push_back(e);
         } else if (kind == EntityRecord::FALLING && finite && falls(static_cast<BlockId>(e.item))) {
             e.kind = EntityRecord::FALLING;

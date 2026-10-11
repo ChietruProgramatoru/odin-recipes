@@ -49,7 +49,7 @@ Table build() {
         // The torch is a flat icon, added below; beds are placed from the BED item.
         // Farmland, crops, sugar cane and cake come from other items; flowers are flat icons below.
         if (b == WATER || b == LAVA || b == FIRE || is_torch(b) || is_bed(b) || (is_furnace(b) && b != FURNACE) ||
-            is_plant(b) || b == FARMLAND || b == CAKE_BLOCK || b == SNOW_LAYER)
+            is_plant(b) || b == FARMLAND || b == CAKE_BLOCK || is_rail(b) || b == SNOW_LAYER)
             continue;
         const BlockInfo* info = block_info(b);
         t.cube(b, info->name, info->tiles[0], info->tiles[1], info->tiles[1]);
@@ -245,6 +245,9 @@ ItemId current_item_id(ItemId id) {
     if (id == OLD_RED_ROSE_ITEM) return RED_ROSE;
     if (id == OLD_BROWN_MUSHROOM_ITEM) return BROWN_MUSHROOM;
     if (id == OLD_RED_MUSHROOM_ITEM) return RED_MUSHROOM;
+    if (id == OLD_RAIL_ITEM) return RAIL;
+    if (id == OLD_POWERED_RAIL_ITEM) return POWERED_RAIL;
+    if (id == OLD_DETECTOR_RAIL_ITEM) return DETECTOR_RAIL;
     return id;
 }
 

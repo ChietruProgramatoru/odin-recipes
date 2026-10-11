@@ -8,6 +8,7 @@
 #include "animals.h"
 #include "monsters.h"
 #include "textures.h"
+#include "vehicles.h"
 
 namespace {
 
@@ -105,10 +106,12 @@ std::vector<ModelPart> player_parts(const PlayerPose& pose) {
     double lean = pose.sneaking ? 25 : 0;
     glm::mat4 hips = root * translate(0, 0.675, 0);
     glm::mat4 torso = hips * rot_x(lean);
-    const glm::mat4 legs[2] = {root * translate(-0.125, 0.675, pose.sneaking ? -0.1 : 0) * rot_x(swing),
-                               root * translate(0.125, 0.675, pose.sneaking ? -0.1 : 0) * rot_x(-swing)};
-    const glm::mat4 arms[2] = {torso * translate(-0.375, 0.615, 0) * rot_x(-swing),
-                               torso * translate(0.375, 0.615, 0) * rot_x(swing)};
+    // Sitting (Beta's riding pose): legs straight out in front, a little apart, and arms forward.
+    const double leg_pitch = pose.sitting ? -80 : 0, arm_pitch = pose.sitting ? -36 : 0, spread = pose.sitting ? 18 : 0;
+    const glm::mat4 legs[2] = {root * translate(-0.125, 0.675, pose.sneaking ? -0.1 : 0) * rot_y(-spread) * rot_x(swing + leg_pitch),
+                               root * translate(0.125, 0.675, pose.sneaking ? -0.1 : 0) * rot_y(spread) * rot_x(-swing + leg_pitch)};
+    const glm::mat4 arms[2] = {torso * translate(-0.375, 0.615, 0) * rot_x(-swing + arm_pitch),
+                               torso * translate(0.375, 0.615, 0) * rot_x(swing + arm_pitch)};
     const glm::mat4 head = torso * translate(0, 0.675, 0) * rot_x(std::clamp(pose.pitch, -80.0, 80.0) - lean);
     std::vector<ModelPart> out;
     for (const glm::mat4& leg : legs) out.push_back({MODEL_PLAYER_LEG, leg});
@@ -241,6 +244,7 @@ std::map<int, MeshData> build_models() {
 
     add_monster_models(models);
     add_animal_models(models);
+    add_vehicle_models(models);
 
     for (ItemId item : all_items()) {
         glm::vec3 size = looks_like_block(item) ? glm::vec3(0.25f) : glm::vec3(0.4f, 0.4f, 0.03f);

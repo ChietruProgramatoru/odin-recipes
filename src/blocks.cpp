@@ -78,6 +78,9 @@ const BlockInfo BLOCKS[BLOCK_COUNT] = {
     {"Rose", {T_ROSE, T_ROSE, T_ROSE}, 0.0f, RED_ROSE},
     {"Brown Mushroom", {T_BROWN_MUSHROOM, T_BROWN_MUSHROOM, T_BROWN_MUSHROOM}, 0.0f, BROWN_MUSHROOM},
     {"Red Mushroom", {T_RED_MUSHROOM, T_RED_MUSHROOM, T_RED_MUSHROOM}, 0.0f, RED_MUSHROOM},
+    {"Rail", {T_RAIL, T_RAIL, T_RAIL}, 0.7f, RAIL},
+    {"Powered Rail", {T_POWERED_RAIL, T_POWERED_RAIL, T_POWERED_RAIL}, 0.7f, POWERED_RAIL},
+    {"Detector Rail", {T_DETECTOR_RAIL, T_DETECTOR_RAIL, T_DETECTOR_RAIL}, 0.7f, DETECTOR_RAIL},
     // Nature (M6 part 2).
     {"Oak Sapling", {T_SAPLING, T_SAPLING, T_SAPLING}, 0.0f, SAPLING},
     {"Spruce Sapling", {T_SPRUCE_SAPLING, T_SPRUCE_SAPLING, T_SPRUCE_SAPLING}, 0.0f, SPRUCE_SAPLING},
@@ -86,6 +89,7 @@ const BlockInfo BLOCKS[BLOCK_COUNT] = {
     {"Cobweb", {T_COBWEB, T_COBWEB, T_COBWEB}, 4.0f, STRING},
     {"Snow", {IT_SNOW, IT_SNOW, IT_SNOW}, 0.1f, SNOWBALL},
 };
+static_assert(TILE_COUNT <= ITEM_TILE_BASE, "world tiles run into the item tiles in the atlas");
 
 static_assert(TILE_COUNT <= ITEM_TILE_BASE, "world tiles run into the item tiles");
 
@@ -101,6 +105,7 @@ bool is_leaves(BlockId id) { return id == LEAVES || id == BIRCH_LEAVES || id == 
 bool is_cutout(BlockId id) { return id == SPAWNER || id == GLASS; }
 bool is_torch(BlockId id) { return id >= TORCH && id <= TORCH_WALL_SOUTH; }
 bool is_bed(BlockId id) { return id >= BED_FOOT_SOUTH && id <= BED_HEAD_EAST; }
+bool is_rail(BlockId id) { return id >= RAIL && id <= DETECTOR_RAIL; }
 bool is_plant(BlockId id) {
     return id == WHEAT_CROP || (id >= SUGAR_CANE_PLANT && id <= RED_MUSHROOM) || is_sapling(id) || id == COBWEB;
 }
@@ -129,7 +134,7 @@ float block_height(BlockId id) {
     return 1.0f;
 }
 bool falls(BlockId id) { return id == SAND || id == GRAVEL; }
-bool is_thin(BlockId id) { return is_torch(id) || id == FIRE || is_plant(id) || id == SNOW_LAYER; }
+bool is_thin(BlockId id) { return is_torch(id) || id == FIRE || is_plant(id) || is_rail(id) || id == SNOW_LAYER; }
 bool is_solid(BlockId id) { return id != AIR && !is_fluid(id) && !is_thin(id); }
 bool is_opaque(BlockId id) {
     return id != AIR && !is_fluid(id) && id != ICE && !is_cutout(id) && !is_thin(id) && !is_bed(id) && id != CAKE_BLOCK &&
