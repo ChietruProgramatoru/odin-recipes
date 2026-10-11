@@ -2,6 +2,7 @@
 // Drives the real program for a few hundred frames: the menus, creating a world, mining, building,
 // cows, eating, fall damage, furnaces, tools, armor, the bow, fire and buckets, a tour of the biomes and caves, the F3 and F5 views,
 // monsters, explosions and dying, the first-person hand, flowing water and lava, falling sand and fire, farming, animals,
+// rails, minecarts and boats,
 // the pause menu,
 // then saving, quitting to the
 // title and loading the world again. Saves screenshots to OUT_DIR and writes OUT_DIR/report.txt.
@@ -49,6 +50,7 @@ private:
     void fluids_and_fire(App& app, Game& g);  // flowing water and lava, falling sand, fire, drowning, burning
     void farming(App& app, Game& g);   // tilling, planting, bone meal, harvesting, cake and the wild plants
     void animals(App& app, Game& g);   // every animal, saddles and riding, shearing, dye, milk, taming wolves, eggs
+    void transport(App& app, Game& g); // rails, riding a minecart, the chest and furnace minecarts, a boat
     void reload(App& app);      // quit to the title and load the world again
 
     std::string out_;
@@ -102,4 +104,9 @@ private:
     // Animals: the cow, pig, white sheep, pink sheep, chicken, wolf and squid in the pen.
     std::array<Animal*, 7> pen_{};
     long chickens_ = 0;
+    // Transport: the sky platform the track is built on (x, floor top y, z of the track's start),
+    // where the player was before, and what the ride went past.
+    glm::ivec3 track_{0};
+    glm::dvec3 before_track_{0};
+    bool rode_over_hump_ = false, pressed_detector_ = false;
 };

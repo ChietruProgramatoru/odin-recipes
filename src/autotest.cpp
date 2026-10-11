@@ -17,6 +17,7 @@
 #include "game.h"
 #include "inventory_screen.h"
 #include "menu.h"
+#include "rails.h"
 #include "tools.h"
 
 namespace {
@@ -302,12 +303,13 @@ void AutoTest::play(App& app, Game& g) {
     if (f >= 1200 && f < 1350) fluids_and_fire(app, g);
     if (f >= 1350 && f < 1450) farming(app, g);
     if (f >= 1450 && f < 1650) animals(app, g);
-    if (f == 1650) {
+    if (f >= 1650 && f < 1720) transport(app, g);
+    if (f == 1720) {
         app.pause();
         check("Escape menu pauses the game", g.paused && app.screen());
         shot(app, "7_pause.png");
     }
-    if (f == 1660) {
+    if (f == 1730) {
         // Change something, then save and quit to the title.
         marker_ = {static_cast<int>(std::floor(p.x)) + 2, static_cast<int>(std::floor(p.y)) + 1, static_cast<int>(std::floor(p.z))};
         g.renderer->rebuild(g.world.set_block(marker_.x, marker_.y, marker_.z, BRICK));
@@ -1939,5 +1941,273 @@ void AutoTest::reload(App& app) {
               }));
         shot(app, "9_reloaded.png");
         finish(app);
+    }
+}
+
+void AutoTest::transport(App& app, Game& g) {
+    const long f = g.frame - 1650;  // runs after the animals
+    Body& p = g.player;
+    World& w = g.world;
+    Inventory& inv = g.inventory;
+    auto set = [&](glm::ivec3 c, BlockId b) { g.renderer->rebuild(w.set_block(c.x, c.y, c.z, b)); };
+    auto at = [&](glm::ivec3 c) { return w.get_block(c.x, c.y, c.z); };
+    auto hold = [&](ItemId item, int count = 1) { inv.slots[inv.selected] = Stack{item, count}; };
+    auto stand = [&](glm::dvec3 q) {
+        p.x = q.x;
+        p.y = q.y;
+        p.z = q.z;
+        p.vx = p.vy = p.vz = 0;
+        g.fall_peak = p.y;
+    };
+    // Look at a point and pick what is there as the target.
+    auto look_at = [&](glm::dvec3 q) {
+        glm::vec3 e = g.eye();
+        glm::vec3 d = glm::vec3(q) - e;
+        g.yaw = degrees(std::atan2(d.x, d.z));
+        g.pitch = -degrees(std::asin(d.y / glm::length(d)));
+        g.update_target();
+    };
+    auto aim_vehicle = [&](const Vehicle& v) {
+        look_at(glm::dvec3(v.body.x, v.body.y + 0.4, v.body.z));
+        return g.target_vehicle == &v;
+    };
+    auto count_drops = [&](ItemId item) {
+        int n = 0;
+        for (const auto& d : g.drops)
+            if (d->stack.item == item) n += d->stack.count;
+        return n;
+    };
+    auto run = [&](int ticks) {
+        for (int i = 0; i < ticks; ++i) {
+            g.tick_vehicles();
+            g.update_vehicles(0);
+            if (p.y > track_.y + 0.5) rode_over_hump_ = true;
+            if (!g.pressed_detectors.empty()) pressed_detector_ = true;
+        }
+    };
+    if (f == 0) {
+        before_track_ = {p.x, p.y, p.z};
+        track_ = {static_cast<int>(std::floor(p.x)) - 40, 98, static_cast<int>(std::floor(p.z))};  // under the clouds
+    }
+    // The track, from its start: a powered rail against a wall, a detector rail, a hump one block
+    // high, then a curve to the south and a wall at the end.
+    const glm::ivec3 o = track_;
+    const glm::ivec3 detector = o + glm::ivec3(4, 0, 0), corner = o + glm::ivec3(12, 0, 0);
+
+    if (f == 0) {
+        g.monsters.clear();
+        g.target_monster = nullptr;
+        g.arrows.clear();
+        g.drops.clear();
+        g.puffs.clear();
+        g.creative = false;
+        g.flying = false;
+        g.vitals.reset();
+        g.level.time = 6000 + (g.level.time / DAY_TICKS) * DAY_TICKS;  // noon
+        // Clear skies for the pictures (the rain comes back afterwards: the save check looks for it).
+        hand_weather_ = g.weather;
+        g.weather = Weather(WeatherState{false, false, 100000, 100000});
+        const glm::ivec3 t = track_;
+        // A stone platform in the sky, with a pool along its north side for the boat.
+        for (int dx = -3; dx <= 20; ++dx)
+            for (int dz = -8; dz <= 12; ++dz) {
+                set(t + glm::ivec3(dx, -2, dz), STONE);
+                set(t + glm::ivec3(dx, -1, dz), dz <= -3 && dz >= -6 && dx >= -1 && dx <= 16 ? WATER : STONE);
+                for (int dy = 0; dy <= 4; ++dy) set(t + glm::ivec3(dx, dy, dz), AIR);
+            }
+        for (int dz = -6; dz <= -3; ++dz) set(t + glm::ivec3(17, 0, dz), STONE);  // the far end of the pool
+        set(t + glm::ivec3(-1, 0, 0), STONE);       // the wall behind the start
+        set(t + glm::ivec3(7, 0, 0), STONE);        // the hump
+        set(t + glm::ivec3(12, 0, 10), STONE);      // the wall at the end
+        // One rail put down by hand: right click on the floor.
+        stand(glm::dvec3(o) + glm::dvec3(1.5, 0, -1.5));
+        hold(RAIL, 64);
+        look_at(glm::dvec3(o) + glm::dvec3(1.5, 0, 0.5));
+        g.use_item();
+        check("a rail goes down with a right click on the floor", at(o + glm::ivec3(1, 0, 0)) == RAIL &&
+                                                                         inv.slots[inv.selected]->count == 63);
+        // The rest of the track, laid one after another the same way.
+        auto lay = [&](glm::ivec3 c, BlockId b) {
+            set(c, b);
+            if (b == POWERED_RAIL) g.renderer->rebuild(w.set_data(c.x, c.y, c.z, RAIL_POWERED));
+            g.lay_rail(c);
+        };
+        lay(o, POWERED_RAIL);
+        for (int dx = 2; dx <= 12; ++dx)
+            lay(o + glm::ivec3(dx, dx == 7 ? 1 : 0, 0), dx == 4 ? DETECTOR_RAIL : RAIL);
+        for (int dz = 1; dz <= 9; ++dz) lay(corner + glm::ivec3(0, 0, dz), RAIL);
+        auto shape = [&](glm::ivec3 c) { return rail_shape(at(c), w.get_data(c.x, c.y, c.z)); };
+        check("rails join into a line", shape(o + glm::ivec3(2, 0, 0)) == RAIL_EAST_WEST);
+        check("rails slope up onto the hump and down again", shape(o + glm::ivec3(6, 0, 0)) == RAIL_ASCENDING_EAST &&
+                                                                    shape(o + glm::ivec3(8, 0, 0)) == RAIL_ASCENDING_WEST);
+        check("the corner curves", shape(corner) == RAIL_SOUTH_WEST);
+    }
+    if (f == 1) {
+        // From above, before anything runs on it.
+        stand(glm::dvec3(o) + glm::dvec3(5, 2.5, -5));
+        g.flying = true;
+        look_at(glm::dvec3(o) + glm::dvec3(8, 0, 3));
+    }
+    if (f == 3) {
+        shot(app, "m12_rails.png");
+        g.flying = false;
+        // A minecart on the powered rail at the start, then get in.
+        stand(glm::dvec3(o) + glm::dvec3(0.5, 0, -1.5));
+        hold(MINECART);
+        look_at(glm::dvec3(o) + glm::dvec3(0.5, 0.1, 0.5));
+        g.use_item();
+        check("a minecart goes on a rail", g.vehicles.size() == 1 && !inv.slots[inv.selected]);
+        if (!g.vehicles.empty()) {
+            Vehicle& cart = *g.vehicles[0];
+            check("aiming at the minecart", aim_vehicle(cart));
+            g.use_item();
+            check("right-clicking a minecart gets in", g.in_vehicle == &cart);
+        }
+    }
+    if (f == 5) {
+        run(20);  // a second: the powered rail sends it off the wall
+        check("the powered rail starts the minecart and the player rides along (x " + std::to_string(p.x - o.x) + ")",
+              g.in_vehicle && p.x > o.x + 3);
+        g.yaw = 90;  // looking down the track
+        g.pitch = 20;
+    }
+    if (f == 7) shot(app, "m12_riding.png");
+    if (f == 8) g.third_person = true;
+    if (f == 10) {
+        shot(app, "m12_riding_third_person.png");
+        g.third_person = false;
+    }
+    if (f == 11) {
+        run(100);
+        check("the minecart pressed the detector rail on the way", pressed_detector_);
+        check("the minecart went over the hump", rode_over_hump_);
+        check("detector rails let go once the minecart has gone",
+              !rail_powered(DETECTOR_RAIL, w.get_data(detector.x, detector.y, detector.z)));
+        check("the minecart came round the curve to the end of the track (z " + std::to_string(p.z - o.z) + ")",
+              g.in_vehicle && p.z > o.z + 6 && p.x > corner.x && p.x < corner.x + 1);
+        Vehicle* cart = g.in_vehicle;
+        g.get_out();
+        check("sneaking gets out on top of the minecart", !g.in_vehicle && cart && p.y >= cart->body.y + cart->body.height - 0.01);
+    }
+    if (f == 13) {
+        // A minecart with a chest: right click opens the chest.
+        stand(glm::dvec3(o) + glm::dvec3(2.5, 0, -1.5));
+        hold(STORAGE_MINECART);
+        look_at(glm::dvec3(o) + glm::dvec3(2.5, 0.1, 0.5));
+        g.use_item();
+        Vehicle* chest = g.vehicles.size() == 2 ? g.vehicles[1].get() : nullptr;
+        check("a storage minecart goes on a rail", chest && chest->kind == VehicleKind::StorageMinecart);
+        if (chest) {
+            check("aiming at the storage minecart", aim_vehicle(*chest));
+            inv.slots[inv.selected] = Stack{COBBLE, 20};
+            inv.slots[5] = Stack{IRON_INGOT, 7};
+            g.use_item();
+            check("right-clicking a storage minecart opens its chest", g.gui && g.gui->kind == InventoryScreen::Kind::Chest &&
+                                                                          g.chest_vehicle == chest);
+            if (g.gui && g.gui->crafting) {
+                g.gui->crafting->click({Slot::Inv, inv.selected}, 0, true);
+                g.gui->crafting->click({Slot::Inv, 5}, 0, true);
+            }
+            check("shift-clicking moves stacks into the chest", chest->chest[0] == Stack{COBBLE, 20} &&
+                                                                    chest->chest[1] == Stack{IRON_INGOT, 7});
+        }
+    }
+    if (f == 15) shot(app, "m12_chest.png");
+    if (f == 17) {
+        g.close_gui();
+        // A minecart with a furnace, further along: coal sends it off, away from the player.
+        stand(glm::dvec3(corner) + glm::dvec3(-0.5, 0, 1.5));
+        hold(POWERED_MINECART);
+        look_at(glm::dvec3(corner) + glm::dvec3(0.5, 0.1, 2.5));
+        g.use_item();
+        Vehicle* engine = g.vehicles.size() == 3 ? g.vehicles[2].get() : nullptr;
+        check("a powered minecart goes on a rail", engine && engine->kind == VehicleKind::PoweredMinecart);
+        if (engine) {
+            hold(COAL, 3);
+            check("aiming at the powered minecart", aim_vehicle(*engine));
+            g.use_item();
+            check("coal goes into the powered minecart", engine->fuel == COAL_FUEL_TICKS && inv.slots[inv.selected]->count == 2);
+            const double z0 = engine->body.z;
+            g.puffs.clear();
+            run(40);
+            check("the powered minecart drives itself along the rails (" + std::to_string(engine->body.z - z0) + " blocks)",
+                  engine->body.z > z0 + 2);
+            check("and smokes while it burns", !g.puffs.empty());
+        }
+    }
+    if (f == 19) {
+        // Hitting the storage minecart breaks it: it drops a minecart, the chest and what was in it.
+        Vehicle* chest = g.vehicles.size() >= 2 ? g.vehicles[1].get() : nullptr;
+        if (chest) {
+            stand(glm::dvec3(chest->body.x, o.y, chest->body.z - 1.5));
+            g.drops.clear();
+            inv.slots[inv.selected].reset();  // bare hands
+            int hits = 0;
+            while (hits < 20 && std::find_if(g.vehicles.begin(), g.vehicles.end(), [&](const auto& v) { return v.get() == chest; }) !=
+                                    g.vehicles.end()) {
+                aim_vehicle(*chest);
+                g.attack_cooldown = 0;
+                g.try_attack();
+                ++hits;
+            }
+            check("five punches break a minecart (" + std::to_string(hits) + ")", hits == 5);
+            check("a broken storage minecart drops the minecart, the chest and what was in it",
+                  count_drops(MINECART) == 1 && count_drops(CHEST) == 1 && count_drops(COBBLE) == 20 && count_drops(IRON_INGOT) == 7);
+        }
+        g.drops.clear();
+    }
+    if (f == 21) {
+        // A boat on the pool, and in.
+        stand(glm::dvec3(o) + glm::dvec3(2.5, 0, -1.5));
+        hold(BOAT);
+        look_at(glm::dvec3(o) + glm::dvec3(2.5, -0.1, -3.5));
+        const size_t before = g.vehicles.size();
+        g.use_item();
+        Vehicle* boat = g.vehicles.size() == before + 1 ? g.vehicles.back().get() : nullptr;
+        check("a boat goes on the water", boat && boat->kind == VehicleKind::Boat);
+        if (boat) {
+            run(40);
+            check("the boat floats (bottom " + std::to_string(boat->body.y - o.y) + ")",
+                  boat->body.y > o.y - 0.9 && boat->body.y < o.y + 0.1);
+            check("aiming at the boat", aim_vehicle(*boat));
+            g.use_item();
+            check("right-clicking a boat gets in", g.in_vehicle == boat);
+            g.yaw = 60;
+            g.pitch = 10;
+            g.third_person = true;
+        }
+    }
+    if (f == 23) {
+        shot(app, "m12_boat.png");
+        g.third_person = false;
+    }
+    if (f == 25 && g.in_vehicle) {
+        // Full speed into the end of the pool: the boat breaks up into planks and sticks.
+        g.drops.clear();
+        g.in_vehicle->motion = {VEHICLE_MAX_SPEED, 0, 0};
+        Vehicle* boat = g.in_vehicle;
+        for (int i = 0; i < 80 && g.in_vehicle; ++i) {
+            boat->motion.x = VEHICLE_MAX_SPEED;
+            run(1);
+        }
+        check("a boat crashing into a wall breaks up and drops the rider",
+              !g.in_vehicle && std::none_of(g.vehicles.begin(), g.vehicles.end(), [&](const auto& v) { return v.get() == boat; }));
+        check("into 3 planks and 2 sticks", count_drops(PLANKS) == 3 && count_drops(STICK) == 2);
+    }
+    if (f == 27) {
+        // Tidy up: no vehicles, no platform, and the player back where they were.
+        g.get_out();
+        g.vehicles.clear();
+        g.target_vehicle = nullptr;
+        g.drops.clear();
+        g.puffs.clear();
+        g.pressed_detectors.clear();
+        const glm::ivec3 t = track_;
+        for (int dx = -3; dx <= 20; ++dx)
+            for (int dz = -8; dz <= 12; ++dz)
+                for (int dy = -2; dy <= 4; ++dy) set(t + glm::ivec3(dx, dy, dz), AIR);
+        stand(before_track_);
+        inv.slots[inv.selected].reset();
+        g.weather = hand_weather_;
     }
 }

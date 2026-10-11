@@ -38,6 +38,9 @@ enum Block : BlockId {
     // the top of a sugar cane (0 .. 15). Plants are drawn as crossed sheets (is_plant).
     FARMLAND, WHEAT_CROP, CAKE_BLOCK, SUGAR_CANE_PLANT, TALL_GRASS, FERN,
     YELLOW_FLOWER, RED_ROSE, BROWN_MUSHROOM, RED_MUSHROOM,
+    // Transport (M12). The data value is the rail's shape (see rails.h); powered and detector rails
+    // can't curve and keep bit 8 for powered (or pressed by a minecart).
+    RAIL, POWERED_RAIL, DETECTOR_RAIL,
     BLOCK_COUNT
 };
 
@@ -76,6 +79,8 @@ enum Tile : int {
     T_DANDELION, T_ROSE, T_BROWN_MUSHROOM, T_RED_MUSHROOM, T_CAKE_TOP, T_CAKE_SIDE, T_CAKE_INSIDE,
     // Animals (M9). Sheep's wool uses the wool item tiles (see icons.h).
     T_PIG, T_PIG_SNOUT, T_SADDLE, T_SHEEP_SKIN, T_SHEEP_FACE, T_BEAK, T_WATTLE, T_SQUID, T_WOLF, T_WOLF_DARK,
+    // Transport (M12): rails (straight, curved, powered off and on, detector) and a minecart's iron.
+    T_RAIL, T_RAIL_CURVE, T_POWERED_RAIL, T_POWERED_RAIL_ON, T_DETECTOR_RAIL, T_CART,
     TILE_COUNT
 };
 
@@ -115,6 +120,7 @@ bool is_torch(BlockId id);  // floor or wall torch (drawn as a thin stick, not a
 // Not a cube and nothing to bump into: torches and fire. Faces next to them are drawn.
 bool is_thin(BlockId id);
 bool is_bed(BlockId id);    // either half of a bed
+bool is_rail(BlockId id);   // a rail, powered rail or detector rail (flat on the ground, nothing to bump into)
 // Drawn as crossed sheets and nothing to bump into: wheat, sugar cane, tall grass, ferns, flowers, mushrooms.
 bool is_plant(BlockId id);
 // Furnaces: any facing, lit or not. The facing is Beta's (0 south, 1 west, 2 north, 3 east, see
