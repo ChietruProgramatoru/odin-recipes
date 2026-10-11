@@ -764,6 +764,13 @@ void AutoTest::monsters(App& app, Game& g) {
     if (f == 1180) {
         const glm::ivec3 c(a.x, 20, a.z);
         const MobKind kind = spawner_mob(g.level.seed, c);
+        // Each burst tries 4 random spots and some land in the walls or floor, so let it try a few more times.
+        auto made_any = [&] { return std::any_of(g.monsters.begin(), g.monsters.end(), [&](const auto& m) { return m->kind == kind; }); };
+        for (int tries = 0; tries < 8 && !made_any(); ++tries) {
+            for (auto& s : g.spawners)
+                if (s.pos == c) s.delay = 1;
+            g.tick_spawners();
+        }
         int made = static_cast<int>(std::count_if(g.monsters.begin(), g.monsters.end(), [&](const auto& m) { return m->kind == kind; }));
         check("a mob spawner in the dark makes " + std::string(mob_name(kind)) + "s (" + std::to_string(made) + ")", made > 0);
         set(c.x - 3, c.y, c.z - 3, TORCH);
