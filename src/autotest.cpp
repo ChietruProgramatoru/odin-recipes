@@ -21,6 +21,7 @@
 #include "inventory_screen.h"
 #include "menu.h"
 #include "rails.h"
+#include "redstone.h"
 #include "tools.h"
 
 namespace {
@@ -309,13 +310,14 @@ void AutoTest::play(App& app, Game& g) {
     if (f >= 1450 && f < 1650) animals(app, g);
     if (f >= 1650 && f < 1720) transport(app, g);
     if (f >= 1720 && f < 1770) nature(app, g);
-    if (f >= 1770 && f < 1900) finding_and_fishing(app, g);
-    if (f == 1900) {
+    if (f >= 1770 && f < 1820) redstone(app, g);
+    if (f >= 1820 && f < 1950) finding_and_fishing(app, g);
+    if (f == 1950) {
         app.pause();
         check("Escape menu pauses the game", g.paused && app.screen());
         shot(app, "7_pause.png");
     }
-    if (f == 1910) {
+    if (f == 1960) {
         // Change something, then save and quit to the title.
         marker_ = {static_cast<int>(std::floor(p.x)) + 2, static_cast<int>(std::floor(p.y)) + 1, static_cast<int>(std::floor(p.z))};
         g.renderer->rebuild(g.world.set_block(marker_.x, marker_.y, marker_.z, BRICK));
@@ -2293,6 +2295,7 @@ void AutoTest::transport(App& app, Game& g) {
             g.lay_rail(c);
         };
         lay(o, POWERED_RAIL);
+        set(o + glm::ivec3(0, 0, 1), REDSTONE_TORCH_ON);  // its power (M13)
         for (int dx = 2; dx <= 12; ++dx)
             lay(o + glm::ivec3(dx, dx == 7 ? 1 : 0, 0), dx == 4 ? DETECTOR_RAIL : RAIL);
         for (int dz = 1; dz <= 9; ++dz) lay(corner + glm::ivec3(0, 0, dz), RAIL);
@@ -2635,8 +2638,187 @@ void AutoTest::nature(App& app, Game& g) {
     }
 }
 
+void AutoTest::redstone(App& app, Game& g) {
+    const long f = g.frame - 1770;
+    Body& p = g.player;
+    World& w = g.world;
+    if (f == 0) lab_ = garden_ + glm::ivec3(0, 0, 35);
+    const glm::ivec3& o = lab_;
+    auto set = [&](glm::ivec3 c, BlockId b, int data = 0) { g.renderer->rebuild(w.set_block(c.x, c.y, c.z, b, data)); };
+    auto at = [&](glm::ivec3 c) { return w.get_block(c.x, c.y, c.z); };
+    auto data = [&](glm::ivec3 c) { return w.get_data(c.x, c.y, c.z); };
+    auto hold = [&](ItemId item, int count = 1) { g.inventory.slots[g.inventory.selected] = Stack{item, count}; };
+    auto aim = [&](glm::ivec3 b, float top = 0.95f) {  // at the middle of a block's top (or lower)
+        glm::vec3 d = glm::vec3(b) + glm::vec3(0.5f, top, 0.5f) - g.eye();
+        g.yaw = degrees(std::atan2(d.x, d.z));
+        g.pitch = -degrees(std::asin(d.y / glm::length(d)));
+        g.update_target();
+        return g.target && g.target->block == b;
+    };
+    auto stand = [&](double dx, double dz) {
+        p.x = o.x + 0.5 + dx;
+        p.y = o.y;
+        p.z = o.z + 0.5 + dz;
+        p.vx = p.vy = p.vz = 0;
+        g.fall_peak = p.y;
+    };
+    auto ticks = [&](int n) {
+        for (int i = 0; i < n; ++i) g.tick_blocks();
+    };
+    // The lab, relative to the middle of its near edge (the player looks along +z). Four circuits:
+    //   z 3: lever, dust, a repeater, dust and an iron door.
+    //   z 6: lever, dust and a sticky piston with two blocks in front of it.
+    //   z 9: a lever on a block with a torch on its side: the torch lights dust to a note block.
+    //   z 12: a wooden pressure plate, dust and a dispenser full of arrows.
+    const glm::ivec3 lever1 = o + glm::ivec3(-6, 0, 3), repeater = o + glm::ivec3(-1, 0, 3), door = o + glm::ivec3(2, 0, 3);
+    const glm::ivec3 lever2 = o + glm::ivec3(-6, 0, 6), piston = o + glm::ivec3(-2, 0, 6);
+    const glm::ivec3 post = o + glm::ivec3(-4, 0, 9), torch = o + glm::ivec3(-3, 0, 9), note = o + glm::ivec3(3, 0, 9);
+    const glm::ivec3 plate = o + glm::ivec3(0, 0, 12), dispenser = o + glm::ivec3(2, 0, 12);
+
+    if (f == 0) {
+        lab_return_ = {p.x, p.y, p.z};
+        lab_creative_ = g.creative;
+        lab_raining_ = g.weather.state.raining;
+        g.monsters.clear();
+        g.target_monster = nullptr;
+        g.drops.clear();
+        g.arrows.clear();
+        g.weather.clear();
+        g.creative = false;
+        g.flying = false;
+        g.vitals.reset();
+        g.level.time = 6000 + (g.level.time / DAY_TICKS) * DAY_TICKS;
+        for (int dx = -9; dx <= 9; ++dx)
+            for (int dz = -5; dz <= 15; ++dz) {
+                set(o + glm::ivec3(dx, -1, dz), STONE);
+                set(o + glm::ivec3(dx, -2, dz), STONE);
+                for (int dy = 0; dy <= 6; ++dy) set(o + glm::ivec3(dx, dy, dz), AIR);
+            }
+        // A lever and dust put down by hand.
+        stand(-6, 0);
+        hold(LEVER, 2);
+        check("aiming at the floor for a lever", aim(lever1 - glm::ivec3(0, 1, 0)));
+        g.use_item();
+        check("a lever goes on the floor", at(lever1) == LEVER_BLOCK && g.inventory.slots[g.inventory.selected]->count == 1);
+        hold(REDSTONE, 8);
+        check("aiming at the floor for dust", aim(lever1 + glm::ivec3(1, -1, 0)));
+        g.use_item();
+        check("redstone dust goes on the floor", at(lever1 + glm::ivec3(1, 0, 0)) == REDSTONE_WIRE);
+        for (int dx = -4; dx <= -2; ++dx) set(o + glm::ivec3(dx, 0, 3), REDSTONE_WIRE);
+        stand(-1, 1);
+        hold(REPEATER, 1);
+        check("aiming at the floor for a repeater", aim(repeater - glm::ivec3(0, 1, 0)));
+        g.yaw = 90;  // looking east: the repeater sends power east
+        g.use_item();
+        check("a repeater goes down pointing the way the player looks",
+              at(repeater) == REPEATER_OFF && facing_dir(repeater_facing(data(repeater))) == glm::ivec3(1, 0, 0));
+        set(o + glm::ivec3(0, 0, 3), REDSTONE_WIRE);
+        set(o + glm::ivec3(1, 0, 3), REDSTONE_WIRE);
+        set(door, IRON_DOOR_BLOCK, 0);
+        set(door + glm::ivec3(0, 1, 0), IRON_DOOR_BLOCK, DOOR_UPPER);
+        // The piston row.
+        set(lever2, LEVER_BLOCK, 0);
+        for (int dx = -5; dx <= -3; ++dx) set(o + glm::ivec3(dx, 0, 6), REDSTONE_WIRE);
+        stand(-2, 2);
+        hold(STICKY_PISTON, 1);
+        check("aiming at the floor for a piston", aim(piston - glm::ivec3(0, 1, 0)));
+        g.yaw = -90;  // looking west, so its front faces east
+        g.use_item();
+        check("a sticky piston goes down facing the player", at(piston) == STICKY_PISTON_BASE && dir6(data(piston) & 7) == glm::ivec3(1, 0, 0));
+        set(piston + glm::ivec3(1, 0, 0), COBBLE);
+        set(piston + glm::ivec3(2, 0, 0), PLANKS);
+        // The inverter row.
+        set(post, STONE);
+        set(post + glm::ivec3(0, 1, 0), LEVER_BLOCK, 0);
+        set(torch, REDSTONE_TORCH_ON, 1 + 1);  // on the post's east side
+        for (int dx = -2; dx <= 2; ++dx) set(o + glm::ivec3(dx, 0, 9), REDSTONE_WIRE);
+        set(note, NOTE_BLOCK);
+        // The plate row.
+        set(plate, WOOD_PLATE_BLOCK);
+        set(plate + glm::ivec3(1, 0, 0), REDSTONE_WIRE);
+        set(dispenser, DISPENSER_BLOCK, 0);  // its front to the south (+z)
+        (*chest_slots(w, dispenser))[4] = Stack{ARROW, 16};
+        const int notes = g.sounds_started[static_cast<int>(Sound::NoteBassDrum)];  // on stone
+        ticks(8);
+        check("a redstone torch lights the dust after it (power " + std::to_string(data(o + glm::ivec3(-2, 0, 9))) + ")",
+              data(o + glm::ivec3(-2, 0, 9)) == 15 && data(o + glm::ivec3(2, 0, 9)) == 11);
+        check("a note block plays when power reaches it", g.sounds_started[static_cast<int>(Sound::NoteBassDrum)] == notes + 1);
+        check("nothing else is powered yet", data(o + glm::ivec3(-5, 0, 3)) == 0 && at(repeater) == REPEATER_OFF &&
+                                                  !door_open(data(door)) && !(data(piston) & PISTON_EXTENDED));
+        stand(-1, -2);
+        g.yaw = 0;
+        g.pitch = 20;
+        g.hud->show_message("", 0);
+        g.inventory.slots[g.inventory.selected].reset();
+    }
+    if (f == 2) shot(app, "m13_redstone_off.png");
+    if (f == 4) {
+        // Flip the first lever by hand, the others straight away.
+        stand(-6, 1.5);
+        check("aiming at the lever", aim(lever1, 0.3f));
+        const int clicks = g.sounds_started[static_cast<int>(Sound::Click)];
+        g.use_item();
+        check("right-clicking a lever turns it on", (data(lever1) & LEVER_ON) && g.sounds_started[static_cast<int>(Sound::Click)] == clicks + 1);
+        g.use_redstone(lever2);
+        g.use_redstone(post + glm::ivec3(0, 1, 0));
+        ticks(12);
+        check("dust carries the lever's power, one less each block (" + std::to_string(data(o + glm::ivec3(-5, 0, 3))) + ", " +
+                  std::to_string(data(o + glm::ivec3(-2, 0, 3))) + ")",
+              data(o + glm::ivec3(-5, 0, 3)) == 15 && data(o + glm::ivec3(-2, 0, 3)) == 12);
+        check("the repeater turns on and sends full power on", at(repeater) == REPEATER_ON && data(o + glm::ivec3(0, 0, 3)) == 15);
+        check("power opens the iron door", door_open(data(door)) && door_open(data(door + glm::ivec3(0, 1, 0))));
+        check("the sticky piston pushes its two blocks", (data(piston) & PISTON_EXTENDED) && at(piston + glm::ivec3(1, 0, 0)) == PISTON_HEAD &&
+                                                              at(piston + glm::ivec3(2, 0, 0)) == COBBLE && at(piston + glm::ivec3(3, 0, 0)) == PLANKS);
+        check("the powered block puts the torch out, and its dust goes dark",
+              at(torch) == REDSTONE_TORCH_OFF && data(o + glm::ivec3(-2, 0, 9)) == 0);
+        stand(-1, -2);
+        g.yaw = 0;
+        g.pitch = 20;
+        g.inventory.slots[g.inventory.selected].reset();
+    }
+    if (f == 6) shot(app, "m13_redstone_on.png");
+    if (f == 8) {
+        // Step on the wooden plate: the dispenser shoots an arrow.
+        lab_arrows_ = g.arrows.size();
+        stand(0, 12);
+        ticks(8);
+        check("standing on a pressure plate presses it", data(plate) == PLATE_PRESSED);
+        check("the powered dispenser shoots an arrow", g.arrows.size() == lab_arrows_ + 1 &&
+                                                            (*chest_slots(w, dispenser))[4] && (*chest_slots(w, dispenser))[4]->count == 15);
+        stand(0, 9.5);
+        ticks(PLATE_TICKS + 6);
+        check("the plate comes back up when the player steps off", data(plate) == 0);
+        // Pull the piston back: the sticky piston brings the cobblestone with it.
+        g.use_redstone(lever2);
+        ticks(4);
+        check("the sticky piston pulls its block back", !(data(piston) & PISTON_EXTENDED) && at(piston + glm::ivec3(1, 0, 0)) == COBBLE &&
+                                                             at(piston + glm::ivec3(2, 0, 0)) == AIR);
+        // Breaking the dust under power: the door shuts once the lever's line is cut.
+        g.break_block(o + glm::ivec3(-4, 0, 3), REDSTONE_WIRE);
+        ticks(12);
+        check("cutting the dust shuts the door", !door_open(data(door)) && at(repeater) == REPEATER_OFF);
+        // Open the dispenser's screen.
+        stand(2, 10);
+        check("aiming at the dispenser", aim(dispenser));
+        g.use_item();
+        check("right-clicking a dispenser opens its screen", g.gui && g.gui->kind == InventoryScreen::Kind::Dispenser);
+    }
+    if (f == 10) shot(app, "m13_dispenser.png");
+    if (f == 12) {
+        g.close_gui();
+        g.arrows.clear();
+        g.creative = lab_creative_;
+        if (lab_raining_) g.weather = Weather(WeatherState{true, false, 100000, 100000});
+        p.x = lab_return_.x;
+        p.y = lab_return_.y;
+        p.z = lab_return_.z;
+        p.vx = p.vy = p.vz = 0;
+        g.fall_peak = p.y;
+    }
+}
+
 void AutoTest::finding_and_fishing(App& app, Game& g) {
-    const long f = g.frame - 1770;  // runs after the garden
+    const long f = g.frame - 1820;  // runs after the redstone lab
     Body& p = g.player;
     World& w = g.world;
     Inventory& inv = g.inventory;

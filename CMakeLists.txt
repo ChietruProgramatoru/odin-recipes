@@ -86,6 +86,7 @@ add_library(petrutz_core STATIC
   src/painting.cpp
   src/blockupdate.cpp
   src/rails.cpp
+  src/redstone.cpp
   src/vehicles.cpp
   src/nature.cpp
   src/streamer.cpp
@@ -103,6 +104,7 @@ add_library(petrutz_core STATIC
   src/sound.cpp
   src/textures.cpp
   src/building_art.cpp
+  src/redstone_art.cpp
   src/font.cpp
   src/png.cpp
   src/zlib.cpp
@@ -127,6 +129,7 @@ add_executable(PetrutzCraft
   src/game.cpp
   src/game_vehicles.cpp
   src/game_items.cpp
+  src/game_redstone.cpp
   src/audio.cpp
   src/autotest.cpp)
 target_link_libraries(PetrutzCraft PRIVATE petrutz_core glfw miniaudio_header ${CMAKE_DL_LIBS})
@@ -164,6 +167,7 @@ add_executable(petrutz_tests
   tests/test_building.cpp
   tests/test_transport.cpp
   tests/test_nature.cpp
-  tests/test_navigation.cpp)
+  tests/test_navigation.cpp
+  tests/test_redstone.cpp)
 target_link_libraries(petrutz_tests PRIVATE petrutz_core doctest_header)
 add_test(NAME logic COMMAND petrutz_tests)

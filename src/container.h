@@ -39,7 +39,8 @@ public:
     std::optional<Stack> cursor;  // the stack held by the mouse
     Furnace* furnace = nullptr;   // the furnace whose screen this is
     ChestSlots* chest[2] = {nullptr, nullptr};  // the chest (two for a double chest) whose screen this is
-    int chest_slots() const { return (chest[0] ? CHEST_SLOTS : 0) + (chest[1] ? CHEST_SLOTS : 0); }
+    int chest_size = CHEST_SLOTS;  // a dispenser uses only the first 9 of its slots
+    int chest_slots() const { return (chest[0] ? chest_size : 0) + (chest[1] ? CHEST_SLOTS : 0); }
 
     std::optional<Stack>& at(Slot s);
     // Mouse button 0 (left) or 1 (right) on a slot, with or without Shift.

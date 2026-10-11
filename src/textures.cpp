@@ -850,6 +850,7 @@ std::map<int, Image> make_tiles(int seed) {
     }
     tiles.merge(make_item_tiles());
     tiles.merge(make_building_tiles());
+    tiles.merge(make_redstone_tiles());
     // The held map starts blank (the game draws it in), then the player's marker on it.
     for (int row = 0; row < MAP_SIZE / TILE; ++row)
         for (int col = 0; col < MAP_SIZE / TILE; ++col) tiles[MAP_TILE_BASE + row * ATLAS_COLS + col] = Image(TILE, TILE);

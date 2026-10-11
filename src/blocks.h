@@ -53,6 +53,12 @@ enum Block : BlockId {
     // Cobwebs slow anything in them. Snow layers lie on the ground in cold biomes and melt in light.
     // Leaves use their data value too: LEAVES_PLAYER (never decay), LEAVES_CHECK (see nature.h).
     SAPLING, SPRUCE_SAPLING, BIRCH_SAPLING, CACTUS, COBWEB, SNOW_LAYER,
+    // Redstone (M13). What each data value holds is in redstone.h. The items that place them keep
+    // their own ids (REDSTONE, REDSTONE_TORCH, LEVER... in items.h), hence the _BLOCK names.
+    // Redstone ore glows for a while after it is touched.
+    REDSTONE_WIRE, REDSTONE_TORCH_ON, REDSTONE_TORCH_OFF, LEVER_BLOCK, BUTTON_BLOCK, STONE_PLATE_BLOCK,
+    WOOD_PLATE_BLOCK, REPEATER_OFF, REPEATER_ON, PISTON_BASE, STICKY_PISTON_BASE, PISTON_HEAD, DISPENSER_BLOCK,
+    GLOWING_REDSTONE_ORE,
     BLOCK_COUNT
 };
 
@@ -101,6 +107,11 @@ enum Tile : int {
     // Nature (M6 part 2). The snow layer uses the snow block's tile (IT_SNOW, icons.h).
     T_SAPLING, T_SPRUCE_SAPLING, T_BIRCH_SAPLING, T_CACTUS_TOP, T_CACTUS_SIDE, T_CACTUS_BOTTOM, T_COBWEB,
     T_GRASS_SNOW_SIDE,
+    // Redstone (M13): dust (a cross and a line, grey and coloured by its power in the world), the
+    // torch lit and out, the lever's handle, repeaters off and on, the back and the inside of a
+    // piston. Their items' tiles (piston faces, the dispenser's front) are in icons.h.
+    T_WIRE_CROSS, T_WIRE_LINE, T_REDSTONE_TORCH_ON, T_REDSTONE_TORCH_OFF, T_LEVER, T_REPEATER_OFF, T_REPEATER_ON,
+    T_PISTON_BOTTOM, T_PISTON_INNER,
     TILE_COUNT
 };
 

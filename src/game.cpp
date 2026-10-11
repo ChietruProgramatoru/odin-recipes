@@ -49,6 +49,7 @@ Game::Game(GLFWwindow* win, GLuint atlas, Painter& painter, const Options& opts,
 
     for (ItemId item : creative_items()) creative_inventory.add(item, 1);
     player.step_height = 0.5;  // walk up slabs and stairs (Beta)
+    blocks.set_plate_sensor([this](glm::ivec3 p, BlockId plate) { return on_plate(p, plate); });
 
     spawn = level.spawn ? *level.spawn : find_spawn();
     level.spawn = spawn;
@@ -1248,6 +1249,10 @@ void Game::use_item() {
         }
         return;
     }
+    if (is_redstone_item(*item)) {
+        place_redstone(*item);
+        return;
+    }
     if (*item >= FUTURE_BLOCKS && !placeable_future_block(*item) && target && !targeting_mob() && target->before) {
         hud->show_message(item_name(*item) + " can't be placed yet", 2);
         return;
@@ -1702,6 +1707,7 @@ void Game::set_player_on_fire(int ticks) {
 void Game::tick_blocks() {
     BlockEvents events;
     RainCheck rain = [this](glm::ivec3 p) { return rain_at(p); };
+    tick_redstone_inputs(events);
     blocks.tick(rng, rain, events);
     const ChunkPos here = chunk_at(player.x, player.z);
     blocks.random_ticks(here, std::min(9, renderer->render_distance), rng, rain, events);
@@ -1715,6 +1721,7 @@ void Game::apply_block_events(BlockEvents& events) {
     for (const auto& [p, block] : events.falling) falling.push_back(std::make_unique<FallingBlock>(world, block, p));
     for (glm::ivec3 p : events.tnt) prime_tnt(p, TNT_FUSE_TICKS);
     for (glm::ivec3 p : events.fizz) add_puffs(puffs, glm::dvec3(p) + 0.5, 6, 0.4, 1.0, 0.2, rng);
+    apply_redstone(events.redstone);
 }
 
 void Game::tick_player_fire_and_air() {
@@ -2445,6 +2452,11 @@ void Game::open_chest(glm::ivec3 pos) {
 
 bool Game::use_block(glm::ivec3 pos) {
     const BlockId b = world.get_block(pos.x, pos.y, pos.z);
+    if (b == DISPENSER_BLOCK) {
+        open_dispenser(pos);
+        return true;
+    }
+    if (use_redstone(pos)) return true;
     if (b == NOTE_BLOCK) {
         if (Chunk* c = world.chunk_at(pos)) {
             int& note = c->notes[cell_index(pos)];
@@ -2516,7 +2528,7 @@ std::vector<ChunkPos> Game::clear_cell(glm::ivec3 pos) {
     const BlockId b = world.get_block(pos.x, pos.y, pos.z);
     const glm::dvec3 mid = glm::dvec3(pos) + glm::dvec3(0.5);
     Chunk* chunk = world.chunk_at(pos);
-    if (b == CHEST) {
+    if (b == CHEST || b == DISPENSER_BLOCK) {
         if (std::find(chest_open.begin(), chest_open.end(), pos) != chest_open.end()) close_gui();
         if (chunk)
             if (auto it = chunk->chests.find(cell_index(pos)); it != chunk->chests.end())
