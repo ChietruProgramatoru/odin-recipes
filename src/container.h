@@ -7,11 +7,13 @@
 #include "crafting.h"
 #include "furnace.h"
 #include "survival.h"
+#include "tiles.h"
 
 struct Slot {
-    enum Kind { Result, Grid, Armor, Inv, Furnace } kind;
-    // Cell of the grid, armor piece (0 helmet..3 boots), inventory slot (0-8 hotbar, 9-35 storage)
-    // or furnace slot (FURNACE_INPUT, FURNACE_FUEL, FURNACE_OUTPUT).
+    enum Kind { Result, Grid, Armor, Inv, Furnace, Chest } kind;
+    // Cell of the grid, armor piece (0 helmet..3 boots), inventory slot (0-8 hotbar, 9-35 storage),
+    // furnace slot (FURNACE_INPUT, FURNACE_FUEL, FURNACE_OUTPUT) or chest slot (0-26, 27-53 the
+    // lower half of a double chest).
     int index;
     bool operator==(const Slot&) const = default;
 };
@@ -24,6 +26,8 @@ public:
     CraftingMenu(Inventory& inventory, int grid_size);
     // A furnace's screen: its three slots and the inventory, no crafting grid.
     CraftingMenu(Inventory& inventory, Furnace& furnace);
+    // A chest's screen: its slots (a double chest's two halves, top first) and the inventory.
+    CraftingMenu(Inventory& inventory, ChestSlots& top, ChestSlots* bottom);
 
     Inventory& inv;
     const int grid_size;
@@ -31,6 +35,8 @@ public:
     std::optional<Stack> result;  // what the grid makes right now
     std::optional<Stack> cursor;  // the stack held by the mouse
     Furnace* furnace = nullptr;   // the furnace whose screen this is
+    ChestSlots* chest[2] = {nullptr, nullptr};  // the chest (two for a double chest) whose screen this is
+    int chest_slots() const { return (chest[0] ? CHEST_SLOTS : 0) + (chest[1] ? CHEST_SLOTS : 0); }
 
     std::optional<Stack>& at(Slot s);
     // Mouse button 0 (left) or 1 (right) on a slot, with or without Shift.
@@ -48,6 +54,7 @@ private:
     bool take_result();  // one craft onto the cursor; false if it doesn't fit
     // Move a stack into inventory slots [from, to) (reversed: from the end), filling matching stacks first.
     void merge(Stack& stack, int from, int to, bool reversed);
+    void merge_into_chest(Stack& stack);
     bool accepts(Slot s, const Stack& stack) const;
     int limit(Slot s, const Stack& stack) const;
 };

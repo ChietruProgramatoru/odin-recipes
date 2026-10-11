@@ -38,6 +38,13 @@ enum Block : BlockId {
     // the top of a sugar cane (0 .. 15). Plants are drawn as crossed sheets (is_plant).
     FARMLAND, WHEAT_CROP, CAKE_BLOCK, SUGAR_CANE_PLANT, TALL_GRASS, FERN,
     YELLOW_FLOWER, RED_ROSE, BROWN_MUSHROOM, RED_MUSHROOM,
+    // Building (M11). Plain cubes first; their items were placeholders in items.h until now.
+    SNOW_BLOCK, GOLD_BLOCK, IRON_BLOCK, DIAMOND_BLOCK, LAPIS_BLOCK, BOOKSHELF, NOTE_BLOCK, JUKEBOX, NETHERRACK, SOUL_SAND,
+    // Blocks with a data value (see building.h for what it holds and their shapes): the wool colour
+    // (0 white .. 15 black, the order of the wool items), the slab kind (0 stone, 1 sandstone, 2 wood,
+    // 3 cobblestone), and the facings of stairs, ladders, doors, trapdoors, signs and paintings.
+    WOOL, SLAB, DOUBLE_SLAB, WOOD_STAIRS, COBBLE_STAIRS, FENCE, LADDER, WOOD_DOOR_BLOCK, IRON_DOOR_BLOCK, TRAPDOOR,
+    SIGN_POST, WALL_SIGN, PAINTING_BLOCK,
     BLOCK_COUNT
 };
 
@@ -74,6 +81,11 @@ enum Tile : int {
     // Farming (M8): farmland, wheat in its 8 stages, plants (drawn as crossed sheets) and cake.
     T_FARMLAND_DRY, T_FARMLAND_WET, T_WHEAT_0, T_WHEAT_7 = T_WHEAT_0 + 7, T_SUGAR_CANE, T_TALL_GRASS, T_FERN,
     T_DANDELION, T_ROSE, T_BROWN_MUSHROOM, T_RED_MUSHROOM, T_CAKE_TOP, T_CAKE_SIDE, T_CAKE_INSIDE,
+    // Building (M11): doors (top and bottom halves), the trapdoor, the ladder, Nether blocks, the
+    // two halves of a double chest's front and back, and the back of a painting.
+    T_WOOD_DOOR_TOP, T_WOOD_DOOR_BOTTOM, T_IRON_DOOR_TOP, T_IRON_DOOR_BOTTOM, T_TRAPDOOR, T_LADDER,
+    T_NETHERRACK, T_SOUL_SAND, T_CHEST_FRONT_LEFT, T_CHEST_FRONT_RIGHT, T_CHEST_BACK_LEFT, T_CHEST_BACK_RIGHT,
+    T_PAINTING_BACK,
     TILE_COUNT
 };
 
@@ -122,7 +134,12 @@ bool is_lit_furnace(BlockId id);
 int furnace_dir(BlockId furnace);
 BlockId furnace_block(int dir, bool lit);
 bool falls(BlockId id);     // sand and gravel fall when nothing holds them up
-// How tall a solid block is for walking on it: 1, 9/16 for a bed, 15/16 for farmland, 1/2 for cake.
+// Not a whole cube: slabs, stairs, fences, ladders, doors, trapdoors, signs and paintings. Their
+// boxes (for bumping into, aiming at and drawing) depend on the data value; see building.h.
+bool is_shaped(BlockId id);
+bool is_door(BlockId id);  // either half of a wooden or iron door
+// How tall a solid block is for walking on it: 1, 9/16 for a bed, 15/16 for farmland, 1/2 for
+// cake, 14/16 for soul sand. Shaped blocks have their own boxes (building.h).
 float block_height(BlockId id);
 // Light (0-15): how much a block dims light passing into it, and how much it gives off.
 int light_opacity(BlockId id);

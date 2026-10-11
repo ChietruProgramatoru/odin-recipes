@@ -68,6 +68,9 @@ public:
     // The inventory, a crafting table or the creative item picker, while one is open.
     std::unique_ptr<InventoryScreen> gui;
     std::optional<glm::ivec3> furnace_open;  // the furnace whose screen is open
+    std::vector<glm::ivec3> chest_open;      // the chest (one or both halves) whose screen is open
+    // The sign whose text is being typed (the app shows the sign screen while it is set).
+    std::optional<glm::ivec3> sign_editing;
     Vitals vitals;
     bool creative = false, flying = false, sneaking = false;
 
@@ -169,6 +172,22 @@ public:
     // A furnace block is gone: what was in it falls out.
     void drop_furnace_contents(glm::ivec3 pos);
     void close_gui();
+    // Right-clicking a chest opens it (both halves of a double chest), unless a block sits on top.
+    void open_chest(glm::ivec3 pos);
+    // Right-clicking a block that does something by itself: doors and trapdoors open, a note block
+    // goes up a note, a jukebox gives its disc back. False if the block doesn't do anything.
+    bool use_block(glm::ivec3 pos);
+    // A note block sounds its note (if there is air above it, like Beta).
+    void play_note(glm::ivec3 pos);
+    // The text of the sign being edited (nullptr if it is gone), and closing the sign screen.
+    SignText* edited_sign();
+    void finish_sign();
+    // A block is about to be taken away: what it holds (chest items, a jukebox's disc) falls out and
+    // any screen open on it closes. Then it is set to air; returns the chunks to mesh again.
+    std::vector<ChunkPos> clear_cell(glm::ivec3 pos);
+    // Blocks changed at these cells: ladders, doors, signs and paintings left with nothing to hold
+    // them drop off (and what that leaves hanging, in turn).
+    void drop_unsupported(std::vector<glm::ivec3> changed);
     // Throw a stack forwards from the player's eyes, like Q does.
     void throw_stack(const Stack& stack);
     void respawn();
@@ -239,10 +258,14 @@ private:
     bool use_bucket(ItemId held);
     // Right click with seeds, sugar cane, a flower or cake: plant or place it. False if it can't go there.
     bool plant(BlockId block);
+    // Right click with a building item (building.h's placement, or a painting). False if nothing went down.
+    bool place_building(ItemId item);
+    // Put a music disc in the jukebox, or take one out.
+    bool use_jukebox(glm::ivec3 pos, std::optional<ItemId> held);
     void set_mouse_captured(bool captured);
     void show_gui(std::unique_ptr<InventoryScreen> screen);
     bool key_down(int key) const;
-    bool action_down(KeyAction action) const { return !gui && key_down(options.keys[action]); }
+    bool action_down(KeyAction action) const { return !gui && !sign_editing && key_down(options.keys[action]); }
     bool sprint_allowed() const { return !sneaking && !flying && (creative || vitals.can_sprint()); }
     bool mouse_down(int button) const { return mouse_buttons_.count(button) > 0; }
     std::string debug_text();

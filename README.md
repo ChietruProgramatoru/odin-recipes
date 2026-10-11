@@ -55,6 +55,20 @@ It runs on Windows (the main target) and Linux.
 - **Food**: apples, golden apples, bread, mushroom stew (gives back the bowl), raw and cooked porkchops, raw and cooked fish, cookies, beef and **cake**. Each fills hunger and saturation (Minecraft 1.0's values, since hunger is kept). A cake is placed as a block and eaten a slice at a time with a right click: six slices of 1 drumstick each.
 
   ![A farm](screenshots/farm.png)
+- **Building** like Beta 1.7.3:
+  - **New blocks**: wool in 16 colours (dye white wool with any of the 16 dyes), gold, iron, diamond and lapis blocks, bookshelves, snow and clay blocks, netherrack and soul sand (it slows you down), plus glass, sandstone, mossy cobblestone, obsidian and ice.
+  - **Shapes**: stone, sandstone, wooden and cobblestone **slabs** (two of a kind stack into a double slab), wooden and cobblestone **stairs**, **fences** (1.5 blocks high to jump, joining the fences beside them), **ladders** (climb by walking into them; sneak to hold on), wooden and iron **doors**, and **trapdoors**. You walk up slabs and stairs without jumping, and you bump into each shape as it looks.
+  - **Doors** open with a right click, both halves at once; iron doors wait for redstone. Trapdoors flip open the same way.
+  - **Chests**: right-click to open. Two side by side join into a double chest with 54 slots; three in a row won't go. Shift-click moves stacks in and out. Breaking a chest spills what is in it. Dungeons now have one or two chests with Beta's loot.
+  - **Signs** on the ground or on a wall: placing one opens a screen to type four lines of text, which shows on the sign.
+  - **Paintings**: hang one on a wall and it picks a random picture that fits there, from 1x1 up to 4x4 blocks. The 15 pictures are this game's own.
+  - **Note blocks** play a note when hit or right-clicked; each right click goes a semitone up over two octaves. The block under it picks the instrument: stone a bass drum, sand a snare, glass clicks, wood a bass, anything else a harp.
+  - **Jukebox**: put in a music disc (found in dungeon chests) to play it, right-click again to take it out. The two discs, "13" and "cat", play this game's own tunes.
+  - Ladders, signs, paintings, doors and trapdoors fall off when the block holding them goes. Everything here is saved with the world.
+
+  ![Building blocks, a double chest, stairs, slabs, fences, a door, ladders, paintings and signs](screenshots/building.png)
+  ![A double chest](screenshots/chest.png)
+  ![Typing on a sign](screenshots/sign.png)
 - **Monsters** like Beta 1.7.3, with original blocky models:
   - **Zombies** walk at you and hit for 2.5 hearts, and drop feathers.
   - **Skeletons** keep their distance and shoot arrows; they drop arrows and bones.
@@ -195,6 +209,10 @@ These are the defaults. Every key except the F keys, Esc, H and 1–9 can be cha
 | E | Open or close the inventory (the item picker in creative) |
 | Right mouse on a crafting table | Open the 3x3 crafting grid |
 | Right mouse on a furnace | Open the furnace |
+| Right mouse on a chest | Open the chest (a block on top keeps it shut) |
+| Right mouse on a door or trapdoor | Open or shut it |
+| Right mouse / left mouse on a note block | Raise its note / play it |
+| Right mouse on a jukebox | Put in the held music disc, or take the disc out |
 | C | Cheat: switch between survival and creative |
 | Space twice (creative) | Toggle flying. While flying, Space goes up and Shift goes down |
 | F1 | Hide or show the HUD |
@@ -290,18 +308,17 @@ tests/             doctest logic tests (no window needed)
 
 - Monsters have no pathfinding: they walk straight at you and hop up single blocks, so a wall or a ditch stops them.
 - Lit TNT isn't saved. The death screen has no score yet.
-- The only sounds so far are the hiss and the blast; footsteps, hurt sounds, music and volume settings come in M16.
+- The only sounds so far are the hiss, the blast, note blocks and the jukebox; footsteps, hurt sounds, background music and volume settings come in M16.
 - The fishing rod is only an item until fishing arrives in M15.
 - Flying arrows, and arrows stuck in blocks, aren't saved: they're gone when you load the world. Fires and flowing water go on after loading; a water source that was just about to spread when you saved waits until something next to it changes.
 - Lava, water and ice are see-through for the crosshair, and ice drops nothing (like Beta). Water and lava have no flowing animation yet. Water washes crops away without dropping seeds.
-- No cacti, pumpkins, dead bushes or snow layers yet (M6 part 2 and M11). Bone meal doesn't grow saplings yet (saplings come in the second part of M6). Plants only grow in chunks within 9 chunks of you, like Beta.
+- No cacti, pumpkins, dead bushes or snow layers yet (M6 part 2). Bone meal doesn't grow saplings yet (saplings come in the second part of M6). Plants only grow in chunks within 9 chunks of you, like Beta.
 - Raw porkchops and fish come with pigs (M9) and fishing (M15), cocoa beans for cookies with dungeon chests, and eggs for cake with chickens (M9).
 - Worlds saved before world generation changed keep the chunks you visited, so there is a visible cliff where the old terrain meets the new.
-- No music, thunder or other sounds yet (M16).
 - Snow doesn't pile up on the ground yet, and leaves don't decay, saplings don't exist and ice doesn't melt: those come in the second part of M6.
-- Wool only comes from the creative item picker until sheep arrive (M10), so that's where beds start.
+- Wool comes from string (4 make a block) until sheep arrive (M9); dyeing sheep comes with them.
+- Rails come with minecarts in M12, and iron doors only open by hand once redstone arrives (M13).
 - Cactus (to cactus green) and saplings (as fuel) go into the furnace once they exist (M6).
-- Doors and most other crafted things don't do anything yet; they arrive with M11 and the other milestones. Chests are plain blocks for now.
 - Iron and gold need smelting (M7), and string, feathers, bones and gunpowder now come from monsters.
 - Glowstone drops itself when broken (Beta drops glowstone dust, which comes with the Nether in M14). Jack-o'-lanterns will give off light once they can be placed; lava, fire and lit furnaces already do.
 - Light levels are not stored in the save files: they are worked out again when a chunk is loaded.

@@ -31,6 +31,7 @@ App::App(GLFWwindow* w, AppConfig cfg) : window(w), config(std::move(cfg)) {
 App::~App() {
     screen_.reset();
     pending_.reset();
+    if (audio) audio->stop_all();
     game.reset();
     painter.reset();
     glDeleteTextures(1, &atlas);
@@ -78,6 +79,7 @@ void App::run() {
     if (game) {
         draw_saving("Saving world...");
         game->save(true);
+        if (audio) audio->stop_all();
         game.reset();
     }
 }
@@ -89,8 +91,10 @@ void App::update(double dt) {
         game->update(dt);
         for (const SoundEvent& e : game->sounds) audio->play(e, glm::dvec3(game->eye()), game->yaw);
         game->sounds.clear();
+        audio->move_listener(glm::dvec3(game->eye()), game->yaw);
     }
     if (game && game->vitals.dead() && !screen_ && !has_pending_) open(death_screen(*this));
+    if (game && game->sign_editing && !screen_ && !has_pending_) open(sign_screen(*this));
     if (screen_) screen_->update(dt);
     if (config.autotest) (*config.autotest)(*this);
     apply_pending_screen();
@@ -182,6 +186,7 @@ bool App::play_world(const std::string& folder) {
     auto level = read_level(dir);
     if (!level) return false;
     draw_saving("Loading world...");
+    if (audio) audio->stop_all();
     game.reset();
     GameSetup setup{dir, std::move(*level), config.autotest != nullptr};
     game = std::make_unique<Game>(window, atlas, *painter, options, std::move(setup));
@@ -213,6 +218,7 @@ void App::save_and_quit_to_title() {
     if (game) {
         draw_saving("Saving world...");
         game->save(true);
+        if (audio) audio->stop_all();
         game.reset();
     }
     glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);

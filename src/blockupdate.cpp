@@ -33,16 +33,16 @@ void BlockEvents::rebuild(const std::vector<ChunkPos>& chunks) {
 // --- Rules ---------------------------------------------------------------------------------------
 
 int fire_spread_chance(BlockId b) {
-    if (b == PLANKS || b == LOG || b == BIRCH_LOG || b == SPRUCE_LOG) return 5;
-    if (is_leaves(b)) return 30;
+    if (b == PLANKS || b == LOG || b == BIRCH_LOG || b == SPRUCE_LOG || b == FENCE || b == WOOD_STAIRS) return 5;
+    if (is_leaves(b) || b == BOOKSHELF || b == WOOL) return 30;
     if (b == TNT) return 15;
     return 0;
 }
 
 int burn_chance(BlockId b) {
-    if (b == PLANKS) return 20;
+    if (b == PLANKS || b == FENCE || b == WOOD_STAIRS || b == BOOKSHELF) return 20;
     if (b == LOG || b == BIRCH_LOG || b == SPRUCE_LOG) return 5;
-    if (is_leaves(b)) return 60;
+    if (is_leaves(b) || b == WOOL) return 60;
     if (b == TNT) return 100;
     return 0;
 }
@@ -284,7 +284,11 @@ bool BlockUpdater::harden(glm::ivec3 p, BlockEvents& out) {
     return true;
 }
 
-bool BlockUpdater::blocks_flow(glm::ivec3 p) { return is_solid(block_at(world_, p)); }
+bool BlockUpdater::blocks_flow(glm::ivec3 p) {
+    // Signs and paintings hold water back too (Beta: they are wood, not something water washes away).
+    const BlockId b = block_at(world_, p);
+    return is_solid(b) || b == SIGN_POST || b == WALL_SIGN || b == PAINTING_BLOCK;
+}
 
 bool BlockUpdater::can_displace(glm::ivec3 p, BlockId fluid) {
     if (p.y < 0 || p.y >= HEIGHT || !world_.is_loaded(p.x, p.z)) return false;

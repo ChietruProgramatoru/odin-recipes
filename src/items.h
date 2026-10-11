@@ -41,20 +41,25 @@ enum Item : ItemId {
     // Smelting (M7): cooked beef. Not in Beta, which had no beef; this game keeps beef from cows.
     STEAK,
     SEEDS,  // M8
+    // Music discs for the jukebox (M11), named after Beta's two. The tunes are this game's own.
+    RECORD_13, RECORD_CAT,
 
     // Blocks that later milestones make placeable. Until then they are items.
     FUTURE_BLOCKS = 512,
     WHITE_WOOL = FUTURE_BLOCKS, ORANGE_WOOL, MAGENTA_WOOL, LIGHT_BLUE_WOOL, YELLOW_WOOL, LIME_WOOL, PINK_WOOL,
     GRAY_WOOL, LIGHT_GRAY_WOOL, CYAN_WOOL, PURPLE_WOOL, BLUE_WOOL, BROWN_WOOL, GREEN_WOOL, RED_WOOL, BLACK_WOOL,
     // Torches and glowstone became real blocks in M5, sandstone and clay in M4, TNT in M10, flowers and
-    // mushrooms in M8 (see blocks.h).
-    // Their old ids stay reserved so the ids after them don't move; saves from M2 have them
-    // turned into the blocks on load.
+    // mushrooms in M8, and the storage blocks, bookshelf, note block, jukebox, stairs, fence, ladder
+    // and trapdoor in M11 (see blocks.h).
+    // Their old ids stay reserved so the ids after them don't move; saves from before have them
+    // turned into the blocks on load. Wool and slabs stay items: one block each holds the colour
+    // or kind in its data value (building.h).
     OLD_TORCH_ITEM, REDSTONE_TORCH, OLD_GLOWSTONE_ITEM, JACK_O_LANTERN, PUMPKIN,
-    OLD_SANDSTONE_ITEM, SNOW_BLOCK, OLD_CLAY_ITEM, GOLD_BLOCK, IRON_BLOCK, DIAMOND_BLOCK, LAPIS_BLOCK,
-    BOOKSHELF, OLD_TNT_ITEM, NOTE_BLOCK, JUKEBOX, DISPENSER, PISTON, STICKY_PISTON,
-    STONE_SLAB, SANDSTONE_SLAB, WOOD_SLAB, COBBLE_SLAB, WOOD_STAIRS, COBBLE_STAIRS,
-    FENCE, LADDER, TRAPDOOR, LEVER, STONE_BUTTON, STONE_PLATE, WOOD_PLATE,
+    OLD_SANDSTONE_ITEM, OLD_SNOW_BLOCK_ITEM, OLD_CLAY_ITEM, OLD_GOLD_BLOCK_ITEM, OLD_IRON_BLOCK_ITEM,
+    OLD_DIAMOND_BLOCK_ITEM, OLD_LAPIS_BLOCK_ITEM,
+    OLD_BOOKSHELF_ITEM, OLD_TNT_ITEM, OLD_NOTE_BLOCK_ITEM, OLD_JUKEBOX_ITEM, DISPENSER, PISTON, STICKY_PISTON,
+    STONE_SLAB, SANDSTONE_SLAB, WOOD_SLAB, COBBLE_SLAB, OLD_WOOD_STAIRS_ITEM, OLD_COBBLE_STAIRS_ITEM,
+    OLD_FENCE_ITEM, OLD_LADDER_ITEM, OLD_TRAPDOOR_ITEM, LEVER, STONE_BUTTON, STONE_PLATE, WOOD_PLATE,
     RAIL, POWERED_RAIL, DETECTOR_RAIL,
     // Flowers and mushrooms became blocks in M8.
     OLD_YELLOW_FLOWER_ITEM, OLD_RED_ROSE_ITEM, OLD_BROWN_MUSHROOM_ITEM, OLD_RED_MUSHROOM_ITEM,
@@ -99,6 +104,8 @@ int max_damage(ItemId id);
 int armor_slot(ItemId id);
 // Blocks that can't be placed yet (FUTURE_BLOCKS and up) are still drawn as blocks.
 bool looks_like_block(ItemId id);
+// Items from FUTURE_BLOCKS up that can be placed now, as a block with a data value (wool, slabs).
+bool placeable_future_block(ItemId id);
 
 // Every tool (sword, shovel, pickaxe, axe, hoe) for one material, in that order.
 ItemId tool(Material m, int kind);

@@ -10,12 +10,14 @@
 
 class InventoryScreen {
 public:
-    enum class Kind { Inventory, CraftingTable, Creative, Furnace };
+    enum class Kind { Inventory, CraftingTable, Creative, Furnace, Chest };
 
     // Inventory and CraftingTable work on the survival inventory; Creative on the creative hotbar.
     InventoryScreen(Kind kind, Inventory& inventory);
     // A furnace's screen.
     InventoryScreen(Inventory& inventory, Furnace& furnace);
+    // A chest's screen (bottom: the lower half of a double chest).
+    InventoryScreen(Inventory& inventory, ChestSlots& top, ChestSlots* bottom);
 
     const Kind kind;
     std::optional<CraftingMenu> crafting;
@@ -57,6 +59,7 @@ private:
     };
     Hover hover(int width, int height, double mx, double my) const;
     int rows() const;  // creative picker rows of items
+    int chest_rows() const;  // 3 for a chest, 6 for a double chest
 
     int scroll_row_ = 0;
 };

@@ -7,9 +7,15 @@ CraftingMenu::CraftingMenu(Inventory& inventory, int size)
 
 CraftingMenu::CraftingMenu(Inventory& inventory, Furnace& f) : inv(inventory), grid_size(0), furnace(&f) {}
 
+CraftingMenu::CraftingMenu(Inventory& inventory, ChestSlots& top, ChestSlots* bottom) : inv(inventory), grid_size(0) {
+    chest[0] = &top;
+    chest[1] = bottom;
+}
+
 std::optional<Stack>& CraftingMenu::at(Slot s) {
     switch (s.kind) {
     case Slot::Furnace: return s.index == FURNACE_INPUT ? furnace->input : s.index == FURNACE_FUEL ? furnace->fuel : furnace->output;
+    case Slot::Chest: return (*chest[s.index / CHEST_SLOTS])[s.index % CHEST_SLOTS];
     case Slot::Result: return result;
     case Slot::Grid: return grid[s.index];
     case Slot::Armor: return inv.armor[s.index];
@@ -66,6 +72,23 @@ void CraftingMenu::merge(Stack& stack, int from, int to, bool reversed) {
     });
 }
 
+void CraftingMenu::merge_into_chest(Stack& stack) {
+    const int limit = max_stack(stack.item), n = chest_slots();
+    for (int pass = 0; pass < 2 && stack.count > 0; ++pass)
+        for (int i = 0; i < n && stack.count > 0; ++i) {
+            auto& slot = at({Slot::Chest, i});
+            if (pass == 0 && slot && stackable(*slot, stack) && slot->count < limit) {
+                const int moved = std::min(stack.count, limit - slot->count);
+                slot->count += moved;
+                stack.count -= moved;
+            } else if (pass == 1 && !slot) {
+                slot = stack;
+                slot->count = std::min(stack.count, limit);
+                stack.count -= slot->count;
+            }
+        }
+}
+
 void CraftingMenu::click(Slot s, int button, bool shift) {
     std::optional<Stack>& slot = at(s);
     if (s.kind == Slot::Result) {
@@ -92,7 +115,12 @@ void CraftingMenu::click(Slot s, int button, bool shift) {
     if (shift) {
         if (!slot) return;
         Stack moving = *slot;
-        if (s.kind == Slot::Inv && s.index < Inventory::HOTBAR)
+        if (s.kind == Slot::Inv && chest[0])
+            merge_into_chest(moving);  // inventory -> chest
+        else if (s.kind == Slot::Chest) {
+            merge(moving, 0, Inventory::HOTBAR, true);  // chest -> hotbar from the right, then storage from the bottom
+            if (moving.count) merge(moving, Inventory::HOTBAR, Inventory::SIZE, true);
+        } else if (s.kind == Slot::Inv && s.index < Inventory::HOTBAR)
             merge(moving, Inventory::HOTBAR, Inventory::SIZE, false);  // hotbar -> storage
         else if (s.kind == Slot::Inv)
             merge(moving, 0, Inventory::HOTBAR, false);  // storage -> hotbar
