@@ -607,7 +607,7 @@ void Game::update(double dt) {
         PlayerPose pose{player.x, player.y, player.z, yaw, pitch, walk_phase, walk_amount, sneaking};
         pose.sitting = riding != nullptr;
         pose.armor = worn_armor(inventory);
-        add_lit(player_parts(pose), player);
+        add_lit(player_parts(pose), riding ? riding->body : player);  // a rider's feet are down in the vehicle's floor
     }
     renderer->set_instances(std::move(parts));
     renderer->set_outline(target && !targeting_mob() ? std::optional<glm::ivec3>(target->block) : std::nullopt);
