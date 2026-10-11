@@ -8,11 +8,15 @@
 
 constexpr int TILE = 16;
 constexpr int ATLAS_COLS = 16;
-constexpr int ATLAS_ROWS = 40;  // world tiles first, item tiles from ITEM_TILE_BASE (icons.h), then:
+constexpr int ATLAS_ROWS = 48;  // world tiles first, item tiles from ITEM_TILE_BASE (icons.h), then:
 // The HUD font in black (for the text on signs), 96 x 48 pixels from this tile's top-left corner,
 // laid out like make_font_image(); then the paintings (painting.h), each row by row from its top-left.
 constexpr int FONT_TILE_BASE = 512;
 constexpr int PAINTING_TILE_BASE = 560;
+// The map being held (M15): 128 x 128 pixels, 8 x 8 tiles from this one's top-left corner, drawn
+// in by the game. Then the player's marker on a map, in the same row.
+constexpr int MAP_TILE_BASE = 640;
+constexpr int MAP_MARKER_TILE = 648;
 
 // UV rectangle (u0, v0, u1, v1) of an atlas tile. The atlas is uploaded so v = 1 is its top row.
 std::array<float, 4> tile_uv(int index);

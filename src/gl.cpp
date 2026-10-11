@@ -19,6 +19,7 @@ PFN_glGenTextures pc_glGenTextures = nullptr;
 PFN_glDeleteTextures pc_glDeleteTextures = nullptr;
 PFN_glBindTexture pc_glBindTexture = nullptr;
 PFN_glTexImage2D pc_glTexImage2D = nullptr;
+PFN_glTexSubImage2D pc_glTexSubImage2D = nullptr;
 PFN_glTexParameteri pc_glTexParameteri = nullptr;
 PFN_glActiveTexture pc_glActiveTexture = nullptr;
 PFN_glPixelStorei pc_glPixelStorei = nullptr;
@@ -83,6 +84,7 @@ bool load_gl() {
     ok &= load(pc_glDeleteTextures, "glDeleteTextures");
     ok &= load(pc_glBindTexture, "glBindTexture");
     ok &= load(pc_glTexImage2D, "glTexImage2D");
+    ok &= load(pc_glTexSubImage2D, "glTexSubImage2D");
     ok &= load(pc_glTexParameteri, "glTexParameteri");
     ok &= load(pc_glActiveTexture, "glActiveTexture");
     ok &= load(pc_glPixelStorei, "glPixelStorei");
