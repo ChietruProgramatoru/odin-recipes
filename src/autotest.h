@@ -2,7 +2,7 @@
 // Drives the real program for a few hundred frames: the menus, creating a world, mining, building,
 // cows, eating, fall damage, furnaces, tools, armor, the bow, fire and buckets, a tour of the biomes and caves, the F3 and F5 views,
 // monsters, explosions and dying, the first-person hand, flowing water and lava, falling sand and fire, farming, animals,
-// rails, minecarts and boats, the Nether,
+// rails, minecarts and boats, redstone and pistons, the Nether,
 // the pause menu,
 // then saving, quitting to the
 // title and loading the world again. Saves screenshots to OUT_DIR and writes OUT_DIR/report.txt.
@@ -53,6 +53,7 @@ private:
     void nature(App& app, Game& g);    // saplings and trees, leaf decay, cactus, cobwebs, snow and ice melting
     void animals(App& app, Game& g);   // every animal, saddles and riding, shearing, dye, milk, taming wolves, eggs
     void transport(App& app, Game& g); // rails, riding a minecart, the chest and furnace minecarts, a boat
+    void redstone(App& app, Game& g);  // M13: levers, dust, torches, repeaters, doors, pistons, plates, a dispenser
     void nether(App& app, Game& g);    // M14: lighting a portal, the Nether, pigmen, a ghast's fireball, back again
     void reload(App& app);      // quit to the title and load the world again
 
@@ -112,6 +113,11 @@ private:
     Weather build_weather_;
     int64_t build_time_ = 0;
     bool build_creative_ = false;
+    // Redstone: a stone floor beyond the garden, and where the player was before.
+    glm::ivec3 lab_{0};
+    glm::dvec3 lab_return_{0};
+    bool lab_creative_ = false, lab_raining_ = false;
+    size_t lab_arrows_ = 0;
     // Nature: a grass platform next to the fluids one.
     glm::ivec3 garden_{0};
     glm::dvec3 garden_return_{0};

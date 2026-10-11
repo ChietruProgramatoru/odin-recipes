@@ -2,6 +2,7 @@
 
 #include "icons.h"
 #include "items.h"
+#include "redstone.h"
 
 namespace {
 
@@ -113,6 +114,21 @@ const BlockInfo BLOCKS[BLOCK_COUNT] = {
     {"Cactus", {T_CACTUS_TOP, T_CACTUS_SIDE, T_CACTUS_BOTTOM}, 0.4f, CACTUS},
     {"Cobweb", {T_COBWEB, T_COBWEB, T_COBWEB}, 4.0f, STRING},
     {"Snow Layer", {IT_SNOW, IT_SNOW, IT_SNOW}, 0.1f, SNOWBALL},
+    // Redstone (M13). The piston's head drops its piston (redstone.h's redstone_drop).
+    {"Redstone Dust", {T_WIRE_CROSS, T_WIRE_CROSS, T_WIRE_CROSS}, 0.0f, REDSTONE},
+    {"Redstone Torch", {T_REDSTONE_TORCH_ON, T_REDSTONE_TORCH_ON, T_REDSTONE_TORCH_ON}, 0.0f, REDSTONE_TORCH},
+    {"Redstone Torch", {T_REDSTONE_TORCH_OFF, T_REDSTONE_TORCH_OFF, T_REDSTONE_TORCH_OFF}, 0.0f, REDSTONE_TORCH},
+    {"Lever", {T_COBBLE, T_COBBLE, T_COBBLE}, 0.5f, LEVER},
+    {"Button", {T_STONE, T_STONE, T_STONE}, 0.5f, STONE_BUTTON},
+    {"Stone Pressure Plate", {T_STONE, T_STONE, T_STONE}, 0.5f, STONE_PLATE},
+    {"Wooden Pressure Plate", {T_PLANKS, T_PLANKS, T_PLANKS}, 0.5f, WOOD_PLATE},
+    {"Redstone Repeater", {T_REPEATER_OFF, IT_SLAB_TOP, IT_SLAB_TOP}, 0.0f, REPEATER},
+    {"Redstone Repeater", {T_REPEATER_ON, IT_SLAB_TOP, IT_SLAB_TOP}, 0.0f, REPEATER},
+    {"Piston", {IT_PISTON_TOP, IT_PISTON_SIDE, T_PISTON_BOTTOM}, 0.5f, PISTON},
+    {"Sticky Piston", {IT_STICKY_TOP, IT_PISTON_SIDE, T_PISTON_BOTTOM}, 0.5f, STICKY_PISTON},
+    {"Piston", {IT_PISTON_TOP, IT_PISTON_SIDE, IT_PISTON_SIDE}, 0.5f, std::nullopt},
+    {"Dispenser", {IT_FURNACE_TOP, IT_FURNACE_SIDE, IT_FURNACE_TOP}, 3.5f, DISPENSER},
+    {"Redstone Ore", {T_REDSTONE_ORE, T_REDSTONE_ORE, T_REDSTONE_ORE}, 3.0f, REDSTONE, 4, 5},
     // The Nether (M14). Beta: a portal can't be mined; breaking its frame (or an explosion) takes it away.
     {"Portal", {T_PORTAL, T_PORTAL, T_PORTAL}, std::nullopt, std::nullopt},
 };
@@ -161,12 +177,12 @@ float block_height(BlockId id) {
     return 1.0f;
 }
 bool falls(BlockId id) { return id == SAND || id == GRAVEL; }
-bool is_shaped(BlockId id) { return id == SLAB || (id >= WOOD_STAIRS && id <= PAINTING_BLOCK); }
+bool is_shaped(BlockId id) { return id == SLAB || (id >= WOOD_STAIRS && id <= PAINTING_BLOCK) || is_redstone_shaped(id); }
 bool is_portal(BlockId id) { return id == PORTAL; }
 bool is_door(BlockId id) { return id == WOOD_DOOR_BLOCK || id == IRON_DOOR_BLOCK; }
 // Signs and paintings have nothing to bump into (Beta); they are aimed at by their boxes.
 bool is_thin(BlockId id) { return is_torch(id) || id == FIRE || is_plant(id) || id == SIGN_POST || id == WALL_SIGN || id == PAINTING_BLOCK ||
-                                    is_rail(id) || id == SNOW_LAYER || id == PORTAL; }
+                                    is_rail(id) || id == SNOW_LAYER || is_redstone_thin(id) || id == PORTAL; }
 bool is_solid(BlockId id) { return id != AIR && !is_fluid(id) && !is_thin(id); }
 bool is_opaque(BlockId id) {
     return id != AIR && !is_fluid(id) && id != ICE && !is_cutout(id) && !is_thin(id) && !is_bed(id) && id != CAKE_BLOCK &&
@@ -202,5 +218,7 @@ int light_emission(BlockId id) {
     if (is_torch(id)) return 14;
     if (id == BROWN_MUSHROOM) return 1;  // Beta's brown mushrooms glow very faintly
     if (is_lit_furnace(id)) return 13;
+    if (id == GLOWING_REDSTONE_ORE || id == REPEATER_ON) return 9;  // Beta's 0.625
+    if (id == REDSTONE_TORCH_ON) return 7;                          // and 0.5
     return 0;
 }

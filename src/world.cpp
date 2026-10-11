@@ -4,6 +4,7 @@
 #include <cmath>
 #include <limits>
 
+#include <glm/geometric.hpp>
 #include <glm/vec2.hpp>
 
 #include "bed.h"
@@ -12,6 +13,7 @@
 #include "icons.h"
 #include "painting.h"
 #include "rails.h"
+#include "redstone.h"
 #include "textures.h"
 
 namespace {
@@ -251,7 +253,7 @@ std::vector<ChunkPos> World::set_block(int x, int y, int z, BlockId block, int d
     const int index = Chunk::index(lx, y, lz);
     if (c.blocks[index] != block) {
         // What the old block kept goes with it (the game empties a chest or jukebox before this).
-        if (block != CHEST) c.chests.erase(index);
+        if (block != CHEST && block != DISPENSER_BLOCK) c.chests.erase(index);  // a dispenser keeps its 9 in a chest's slots
         if (block != SIGN_POST && block != WALL_SIGN) c.signs.erase(index);
         if (block != PAINTING_BLOCK) c.paintings.erase(index);
         if (block != NOTE_BLOCK) c.notes.erase(index);
@@ -470,31 +472,36 @@ namespace {
 float sky_of(uint8_t l) { return static_cast<float>(l >> 4) / MAX_LIGHT; }
 float block_of(uint8_t l) { return static_cast<float>(l & 15) / MAX_LIGHT; }
 
-// A torch: a thin stick 2/16 wide and 10/16 tall. Wall torches lean out from their wall.
+// A torch: a thin stick 2/16 wide and `h` tall (10/16 for a torch) standing at `base` (the middle of
+// its foot). A wall torch leans out from its wall (`lean` points away from it).
+void add_torch_stick(MeshData& mesh, glm::vec3 base, float h, int tile, glm::vec3 lean, uint8_t light) {
+    constexpr float W = 2.0f / 16;
+    const bool wall = lean != glm::vec3(0);
+    auto uv = tile_uv(tile);
+    auto sub = [&](float px0, float py0, float px1, float py1) {  // pixel rectangle of the tile, rows from the top
+        float du = (uv[2] - uv[0]) / 16, dv = (uv[3] - uv[1]) / 16;
+        return std::array<float, 4>{uv[0] + px0 * du, uv[3] - py1 * dv, uv[0] + px1 * du, uv[3] - py0 * dv};
+    };
+    const auto side_uv = sub(7, 6, 9, 6 + h * 16), cap_uv = sub(7, 6, 9, 8);
+    for (const FaceDef& f : face_defs()) {
+        std::array<glm::vec3, 4> pts;
+        for (int c = 0; c < 4; ++c) {
+            glm::vec3 k(f.corners[c]);
+            glm::vec3 p((k.x - 0.5f) * W, k.y * h, (k.z - 0.5f) * W);
+            if (wall) p += lean * (p.y * 0.4f - 0.35f) + glm::vec3(0, 0.2f, 0);
+            pts[c] = p + base;
+        }
+        mesh.quad_points(pts, f.slot == 1 ? side_uv : cap_uv, 1.0f, sky_of(light), block_of(light));
+    }
+}
+
 void add_torch(MeshData& mesh, float wx, float wy, float wz, BlockId blk, uint8_t light) {
-    constexpr float W = 2.0f / 16, H = 10.0f / 16;
     glm::vec3 lean(0);
     if (blk == TORCH_WALL_WEST) lean = {1, 0, 0};
     if (blk == TORCH_WALL_EAST) lean = {-1, 0, 0};
     if (blk == TORCH_WALL_NORTH) lean = {0, 0, 1};
     if (blk == TORCH_WALL_SOUTH) lean = {0, 0, -1};
-    const bool wall = blk != TORCH;
-    auto uv = tile_uv(T_TORCH);
-    auto sub = [&](float px0, float py0, float px1, float py1) {  // pixel rectangle of the tile, rows from the top
-        float du = (uv[2] - uv[0]) / 16, dv = (uv[3] - uv[1]) / 16;
-        return std::array<float, 4>{uv[0] + px0 * du, uv[3] - py1 * dv, uv[0] + px1 * du, uv[3] - py0 * dv};
-    };
-    const auto side_uv = sub(7, 6, 9, 16), cap_uv = sub(7, 6, 9, 8);
-    for (const FaceDef& f : face_defs()) {
-        std::array<glm::vec3, 4> pts;
-        for (int c = 0; c < 4; ++c) {
-            glm::vec3 k(f.corners[c]);
-            glm::vec3 p(0.5f + (k.x - 0.5f) * W, k.y * H, 0.5f + (k.z - 0.5f) * W);
-            if (wall) p += lean * (p.y * 0.4f - 0.35f) + glm::vec3(0, 0.2f, 0);
-            pts[c] = p + glm::vec3(wx, wy, wz);
-        }
-        mesh.quad_points(pts, f.slot == 1 ? side_uv : cap_uv, 1.0f, sky_of(light), block_of(light));
-    }
+    add_torch_stick(mesh, {wx + 0.5f, wy, wz + 0.5f}, 10.0f / 16, T_TORCH, lean, light);
 }
 
 // Fire: two crossed sheets of flame, drawn from both sides so it shows from every angle.
@@ -639,15 +646,19 @@ struct ShapeCtx {
     int i;  // padded index of the cell
     glm::vec3 o;  // the cell's corner in the world
     bool light_from_neighbours;  // slabs and stairs are dark inside: use the light next to each face
+    const Padded* D = nullptr;   // the data values (dust looks at the repeaters beside it)
 
     uint8_t light_towards(glm::ivec3 n) const { return light_from_neighbours ? L[i + off(n)] : L[i]; }
 };
 
-// A box in a cell, each face textured with the part of its tile the box covers (top, side, bottom
-// tiles). Faces on the cell's edge against an opaque neighbour aren't drawn.
-void shape_box(const ShapeCtx& c, glm::vec3 lo, glm::vec3 hi, const std::array<int, 3>& tiles) {
+// A box in a cell, each face textured with the part of its tile the box covers: tile_for(normal)
+// (a face whose tile is -1 isn't drawn). Faces on the cell's edge against an opaque neighbour aren't drawn.
+template <typename TileFor>
+void shape_box_by(const ShapeCtx& c, glm::vec3 lo, glm::vec3 hi, TileFor&& tile_for) {
     for (const FaceDef& f : face_defs()) {
         const glm::ivec3 n = f.normal;
+        const int tile = tile_for(n, f.slot);
+        if (tile < 0) continue;
         const int axis = n.x ? 0 : n.y ? 1 : 2;
         const bool on_edge = n[axis] > 0 ? hi[axis] >= 1.0f : lo[axis] <= 0.0f;
         if (on_edge && OPAQUE[c.P[c.i + off(n)]]) continue;
@@ -663,9 +674,14 @@ void shape_box(const ShapeCtx& c, glm::vec3 lo, glm::vec3 hi, const std::array<i
         }
         v0 = std::max(0.0f, v0);  // a fence post's top reaches past the cell
         const uint8_t light = c.light_towards(on_edge || c.light_from_neighbours ? n : glm::ivec3(0));
-        c.mesh.quad_points(pts, sub_uv(tiles[f.slot], u0 * 16, v0 * 16, u1 * 16, v1 * 16), f.light, sky_of(light),
+        c.mesh.quad_points(pts, sub_uv(tile, u0 * 16, v0 * 16, u1 * 16, v1 * 16), f.light, sky_of(light),
                            block_of(light));
     }
+}
+
+// The same with the top, side and bottom tiles.
+void shape_box(const ShapeCtx& c, glm::vec3 lo, glm::vec3 hi, const std::array<int, 3>& tiles) {
+    shape_box_by(c, lo, hi, [&](glm::ivec3, int slot) { return tiles[slot]; });
 }
 
 // A flat picture (the ladder): one sheet `gap` in front of the wall on side `facing`, drawn from both sides.
@@ -737,6 +753,179 @@ void sign_text(const ShapeCtx& c, const SignText& text, glm::vec3 centre, glm::v
             front_quad(c.mesh, bl, br, br + up * (CELL_H * PX), tl, {u0, v0, u1, v1}, 0.8f, sky_of(light), block_of(light));
             pen += right * (GLYPH_ADVANCE * PX);
         }
+    }
+}
+
+// --- Redstone (M13) ---------------------------------------------------------------------------
+
+// Dust's colour by its power (Beta's RenderBlocks): dark red when off, bright red at full power.
+Rgb8 wire_colour(int power) {
+    const float f = power / 15.0f;
+    const float r = power == 0 ? 0.3f : f * 0.6f + 0.4f, g = std::max(0.0f, f * f * 0.7f - 0.5f), b = std::max(0.0f, f * f * 0.6f - 0.7f);
+    return {static_cast<uint8_t>(r * 255), static_cast<uint8_t>(g * 255), static_cast<uint8_t>(b * 255)};
+}
+
+// Does the dust in padded cell i join towards d? (redstone.h's wire_joins, on the padded copy.)
+bool padded_wire_joins(const ShapeCtx& c, glm::ivec3 d) {
+    const int n = c.i + off(d);
+    const BlockId b = c.P[n];
+    switch (b) {
+        case REDSTONE_WIRE: case REDSTONE_TORCH_ON: case REDSTONE_TORCH_OFF: case LEVER_BLOCK: case BUTTON_BLOCK:
+        case STONE_PLATE_BLOCK: case WOOD_PLATE_BLOCK: case DETECTOR_RAIL:
+            return true;
+        case REPEATER_OFF: case REPEATER_ON: {
+            const glm::ivec3 f = facing_dir(repeater_facing(c.D ? (*c.D)[n] : 0));
+            return f == d || f == -d;
+        }
+        default: break;
+    }
+    if (!OPAQUE[b] && c.P[n - LAYER] == REDSTONE_WIRE) return true;
+    return !OPAQUE[c.P[c.i + LAYER]] && c.P[n + LAYER] == REDSTONE_WIRE;
+}
+
+// Both sides of a sheet.
+void both_sides(MeshData& m, const std::array<glm::vec3, 4>& p, const std::array<float, 4>& uv, float shade, uint8_t light,
+                Rgb8 tint = {255, 255, 255}) {
+    m.quad_points(p, uv, shade, sky_of(light), block_of(light), tint);
+    m.quad_points({p[1], p[0], p[3], p[2]}, {uv[2], uv[1], uv[0], uv[3]}, shade, sky_of(light), block_of(light), tint);
+}
+
+// Dust: flat on the block below, a line where it runs straight and a cross (with the arms it doesn't
+// need cut off) where it turns or meets more, and up the side of a block to dust on top of it.
+void add_wire(const ShapeCtx& c, int power) {
+    const uint8_t light = c.L[c.i];
+    const Rgb8 tint = wire_colour(power);
+    std::array<bool, 4> j;  // by facing: south, west, north, east
+    for (int f = 0; f < 4; ++f) j[f] = padded_wire_joins(c, facing_dir(f));
+    const bool along_z = j[0] || j[2], along_x = j[1] || j[3];
+    const float y = c.o.y + 1.0f / 64;
+    auto flat = [&](float x0, float z0, float x1, float z1, const std::array<float, 4>& uv) {
+        both_sides(c.mesh, {c.o + glm::vec3(x0, 0, z1) + glm::vec3(0, y - c.o.y, 0), c.o + glm::vec3(x1, y - c.o.y, z1),
+                            c.o + glm::vec3(x1, y - c.o.y, z0), c.o + glm::vec3(x0, y - c.o.y, z0)},
+                   uv, 1.0f, light, tint);
+    };
+    if (along_z && !along_x) {
+        flat(0, 0, 1, 1, tile_uv(T_WIRE_LINE));
+    } else if (along_x && !along_z) {
+        // The line tile turned a quarter: its top towards +x.
+        const auto uv = tile_uv(T_WIRE_LINE);
+        const float h = y - c.o.y;
+        c.mesh.quad_points({c.o + glm::vec3(0, h, 0), c.o + glm::vec3(0, h, 1), c.o + glm::vec3(1, h, 1), c.o + glm::vec3(1, h, 0)}, uv,
+                           1.0f, sky_of(light), block_of(light), tint);
+        c.mesh.quad_points({c.o + glm::vec3(0, h, 1), c.o + glm::vec3(0, h, 0), c.o + glm::vec3(1, h, 0), c.o + glm::vec3(1, h, 1)}, uv,
+                           1.0f, sky_of(light), block_of(light), tint);
+    } else {
+        const bool any = along_x || along_z;
+        constexpr float A = 5.0f / 16, B = 11.0f / 16;
+        const float x0 = !any || j[1] ? 0 : A, x1 = !any || j[3] ? 1 : B, z0 = !any || j[2] ? 0 : A, z1 = !any || j[0] ? 1 : B;
+        flat(x0, z0, x1, z1, sub_uv(T_WIRE_CROSS, x0 * 16, z0 * 16, x1 * 16, z1 * 16));
+    }
+    // Up the side of the block beside it, to dust on top of that.
+    if (OPAQUE[c.P[c.i + LAYER]]) return;
+    for (int f = 0; f < 4; ++f) {
+        const glm::ivec3 d = facing_dir(f);
+        const int n = c.i + off(d);
+        if (!OPAQUE[c.P[n]] || c.P[n + LAYER] != REDSTONE_WIRE) continue;
+        const glm::vec3 centre = c.o + glm::vec3(0.5f) + glm::vec3(d) * (0.5f - 1.0f / 64);
+        const glm::vec3 right(d.z, 0, -d.x), up(0, 1, 0);
+        const glm::vec3 bl = centre - right * 0.5f - up * 0.5f;
+        both_sides(c.mesh, {bl, bl + right, bl + right + up, bl + up}, tile_uv(T_WIRE_LINE), 0.8f, light, tint);
+    }
+}
+
+// A stick from `a` to `b`, 2/16 thick, with `tile`'s middle two columns on its sides (a lever's handle).
+void add_stick(const ShapeCtx& c, glm::vec3 a, glm::vec3 b, int tile) {
+    constexpr float W = 1.0f / 16;
+    const uint8_t light = c.L[c.i];
+    const glm::vec3 axis = glm::normalize(b - a);
+    const glm::vec3 ref = std::abs(axis.y) > 0.9f ? glm::vec3(1, 0, 0) : glm::vec3(0, 1, 0);
+    const glm::vec3 u = glm::normalize(glm::cross(axis, ref)) * W, v = glm::normalize(glm::cross(axis, u)) * W;
+    const float len = glm::length(b - a) * 16;
+    const auto side = sub_uv(tile, 7, 0, 9, std::min(16.0f, len)), cap = sub_uv(tile, 7, 0, 9, 2);
+    const glm::vec3 corners[4] = {u + v, u - v, -u - v, -u + v};
+    for (int k = 0; k < 4; ++k) {
+        const glm::vec3 p = corners[k], q = corners[(k + 1) % 4];
+        both_sides(c.mesh, {a + p, a + q, b + q, b + p}, side, 0.8f, light);
+    }
+    both_sides(c.mesh, {b + corners[0], b + corners[1], b + corners[2], b + corners[3]}, cap, 1.0f, light);
+}
+
+// The faces of a piston (or a dispenser), which point the way its data value says.
+int redstone_cube_tile(BlockId blk, int data, glm::ivec3 n) {
+    if (blk == DISPENSER_BLOCK) {
+        if (n == facing_dir(data & 3)) return IT_DISPENSER_FRONT;
+        return n.y != 0 ? IT_FURNACE_TOP : IT_FURNACE_SIDE;
+    }
+    const glm::ivec3 d = dir6(data & 7);
+    if (n == d) return (data & PISTON_EXTENDED) ? T_PISTON_INNER : blk == STICKY_PISTON_BASE ? IT_STICKY_TOP : IT_PISTON_TOP;
+    if (n == -d) return T_PISTON_BOTTOM;
+    return IT_PISTON_SIDE;
+}
+
+void add_redstone(const ShapeCtx& c, BlockId blk, int data) {
+    constexpr float PX = 1.0f / 16;
+    switch (blk) {
+        case REDSTONE_WIRE: add_wire(c, data); return;
+        case BUTTON_BLOCK: case STONE_PLATE_BLOCK: case WOOD_PLATE_BLOCK: {
+            const int t = blk == WOOD_PLATE_BLOCK ? T_PLANKS : T_STONE;
+            for (const Box& b : redstone_boxes(blk, data, false)) shape_box(c, b.lo, b.hi, {t, t, t});
+            return;
+        }
+        case LEVER_BLOCK: {
+            // A cobblestone base on the floor or the wall, and the handle leaning one way when off
+            // and the other way when on.
+            const int attach = data & 7;
+            const bool on = data & LEVER_ON;
+            const float tilt = 0.7f;  // about 40 degrees
+            if (attach == 0) {
+                shape_box(c, {5 * PX, 0, 4 * PX}, {11 * PX, 3 * PX, 12 * PX}, {T_COBBLE, T_COBBLE, T_COBBLE});
+                const glm::vec3 a = c.o + glm::vec3(0.5f, 2 * PX, 0.5f);
+                const glm::vec3 dir(0, std::cos(tilt), (on ? 1 : -1) * std::sin(tilt));
+                add_stick(c, a, a + dir * (9 * PX), T_LEVER);
+            } else {
+                const glm::ivec3 d = facing_dir(attach - 1);
+                glm::vec3 lo(5 * PX, 4 * PX, 5 * PX), hi(11 * PX, 12 * PX, 11 * PX);
+                for (int axis : {0, 2}) {
+                    if (d[axis] > 0) lo[axis] = 13 * PX, hi[axis] = 1;
+                    if (d[axis] < 0) lo[axis] = 0, hi[axis] = 3 * PX;
+                }
+                shape_box(c, lo, hi, {T_COBBLE, T_COBBLE, T_COBBLE});
+                const glm::vec3 a = c.o + glm::vec3(0.5f) + glm::vec3(d) * (0.5f - 2 * PX);
+                const glm::vec3 dir = -glm::vec3(d) * std::cos(tilt) + glm::vec3(0, on ? -std::sin(tilt) : std::sin(tilt), 0);
+                add_stick(c, a, a + dir * (9 * PX), T_LEVER);
+            }
+            return;
+        }
+        case REPEATER_OFF: case REPEATER_ON: {
+            // A stone slab 2/16 thick, the arrow on top pointing where the power goes, and two little
+            // torches: one near the front and one that moves back with each delay step.
+            shape_box_by(c, {0, 0, 0}, {1, 2 * PX, 1}, [](glm::ivec3 n, int) { return n.y > 0 ? -1 : static_cast<int>(IT_SLAB_TOP); });
+            const int f = repeater_facing(data), turns = (f + 2) & 3;
+            std::array<glm::vec2, 4> k = {glm::vec2(0, 1), glm::vec2(1, 1), glm::vec2(1, 0), glm::vec2(0, 0)};
+            for (int t = 0; t < turns; ++t)
+                for (glm::vec2& p : k) p = glm::vec2(1 - p.y, p.x);
+            std::array<glm::vec3, 4> pts;
+            for (int i = 0; i < 4; ++i) pts[i] = c.o + glm::vec3(k[i].x, 2 * PX, k[i].y);
+            const uint8_t light = c.L[c.i];
+            both_sides(c.mesh, pts, tile_uv(blk == REPEATER_ON ? T_REPEATER_ON : T_REPEATER_OFF), 1.0f, light);
+            const glm::vec3 out(facing_dir(f));
+            const int torch = blk == REPEATER_ON ? T_REDSTONE_TORCH_ON : T_REDSTONE_TORCH_OFF;
+            const glm::vec3 mid = c.o + glm::vec3(0.5f, 2 * PX, 0.5f);
+            add_torch_stick(c.mesh, mid + out * (4 * PX), 5 * PX, torch, glm::vec3(0), light);
+            add_torch_stick(c.mesh, mid - out * ((repeater_delay(data) * 2 - 1) * PX), 5 * PX, torch, glm::vec3(0), light);
+            return;
+        }
+        case PISTON_HEAD: {
+            const glm::ivec3 d = dir6(data & 7);
+            const int front = (data & PISTON_HEAD_STICKY) ? IT_STICKY_TOP : IT_PISTON_TOP;
+            const auto boxes = redstone_boxes(blk, data, false);
+            shape_box_by(c, boxes[0].lo, boxes[0].hi, [&](glm::ivec3 n, int) {
+                return n == d ? front : n == -d ? static_cast<int>(IT_PISTON_TOP) : static_cast<int>(IT_PISTON_SIDE);
+            });
+            shape_box_by(c, boxes[1].lo, boxes[1].hi, [&](glm::ivec3 n, int) { return n == d || n == -d ? -1 : static_cast<int>(T_PLANKS); });
+            return;
+        }
+        default: return;
     }
 }
 
@@ -820,7 +1009,7 @@ void add_shaped(const ShapeCtx& c, BlockId blk, int data, const MeshExtras* extr
             }
             return;
         }
-        default: return;
+        default: add_redstone(c, blk, data); return;
     }
 }
 
@@ -944,6 +1133,13 @@ ChunkMesh build_mesh(const Padded& P, const PaddedLight& L, int cx, int cz, int 
                     add_torch(mesh.solid, wx, wy, wz, blk, L[i]);
                     continue;
                 }
+                if (is_redstone_torch(blk)) {
+                    const int attach = D(i) & 7;
+                    const glm::vec3 lean = attach ? -glm::vec3(facing_dir(attach - 1)) : glm::vec3(0);
+                    add_torch_stick(mesh.solid, {wx + 0.5f, wy, wz + 0.5f}, 10.0f / 16,
+                                    blk == REDSTONE_TORCH_ON ? T_REDSTONE_TORCH_ON : T_REDSTONE_TORCH_OFF, lean, L[i]);
+                    continue;
+                }
                 if (blk == FIRE) {
                     add_fire(mesh.solid, wx, wy, wz, L[i]);
                     continue;
@@ -979,7 +1175,7 @@ ChunkMesh build_mesh(const Padded& P, const PaddedLight& L, int cx, int cz, int 
                     continue;
                 }
                 if (is_shaped(blk)) {
-                    const ShapeCtx ctx{mesh.solid, P, L, i, {wx, wy, wz}, light_opacity(blk) > 0};
+                    const ShapeCtx ctx{mesh.solid, P, L, i, {wx, wy, wz}, light_opacity(blk) > 0, data};
                     add_shaped(ctx, blk, D(i), extras, (y << 8) | (z << 4) | x);
                     continue;
                 }
@@ -1064,6 +1260,7 @@ ChunkMesh build_mesh(const Padded& P, const PaddedLight& L, int cx, int cz, int 
                                               : (snowy && f.def->slot == 1)         ? GRASS_SNOW_SIDE_UV
                                                                                    : uvs[f.def->slot];
                     if (data_tiles) uv = tile_uv((*data_tiles)[f.def->slot]);
+                    if (is_piston(blk) || blk == DISPENSER_BLOCK) uv = tile_uv(redstone_cube_tile(blk, D(i), f.def->normal));
                     if (blk == CHEST && f.def->normal.y == 0) {
                         // Side faces are drawn mirrored (see FACE_DEFS), so the half on the viewer's
                         // left takes the right half's picture.

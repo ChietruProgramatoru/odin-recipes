@@ -268,6 +268,22 @@ public:
     void get_out();
     // A rail is being placed at a cell (the block is already set): join it to the rails around it.
     void lay_rail(glm::ivec3 pos);
+    // Redstone (game_redstone.cpp). Is a player, mob (or for a wooden plate, an item or arrow) on
+    // the plate in this cell?
+    bool on_plate(glm::ivec3 p, BlockId plate);
+    // Each tick: plates under feet go down, touched redstone ore glows.
+    void tick_redstone_inputs(BlockEvents& events);
+    // What the circuits did: TNT, note blocks, dispensers, pistons, clicks and dropped parts.
+    void apply_redstone(RedstoneEvents& events);
+    // Players, mobs and items in the cells a piston moved blocks into go along with them.
+    void push_entities(const PistonMove& move);
+    // Right click with dust, a torch, lever, button, plate, repeater, piston or dispenser.
+    bool place_redstone(ItemId item);
+    // Right click on a lever, button or repeater. False for anything else.
+    bool use_redstone(glm::ivec3 pos);
+    void open_dispenser(glm::ivec3 pos);
+    // A powered dispenser shoots an arrow or throws out one item from a random slot.
+    void dispense(glm::ivec3 pos);
     // The Nether (game_nether.cpp). Go to the other dimension through the portal the player stands
     // in: to the portal linked to it there, or a new one built near the matching spot (8 to 1).
     void travel_through_portal();

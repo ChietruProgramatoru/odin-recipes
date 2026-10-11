@@ -86,6 +86,7 @@ add_library(petrutz_core STATIC
   src/painting.cpp
   src/blockupdate.cpp
   src/rails.cpp
+  src/redstone.cpp
   src/vehicles.cpp
   src/nature.cpp
   src/nether.cpp
@@ -103,6 +104,7 @@ add_library(petrutz_core STATIC
   src/sound.cpp
   src/textures.cpp
   src/building_art.cpp
+  src/redstone_art.cpp
   src/font.cpp
   src/png.cpp
   src/zlib.cpp
@@ -126,6 +128,7 @@ add_executable(PetrutzCraft
   src/menu.cpp
   src/game.cpp
   src/game_vehicles.cpp
+  src/game_redstone.cpp
   src/game_nether.cpp
   src/audio.cpp
   src/autotest.cpp)
@@ -164,6 +167,7 @@ add_executable(petrutz_tests
   tests/test_building.cpp
   tests/test_transport.cpp
   tests/test_nature.cpp
+  tests/test_redstone.cpp
   tests/test_nether.cpp)
 target_link_libraries(petrutz_tests PRIVATE petrutz_core doctest_header)
 add_test(NAME logic COMMAND petrutz_tests)

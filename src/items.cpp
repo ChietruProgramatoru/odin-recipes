@@ -49,11 +49,11 @@ Table build() {
         // The torch is a flat icon, added below; beds are placed from the BED item.
         // Farmland, crops, sugar cane and cake come from other items; flowers are flat icons below.
         // Wool, slabs, doors, signs and paintings are placed from their items; fences, ladders and
-        // trapdoors are flat icons, added below.
+        // trapdoors are flat icons, added below. Redstone's blocks come from their items (M13).
         if (b == WATER || b == LAVA || b == FIRE || is_torch(b) || is_bed(b) || (is_furnace(b) && b != FURNACE) ||
             is_plant(b) || b == FARMLAND || b == CAKE_BLOCK || b == WOOL || b == SLAB || b == DOUBLE_SLAB ||
             b == FENCE || b == LADDER || is_door(b) || b == TRAPDOOR || b == SIGN_POST || b == WALL_SIGN ||
-            b == PAINTING_BLOCK || is_rail(b) || b == SNOW_LAYER)
+            b == PAINTING_BLOCK || is_rail(b) || b == SNOW_LAYER || (b >= REDSTONE_WIRE && b <= GLOWING_REDSTONE_ORE))  // redstone: from its items
             continue;
         const BlockInfo* info = block_info(b);
         t.cube(b, info->name, info->tiles[0], info->tiles[1], info->tiles[1]);
@@ -216,7 +216,15 @@ int armor_slot(ItemId id) {
     return info ? info->armor_slot : -1;
 }
 
-bool placeable_future_block(ItemId id) { return (id >= WHITE_WOOL && id <= BLACK_WOOL) || (id >= STONE_SLAB && id <= COBBLE_SLAB); }
+bool placeable_future_block(ItemId id) {
+    switch (id) {
+        // Redstone (M13): placed by redstone.h's redstone_placement.
+        case REDSTONE_TORCH: case DISPENSER: case PISTON: case STICKY_PISTON: case LEVER: case STONE_BUTTON:
+        case STONE_PLATE: case WOOD_PLATE:
+            return true;
+        default: return (id >= WHITE_WOOL && id <= BLACK_WOOL) || (id >= STONE_SLAB && id <= COBBLE_SLAB);
+    }
+}
 
 bool looks_like_block(ItemId id) {
     const ItemInfo* info = item_info(id);

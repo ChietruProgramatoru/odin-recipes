@@ -120,6 +120,7 @@ void BlockUpdater::schedule(glm::ivec3 p, int delay) {
 void BlockUpdater::tick(Rng& rng, const RainCheck& rain, BlockEvents& out) {
     ++now_;
     for (glm::ivec3 p : world_.take_changes()) changed(p, out);
+    redstone_.tick(now_, plate_sensor_, out.redstone, out.dirty);
     for (int n = 0; n < MAX_TICKS_PER_TICK && !queue_.empty(); ++n) {
         auto [due, x, y, z] = *queue_.begin();
         if (due > now_) break;
@@ -142,7 +143,7 @@ void BlockUpdater::random_ticks(ChunkPos center, int radius, Rng& rng, const Rai
                 const int x = r & 15, z = (r >> 4) & 15, y = static_cast<int>((r >> 8) % HEIGHT);
                 const int at = Chunk::index(x, y, z);
                 const BlockId b = c->blocks[at];
-                if (b == LAVA || b == FIRE || b == ICE || b == SNOW_LAYER || b == CACTUS ||
+                if (b == LAVA || b == FIRE || b == ICE || b == SNOW_LAYER || b == CACTUS || b == GLOWING_REDSTONE_ORE ||
                     (is_leaves(b) && (c->data[at] & LEAVES_CHECK)))
                     random_tick({cx * CHUNK + x, y, cz * CHUNK + z}, rng, rain, out);
             }
@@ -173,6 +174,7 @@ void BlockUpdater::wake_chunk(const Chunk& c) {
         if (b != FIRE && !(is_fluid(b) && c.data[i] != 0)) continue;
         schedule({c.cx * CHUNK + (i & 15), i >> 8, c.cz * CHUNK + ((i >> 4) & 15)}, tick_rate(b));
     }
+    redstone_.wake_chunk(c, now_);
 }
 
 void BlockUpdater::set(glm::ivec3 p, BlockId b, int data, BlockEvents& out) {
@@ -188,6 +190,7 @@ bool BlockUpdater::area_loaded(glm::ivec3 p) {
 
 // A cell was set: the new block settles in (Beta's onBlockAdded), and its neighbours react.
 void BlockUpdater::changed(glm::ivec3 p, BlockEvents& out) {
+    redstone_.changed(p);
     const BlockId b = block_at(world_, p);
     if (is_fluid(b)) {
         if (!harden(p, out)) schedule(p, tick_rate(b));
@@ -266,6 +269,10 @@ void BlockUpdater::random_tick(glm::ivec3 p, Rng& rng, const RainCheck& rain, Bl
     }
     if (is_leaves(here)) {
         decay(p, out);
+        return;
+    }
+    if (here == GLOWING_REDSTONE_ORE) {  // touched redstone ore stops glowing after a while
+        set(p, REDSTONE_ORE, 0, out);
         return;
     }
     if (here == CACTUS) {

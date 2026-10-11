@@ -11,6 +11,7 @@
 
 constexpr int CHEST_SLOTS = 27;  // one chest; a double chest is two of them
 using ChestSlots = std::array<std::optional<Stack>, CHEST_SLOTS>;
+constexpr int DISPENSER_SLOTS = 9;  // a dispenser keeps its items in the first 9 of a ChestSlots
 
 constexpr int SIGN_LINES = 4, SIGN_LINE_LENGTH = 15;
 using SignText = std::array<std::string, SIGN_LINES>;

@@ -7,10 +7,13 @@
 
 #include "blockupdate.h"
 #include "combat.h"
+#include "icons.h"
+#include "items.h"
 #include "monsters.h"
 #include "nether.h"
 #include "save.h"
 #include "sky.h"
+#include "textures.h"
 #include "world.h"
 
 namespace {
@@ -314,4 +317,12 @@ TEST_CASE("a ghast floats, and shoots a fireball at a player it can see") {
     CHECK(back.deflected);
     CHECK(back.vel.x < 0);
     CHECK(back.owner == nullptr);
+}
+
+TEST_CASE("the atlas has room for every tile: world tiles, item faces and icons, then the font") {
+    CHECK(TILE_COUNT <= ITEM_TILE_BASE);
+    int top = 0;
+    for (int id = 0; id < ITEM_END; ++id)
+        if (const ItemInfo* info = item_info(static_cast<ItemId>(id))) top = std::max(top, info->icon.top);
+    CHECK(top < FONT_TILE_BASE);
 }
