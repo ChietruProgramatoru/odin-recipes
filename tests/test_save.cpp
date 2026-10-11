@@ -171,13 +171,19 @@ TEST_CASE("chunks keep their blocks, cow flag and entities") {
     c.data[Chunk::index(5, 100, 5)] = 6;
     c.data[Chunk::index(6, 100, 5)] = 15;
     c.mob_spawned = true;
-    c.entities.push_back({EntityRecord::COW, 50.5, 70, -30.25, 90, 8, 0, 0});
+    c.entities.push_back({EntityRecord::ANIMAL, 50.5, 70, -30.25, 90, 8, 0, 0});
     c.entities.push_back({EntityRecord::ITEM, 51.5, 70.5, -29.75, 0, 0, BEEF, 12.5f});
     c.entities.push_back({EntityRecord::ITEM, 52.5, 70.5, -29.75, 0, 0, STONE_PICKAXE, 1.0f, 1, 40});
     c.entities.push_back({EntityRecord::ITEM, 53.5, 70.5, -29.75, 0, 0, COBBLE, 1.0f, 37, 0});
     c.entities.push_back({EntityRecord::MONSTER, 54.5, 70, -29.5, 45, 16, 0, 0, 1, 0, 4, 4, 0});
     c.entities.push_back({EntityRecord::MONSTER, 55.5, 70, -29.5, 90, 20, 0, 0, 1, 0, 2, 1, EntityRecord::POWERED});
     c.entities.push_back({EntityRecord::MONSTER, 56.5, 70, -29.5, 0, 16, 0, 0, 1, 0, 3, 1, EntityRecord::JOCKEY});
+    // A sheared red sheep, a saddled pig, a chicken with its egg timer and a tamed sitting wolf.
+    c.entities.push_back({EntityRecord::ANIMAL, 57.5, 70, -29.5, 0, 6, 0, 0, 1, 0, 2, 14, EntityRecord::SHEARED});
+    c.entities.push_back({EntityRecord::ANIMAL, 58.5, 70, -29.5, 0, 10, 0, 0, 1, 0, 1, 0, EntityRecord::SADDLED});
+    c.entities.push_back({EntityRecord::ANIMAL, 59.5, 70, -29.5, 0, 4, 0, 4321, 1, 0, 3, 0, 0});
+    c.entities.push_back({EntityRecord::ANIMAL, 60.5, 70, -29.5, 0, 20, 0, 0, 1, 0, 5, 0,
+                          EntityRecord::TAMED | EntityRecord::SITTING});
     auto back = decode_chunk(encode_chunk(c), 3, -2);
     REQUIRE(back);
     CHECK(back->blocks == c.blocks);
@@ -192,6 +198,7 @@ TEST_CASE("chunks keep their blocks, cow flag and entities") {
     Chunk odd(0, 0);
     odd.entities.push_back({EntityRecord::MONSTER, 1.5, 70, 1.5, 0, 4, 0, 0, 1, 0, 4, 3, 0});
     odd.entities.push_back({EntityRecord::MONSTER, 1.5, 70, 1.5, 0, 20, 0, 0, 1, 0, 9, 1, 0});
+    odd.entities.push_back({EntityRecord::ANIMAL, 1.5, 70, 1.5, 0, 10, 0, 0, 1, 0, 9, 0, 0});  // no such animal
     auto odd_back = decode_chunk(encode_chunk(odd), 0, 0);
     REQUIRE(odd_back);
     REQUIRE(odd_back->entities.size() == 1);
@@ -237,7 +244,7 @@ TEST_CASE("a saved world loads with its edits and entities") {
         WorldSaver saver(dir.path);
         w.set_store(&saver.store());
         w.set_block(5, 90, 5, BRICK);
-        w.chunk(0, 0).entities.push_back({EntityRecord::COW, 5.5, 80, 5.5, 0, 10, 0, 0});
+        w.chunk(0, 0).entities.push_back({EntityRecord::ANIMAL, 5.5, 80, 5.5, 0, 10, 0, 0});
         std::vector<std::unique_ptr<Chunk>> copies;
         for (Chunk* c : w.all_chunks()) copies.push_back(std::make_unique<Chunk>(*c));
         saver.save(level, std::move(copies));
