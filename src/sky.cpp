@@ -60,6 +60,20 @@ float light_brightness(float level) {
     return (1 - f) / (f * 3 + 1) * 0.95f + 0.05f;
 }
 
+SkyState nether_sky() {
+    SkyState s;
+    s.nether = true;
+    s.angle = 0;
+    s.darkness = 0;
+    s.stars = 0;
+    s.sky = s.fog = {0.2f, 0.03f, 0.03f};  // Beta's Nether fog colour
+    s.sun_alpha = 0;
+    s.show_clouds = false;
+    s.fog_near = 0;
+    s.ambient = 0.1f;
+    return s;
+}
+
 float weather_darkness(float angle, float rain, float thunder) {
     return (1 - daylight_factor(angle) * (1 - rain * 5 / 16) * (1 - thunder * 5 / 16)) * 11;
 }

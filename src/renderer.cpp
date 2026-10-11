@@ -54,6 +54,7 @@ uniform float fog_start;
 uniform float fog_end;
 uniform float alpha_cut;
 uniform float darkness;
+uniform float ambient;  // brightness of light level 0
 uniform vec4 overlay;  // models: a colour mixed in by its alpha (the red flash of a hurt mob)
 out vec4 out_color;
 void main() {
@@ -67,7 +68,7 @@ void main() {
     c.rgb = mix(c.rgb, overlay.rgb, overlay.a);
     float level = clamp(max(v_light.x * 15.0 - darkness, v_light.y * 15.0), 0.0, 15.0);
     float f = 1.0 - level / 15.0;
-    float bright = (1.0 - f) / (f * 3.0 + 1.0) * 0.95 + 0.05;
+    float bright = (1.0 - f) / (f * 3.0 + 1.0) * (1.0 - ambient) + ambient;
     c.rgb *= v_shade * bright;
     float t = clamp((v_dist - fog_start) / (fog_end - fog_start), 0.0, 1.0);
     c.rgb = mix(c.rgb, fog_color.rgb, t);
@@ -617,9 +618,11 @@ void WorldRenderer::draw(int width, int height, glm::vec3 eye, glm::vec3 forward
     glUniformMatrix4fv(program_.uniform("mvp"), 1, GL_FALSE, glm::value_ptr(mvp));
     glUniform3f(program_.uniform("eye"), eye.x, eye.y, eye.z);
     glUniform4f(program_.uniform("fog_color"), sky.fog.r, sky.fog.g, sky.fog.b, 1);
-    glUniform1f(program_.uniform("fog_start"), far_dist * 0.55f);
+    glUniform1f(program_.uniform("fog_start"), far_dist * sky.fog_near);
     glUniform1f(program_.uniform("fog_end"), far_dist - 2);
     glUniform1f(program_.uniform("darkness"), sky.darkness);
+    ambient_ = sky.ambient;
+    glUniform1f(program_.uniform("ambient"), ambient_);
     glUniform1i(program_.uniform("atlas"), 0);
     GLint alpha_cut = program_.uniform("alpha_cut");
     GLint model = program_.uniform("model");
@@ -703,6 +706,7 @@ void WorldRenderer::draw_models(const std::vector<ModelPart>& parts, int x, int 
     glUniform1i(program_.uniform("atlas"), 0);
     glUniform1f(program_.uniform("alpha_cut"), 0.5f);
     glUniform1f(program_.uniform("darkness"), 0);  // full daylight, whatever the time
+    glUniform1f(program_.uniform("ambient"), ambient_);
     glUniform2f(program_.uniform("model_light"), 1, 0);
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, atlas_);
@@ -737,6 +741,7 @@ void WorldRenderer::draw_hand(const std::vector<ModelPart>& parts, int width, in
     glUniform1i(program_.uniform("atlas"), 0);
     glUniform1f(program_.uniform("alpha_cut"), 0.5f);
     glUniform1f(program_.uniform("darkness"), darkness);
+    glUniform1f(program_.uniform("ambient"), ambient_);
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, atlas_);
     glEnable(GL_DEPTH_TEST);

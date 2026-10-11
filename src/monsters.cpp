@@ -38,7 +38,9 @@ constexpr double DEATH_SECONDS = 1.0;
 constexpr double RIDER_OFFSET = 0.35;
 
 // Model ids of a biped (zombie or skeleton): head, body, arm, leg.
-int biped_base(MobKind kind) { return kind == MobKind::Zombie ? MODEL_ZOMBIE_HEAD : MODEL_SKELETON_HEAD; }
+int biped_base(MobKind kind) {
+    return kind == MobKind::Zombie ? MODEL_ZOMBIE_HEAD : kind == MobKind::PigZombie ? MODEL_PIGMAN_HEAD : MODEL_SKELETON_HEAD;
+}
 
 }  // namespace
 
@@ -59,7 +61,7 @@ Monster::Monster(World& world, MobKind k, double x, double y, double z, Rng& rng
     fall_peak_ = y;
 }
 
-double Monster::eye_height() const { return body.height * 0.85; }
+double Monster::eye_height() const { return kind == MobKind::Ghast ? body.height * 0.5 : body.height * 0.85; }
 
 int Monster::hurt(int amount, double from_x, double from_z, bool knock) {
     if (!alive() || amount <= 0) return 0;
@@ -76,9 +78,14 @@ int Monster::hurt(int amount, double from_x, double from_z, bool knock) {
                 dx = 0;
                 dz = d = 1;
             }
-            knock_x = dx / d * 7;
-            knock_z = dz / d * 7;
-            if (body.on_ground) body.vy = 5.5;
+            if (kind == MobKind::Ghast) {  // its flying velocity is in blocks per tick (Beta's 0.4 knockback)
+                knock_x += dx / d * 0.4;
+                knock_z += dz / d * 0.4;
+            } else {
+                knock_x = dx / d * 7;
+                knock_z = dz / d * 7;
+                if (body.on_ground) body.vy = 5.5;
+            }
         }
     }
     if (!alive()) {
@@ -123,7 +130,7 @@ void Monster::per_tick(World& world, const MonsterSenses& s, Rng& rng, MonsterAc
     // and rain put it out.
     if (mi.burns_in_daylight && catches_fire_in_daylight(light, sky_above, s.sky_darkness, rng))
         burning = std::max(burning, DAYLIGHT_BURN_SECONDS);
-    for (int x = ifloor(body.x - body.half); x <= ifloor(body.x + body.half - 1e-6); ++x)
+    for (int x = ifloor(body.x - body.half); x <= ifloor(body.x + body.half - 1e-6) && !mi.fire_immune; ++x)
         for (int y = ifloor(body.y); y <= ifloor(body.y + body.height - 1e-6); ++y)
             for (int z = ifloor(body.z - body.half); z <= ifloor(body.z + body.half - 1e-6); ++z) {
                 const BlockId b = world.get_block(x, y, z);
@@ -136,8 +143,12 @@ void Monster::per_tick(World& world, const MonsterSenses& s, Rng& rng, MonsterAc
                 }
             }
     if (touches_cactus(world, body)) hurt(1, body.x, body.z, false);
-    if (body.in_water || (s.raining && sky_above)) burning = 0;
+    if (body.in_water || (s.raining && sky_above) || mi.fire_immune) burning = 0;
     if (!alive()) return;
+    if (kind == MobKind::Ghast) {
+        ghast_tick(world, s, rng, out);
+        return;
+    }
 
     // Who to go for.
     const double dx = s.player.x - body.x, dz = s.player.z - body.z, dy = s.player.y - body.y;
@@ -158,6 +169,10 @@ void Monster::per_tick(World& world, const MonsterSenses& s, Rng& rng, MonsterAc
         }
     } else if (kind == MobKind::Slime) {
         targeting = dist < TARGET_RANGE;
+    } else if (kind == MobKind::PigZombie) {
+        // Zombie pigmen leave you alone until one of them is hit, then go for you a while (Beta).
+        if (anger > 0) --anger;
+        targeting = anger > 0 && dist < TARGET_RANGE * 1.5;
     } else if (!targeting && dist < TARGET_RANGE && can_see()) {
         targeting = true;
     }
@@ -169,12 +184,16 @@ void Monster::per_tick(World& world, const MonsterSenses& s, Rng& rng, MonsterAc
         wander_timer_ = wandering_ ? rng.uniform(2, 5) : rng.uniform(2, 6);
         if (wandering_) target_yaw = rng.uniform(0, 360);
     }
-    want_speed_ = targeting ? mi.speed : wandering_ ? mi.speed * 0.6 : 0.0;
+    // An angry pigman runs (Beta: 0.95 against the zombie's 0.5).
+    const double run = kind == MobKind::PigZombie ? mi.speed * 1.9 : mi.speed;
+    want_speed_ = targeting ? run : wandering_ ? mi.speed * 0.6 : 0.0;
     if (targeting) face(s.player.x, s.player.z);
 
     const bool level = s.player.y < body.y + body.height && s.player.y + s.player_height > body.y;
     switch (kind) {
+        case MobKind::Ghast: break;  // see ghast_tick
         case MobKind::Zombie:
+        case MobKind::PigZombie:
         case MobKind::Spider:
             if (targeting && attack_timer <= 0 && std::hypot(dx, dz) < MELEE_RANGE + body.half - 0.3 && level && can_see()) {
                 out.melee = mi.attack;
@@ -244,6 +263,88 @@ void Monster::per_tick(World& world, const MonsterSenses& s, Rng& rng, MonsterAc
     }
 }
 
+void Monster::ghast_tick(World& world, const MonsterSenses& s, Rng& rng, MonsterActions& out) {
+    // Beta's EntityGhast.updateEntityActionState, a tick at a time. Velocities are in blocks per tick.
+    const glm::dvec3 here(body.x, body.y, body.z);
+    glm::dvec3 to_way = waypoint_ - here;
+    const double way_sq = glm::dot(to_way, to_way);
+    if (!has_waypoint_ || way_sq < 1 || way_sq > 3600) {
+        waypoint_ = here + glm::dvec3(rng.uniform(-1, 1), rng.uniform(-1, 1), rng.uniform(-1, 1)) * GHAST_WANDER;
+        has_waypoint_ = true;
+    }
+    if (course_timer_-- <= 0) {
+        course_timer_ += rng.below(5) + 2;
+        to_way = waypoint_ - here;
+        const double len = glm::length(to_way);
+        if (len > 1e-6 && course_clear(world, waypoint_)) {
+            const glm::dvec3 push = to_way / len * 0.1;
+            knock_x += push.x;
+            body.vy += push.y;
+            knock_z += push.z;
+        } else {
+            waypoint_ = here;
+        }
+    }
+    const glm::dvec3 eye(body.x, body.y + body.height * 0.5, body.z);
+    const glm::dvec3 player(s.player.x, s.player.y + s.player_height * 0.5, s.player.z);
+    const glm::dvec3 d = player - eye;
+    const bool near = s.player_targetable && glm::dot(d, d) < GHAST_RANGE * GHAST_RANGE;
+    targeting = near;
+    if (near) {
+        face(s.player.x, s.player.z);
+        yaw = target_yaw;  // Beta turns a ghast straight to its target
+        if (sees(world, s)) {
+            ++attack_counter;
+            if (attack_counter == GHAST_SHOOT_TICKS) {
+                const glm::dvec3 dir = glm::normalize(d);
+                // Beta lets the fireball out 4 blocks in front of the ghast's middle.
+                const glm::dvec3 look(std::sin(radians(yaw)), 0, std::cos(radians(yaw)));
+                out.fireball_from = eye + look * 4.0 + glm::dvec3(0, 0.5, 0);
+                glm::dvec3 aim = player - *out.fireball_from;
+                aim += glm::dvec3(rng.uniform(-1, 1), rng.uniform(-1, 1), rng.uniform(-1, 1)) * 0.4;
+                out.fireball_dir = glm::length(aim) > 1e-6 ? glm::normalize(aim) : dir;
+                attack_counter = -GHAST_RELOAD_TICKS;
+            }
+        } else if (attack_counter > 0) {
+            --attack_counter;
+        }
+    } else {
+        if (std::hypot(knock_x, knock_z) > 1e-4) target_yaw = yaw = degrees(std::atan2(knock_x, knock_z));
+        if (attack_counter > 0) --attack_counter;
+    }
+    // Beta's air friction for flying mobs.
+    knock_x *= 0.91;
+    body.vy *= 0.91;
+    knock_z *= 0.91;
+}
+
+bool Monster::course_clear(World& world, glm::dvec3 to) const {
+    // Beta's isCourseTraversable: the ghast's box moved along the way in steps must hit nothing.
+    const glm::dvec3 from(body.x, body.y, body.z);
+    const double len = glm::length(to - from);
+    if (len < 1e-6) return true;
+    const glm::dvec3 step = (to - from) / len;
+    for (int i = 1; i < static_cast<int>(len); ++i) {
+        const glm::dvec3 p = from + step * static_cast<double>(i);
+        if (world.box_collides(p.x - body.half, p.y, p.z - body.half, p.x + body.half, p.y + body.height, p.z + body.half))
+            return false;
+    }
+    return true;
+}
+
+bool Monster::ghast_fly(double dt) {
+    // Ghasts don't fall: knock_x/z and vy hold its flying velocity (blocks per tick).
+    const double f = dt / TICK;
+    const HitAxes hit = body.move(knock_x * f, body.vy * f, knock_z * f);
+    if (hit.x) knock_x = 0;
+    if (hit.y) body.vy = 0;
+    if (hit.z) knock_z = 0;
+    body.vx = knock_x / TICK;
+    body.vz = knock_z / TICK;
+    speed = std::hypot(body.vx, body.vz);
+    return false;
+}
+
 bool Monster::tick(double dt, World& world, const MonsterSenses& s, Rng& rng, MonsterActions& out) {
     age += dt;
     flash = std::max(0.0, flash - dt);
@@ -282,6 +383,8 @@ bool Monster::tick(double dt, World& world, const MonsterSenses& s, Rng& rng, Mo
         yaw += std::clamp(angle_diff(yaw, target_yaw), -360 * dt, 360 * dt);
         return false;
     }
+
+    if (kind == MobKind::Ghast) return ghast_fly(dt);
 
     const double diff = angle_diff(yaw, target_yaw);
     const double turn = 300;
@@ -345,7 +448,9 @@ std::vector<ModelPart> Monster::parts() const {
         root = root * scale((1 + f * 0.4) * wobble, (1 + f * 0.1) / wobble, (1 + f * 0.4) * wobble);
     }
     const double walk = mount ? 0.0 : std::min(1.0, speed / std::max(0.1, info().speed));
-    std::vector<ModelPart> out = monster_model(kind, size, root, walk_phase, walk);
+    // A ghast's tentacles sway all the time; its face shows when it is about to shoot.
+    std::vector<ModelPart> out = kind == MobKind::Ghast ? monster_model(kind, size, root, age * 20, 1, charging() ? -1 : 0)
+                                                        : monster_model(kind, size, root, walk_phase, walk);
     glm::vec4 overlay(0);
     if (flash > 0 || dying > 0) {
         overlay = {1, 0, 0, 0.45f};
@@ -369,9 +474,10 @@ std::vector<ModelPart> monster_model(MobKind kind, int size, const glm::mat4& ro
     const double swing = std::sin(walk_phase) * walk * 40;
     switch (kind) {
         case MobKind::Zombie:
+        case MobKind::PigZombie:
         case MobKind::Skeleton: {
             const int base = biped_base(kind);
-            const double side = kind == MobKind::Zombie ? 0.375 : 0.3125;
+            const double side = kind == MobKind::Skeleton ? 0.3125 : 0.375;
             const glm::mat4 hips = root * translate(0, 0.675, 0);
             out.push_back({base + 3, root * translate(-0.125, 0.675, 0) * rot_x(swing)});
             out.push_back({base + 3, root * translate(0.125, 0.675, 0) * rot_x(-swing)});
@@ -385,6 +491,19 @@ std::vector<ModelPart> monster_model(MobKind kind, int size, const glm::mat4& ro
             out.push_back({base, hips * translate(0, 0.675, 0) * rot_x(head_pitch)});
             if (kind == MobKind::Skeleton)  // its bow, in the right hand
                 out.push_back({static_cast<int>(ITEM_MODEL_BASE) + static_cast<int>(BOW), right * translate(0, -0.6, 0.06) * rot_x(90) * rot_z(-45) * scale(1.3, 1.3, 1.3)});
+            if (kind == MobKind::PigZombie)  // its gold sword, pointing ahead
+                out.push_back({static_cast<int>(ITEM_MODEL_BASE) + static_cast<int>(GOLD_SWORD), right * translate(0, -0.62, 0.1) * rot_x(90) * rot_z(-45) * scale(1.2, 1.2, 1.2)});
+            break;
+        }
+        case MobKind::Ghast: {
+            // A big floating head with nine tentacles hanging from it, swaying (Beta's ModelGhast).
+            out.push_back({head_pitch < 0 ? MODEL_GHAST_BODY_FIRING : MODEL_GHAST_BODY, root * translate(0, 2.25, 0)});
+            for (int i = 0; i < 9; ++i) {
+                const double tx = ((i % 3) - 1) * 1.1 + (i / 3 == 1 ? 0.25 : 0), tz = ((i / 3) - 1) * 1.1;
+                const double len = 1.2 + std::fmod(i * 0.37, 1.0) * 0.9;
+                const double sway = std::sin(walk_phase * 0.3 + i * 1.7) * 12 + 6;
+                out.push_back({MODEL_GHAST_TENTACLE, root * translate(tx, 0.5, tz) * rot_x(sway) * scale(1, len, 1)});
+            }
             break;
         }
         case MobKind::Creeper: {
@@ -419,6 +538,49 @@ std::vector<ModelPart> monster_model(MobKind kind, int size, const glm::mat4& ro
         }
     }
     return out;
+}
+
+// --- Fireballs ------------------------------------------------------------------------------------
+
+Fireball::Fireball(glm::dvec3 p, glm::dvec3 dir, const void* who) : pos(p), accel(dir * 0.1), owner(who) {}
+
+void Fireball::deflect(glm::dvec3 dir) {
+    // Beta: a hit turns it to fly the way the player looks, at its speed so far.
+    const double speed = std::max(glm::length(vel), 0.3);
+    vel = dir * speed;
+    accel = dir * 0.1;
+    deflected = true;
+    owner = nullptr;
+}
+
+std::optional<glm::dvec3> Fireball::tick(double dt, World& world) {
+    age += dt;
+    tick_time_ += dt;
+    while (tick_time_ >= TICK) {
+        tick_time_ -= TICK;
+        // Beta's EntityFireball: speed up by the acceleration, lose 5% to drag, every tick.
+        vel = (vel + accel) * 0.95;
+        const double len = glm::length(vel);
+        if (len > 1e-9) {
+            if (auto hit = world.raycast(glm::vec3(pos), glm::vec3(vel / len), static_cast<float>(len), is_solid)) {
+                pos += vel / len * std::max(0.0, static_cast<double>(hit->distance) - 0.05);
+                return pos;
+            }
+        }
+        pos += vel;
+    }
+    return std::nullopt;
+}
+
+std::optional<float> Fireball::ray_hit(glm::vec3 origin, glm::vec3 direction, float max_dist) const {
+    // Easy to hit (Beta: a box a block across).
+    const glm::vec3 c(pos);
+    return ray_box(origin, direction, max_dist, c - glm::vec3(0.6f), c + glm::vec3(0.6f));
+}
+
+std::vector<ModelPart> Fireball::parts() const {
+    const double spin = age * 360;
+    return {{MODEL_FIREBALL, translate(pos.x, pos.y, pos.z) * rot_y(spin) * rot_x(spin * 0.7)}};
 }
 
 // --- Primed TNT ----------------------------------------------------------------------------------
@@ -556,6 +718,31 @@ void add_monster_models(std::map<int, MeshData>& models) {
         eyes(slime, 0.15f, 0.505f, 0.2f, {0.18f, 0.18f, 0.01f}, T_BLACK);
         add_box(slime, ident, {0.1f, 0.1f, 0.01f}, {0.1f, -0.18f, 0.505f}, T_BLACK);
     }
+    // Zombie pigman: pink with rotten green patches and a pig's snout.
+    {
+        MeshData& head = models[MODEL_PIGMAN_HEAD];
+        add_box(head, ident, {0.45f, 0.45f, 0.45f}, {0, 0.225f, 0}, T_PIGMAN_SKIN);
+        add_box(head, ident, {0.2f, 0.25f, 0.2f}, {0.14f, 0.3f, 0.14f}, T_PIGMAN_ROT);  // the bare side of its skull
+        eyes(head, 0.25f, 0.228f, 0.1f, {0.08f, 0.06f, 0.02f}, T_BLACK);
+        add_box(head, ident, {0.2f, 0.12f, 0.06f}, {0, 0.12f, 0.25f}, T_PIG_SNOUT);
+        MeshData& body = models[MODEL_PIGMAN_BODY];
+        add_box(body, ident, {0.5f, 0.675f, 0.25f}, {0, 0.3375f, 0}, T_PIGMAN_SKIN);
+        add_box(body, ident, {0.3f, 0.3f, 0.02f}, {0.06f, 0.42f, 0.13f}, T_PIGMAN_ROT);  // its ribs showing
+        add_box(body, ident, {0.52f, 0.2f, 0.27f}, {0, 0.08f, 0}, T_HOOF);              // a loincloth
+        MeshData& arm = models[MODEL_PIGMAN_ARM];
+        add_box(arm, ident, {0.24f, 0.7f, 0.24f}, {0, -0.25f, 0}, T_PIGMAN_SKIN);
+        add_box(arm, ident, {0.25f, 0.2f, 0.25f}, {0, -0.1f, 0}, T_PIGMAN_ROT);
+        MeshData& leg = models[MODEL_PIGMAN_LEG];
+        add_box(leg, ident, {0.25f, 0.675f, 0.25f}, {0, -0.3375f, 0}, T_PIGMAN_SKIN);
+    }
+    // Ghast: a white cube with a face in front (calm, or with its mouth open about to shoot).
+    for (int firing = 0; firing < 2; ++firing) {
+        MeshData& body = models[firing ? MODEL_GHAST_BODY_FIRING : MODEL_GHAST_BODY];
+        add_box(body, ident, {3.5f, 3.5f, 3.5f}, {0, 0, 0}, T_GHAST);
+        add_box(body, ident, {3.5f, 3.5f, 0.02f}, {0, 0, 1.76f}, firing ? T_GHAST_FACE_FIRING : T_GHAST_FACE);
+    }
+    add_box(models[MODEL_GHAST_TENTACLE], ident, {0.25f, 1, 0.25f}, {0, -0.5f, 0}, T_GHAST);
+    add_box(models[MODEL_FIREBALL], ident, {1, 1, 1}, {0, 0, 0}, T_FIREBALL);
     add_box(models[MODEL_TNT], ident, {0.98f, 0.98f, 0.98f}, {0, 0, 0}, IT_TNT_SIDE);
     add_box(models[MODEL_PUFF], ident, {1, 1, 1}, {0, 0, 0}, T_SMOKE);
     // Flames around a burning mob: a box of fire tiles from its feet up (scaled to its size).

@@ -43,6 +43,11 @@ struct ChunkPosHash {
     }
 };
 
+// Which world the player is in (M14). The numbers are Beta's (the Nether is -1); saves use them.
+enum class Dimension : int { Overworld = 0, Nether = -1 };
+// Nether blocks stand for this many overworld blocks along x and z (Beta's 8 to 1).
+constexpr int NETHER_SCALE = 8;
+
 // Floor division by 16 for block -> chunk coordinates (works for negatives).
 inline int chunk_of(int block) { return block >> 4; }
 // A block's index in its chunk's arrays (see Chunk::index).
@@ -54,7 +59,8 @@ struct EntityRecord {
     // ANIMAL was COW before M9 (old saves only have cows, whose mob is 0). FALLING: sand or gravel
     // in the air (item = the block). VEHICLE: a minecart or boat (mob = its VehicleKind).
     enum Kind : uint8_t { ANIMAL = 1, ITEM = 2, MONSTER = 3, FALLING = 4, VEHICLE = 5 };
-    enum Flags : uint8_t { POWERED = 1, JOCKEY = 2 };  // a charged creeper; a spider with a skeleton riding it
+    // A charged creeper; a spider with a skeleton riding it; an angry zombie pigman.
+    enum Flags : uint8_t { POWERED = 1, JOCKEY = 2, ENRAGED = 4 };
     enum AnimalFlags : uint8_t { SHEARED = 1, SADDLED = 2, TAMED = 4, SITTING = 8, ANGRY = 16 };
     Kind kind = ANIMAL;
     double x = 0, y = 0, z = 0;
@@ -117,9 +123,10 @@ public:
 // can share one generator.
 class TerrainGenerator {
 public:
-    explicit TerrainGenerator(uint64_t seed);
+    explicit TerrainGenerator(uint64_t seed, Dimension dimension = Dimension::Overworld);
     std::unique_ptr<Chunk> generate(int cx, int cz) const;
     uint64_t seed() const { return seed_; }
+    Dimension dimension() const { return dimension_; }
 
     // Temperature and rainfall of a column, each in [0, 1].
     void climate_at(int wx, int wz, double& temperature, double& rainfall) const;
@@ -134,6 +141,7 @@ private:
     double density(const Column& c, int wx, int y, int wz) const;
 
     uint64_t seed_;
+    Dimension dimension_;
     Perlin2D continent_, roughness_, mountains_, temperature_, rainfall_, climate_detail_, surface_, beach_, trees_;
     Perlin3D detail_;
 };
@@ -228,6 +236,11 @@ public:
 
     uint64_t seed() const { return generator_.seed(); }
     const TerrainGenerator& generator() const { return generator_; }
+    Dimension dimension() const { return generator_.dimension(); }
+    bool nether() const { return dimension() == Dimension::Nether; }
+    // Forget every chunk and become another dimension (going through a portal). Nothing may be
+    // generating or meshing chunks in the background while this runs.
+    void reset(Dimension dimension);
     // Saved chunks are loaded from here before anything is generated.
     void set_store(ChunkStore* store) { store_ = store; }
     // A chunk from the store, or freshly generated. Thread-safe (doesn't touch the chunk map).

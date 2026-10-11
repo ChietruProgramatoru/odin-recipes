@@ -12,6 +12,7 @@
 #include <vector>
 
 #include "chest.h"
+#include "nether.h"
 #include "nature.h"
 #include "rng.h"
 #include "world.h"
@@ -561,8 +562,8 @@ struct TerrainGenerator::Column {
     double wobble; // strength of the 3D noise (overhangs, arches, floating bits)
 };
 
-TerrainGenerator::TerrainGenerator(uint64_t seed)
-    : seed_(seed), continent_(seed), roughness_(seed + 1), mountains_(seed + 2), temperature_(seed + 3),
+TerrainGenerator::TerrainGenerator(uint64_t seed, Dimension dimension)
+    : seed_(seed), dimension_(dimension), continent_(seed), roughness_(seed + 1), mountains_(seed + 2), temperature_(seed + 3),
       rainfall_(seed + 4), climate_detail_(seed + 5), surface_(seed + 6), beach_(seed + 7), trees_(seed + 8),
       detail_(seed + 9) {}
 
@@ -580,6 +581,10 @@ Biome TerrainGenerator::biome_at(int wx, int wz) const {
 
 Climate TerrainGenerator::climate(int cx, int cz) const {
     Climate c;
+    if (dimension_ == Dimension::Nether) {  // hot and dry everywhere (Beta's Hell)
+        c.temperature.fill(255);
+        return c;
+    }
     for (int z = 0; z < CHUNK; ++z)
         for (int x = 0; x < CHUNK; ++x) {
             double t, r;
@@ -611,6 +616,7 @@ double TerrainGenerator::density(const Column& c, int wx, int y, int wz) const {
 }
 
 std::unique_ptr<Chunk> TerrainGenerator::generate(int cx, int cz) const {
+    if (dimension_ == Dimension::Nether) return generate_nether(seed_, cx, cz);
     Region r{cx * CHUNK - MARGIN, cz * CHUNK - MARGIN};
 
     // Climate and biome of every column.

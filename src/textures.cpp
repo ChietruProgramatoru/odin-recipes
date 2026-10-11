@@ -855,6 +855,7 @@ std::map<int, Image> make_tiles(int seed) {
     for (int row = 0; row < MAP_SIZE / TILE; ++row)
         for (int col = 0; col < MAP_SIZE / TILE; ++col) tiles[MAP_TILE_BASE + row * ATLAS_COLS + col] = Image(TILE, TILE);
     tiles[MAP_MARKER_TILE] = map_marker_icon();
+    tiles.merge(make_nether_tiles());
     return tiles;
 }
 

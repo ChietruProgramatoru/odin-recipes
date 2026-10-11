@@ -45,7 +45,14 @@ struct SkyState {
     // Weather: rain and thunder strength (0..1), how much the sun, moon and stars show through
     // the rain clouds, and a lightning flash (0..1).
     float rain = 0, thunder = 0, sun_alpha = 1, flash = 0;
+    // The Nether (M14) has no sky: a red fog that starts at the camera, and nothing quite black
+    // (Beta's Nether brightness curve bottoms out at 0.1, the overworld's at 0.05).
+    bool nether = false;
+    float fog_near = 0.55f;  // where the fog starts, as a part of the view distance
+    float ambient = 0.05f;   // brightness of light level 0
 };
+// The Nether's sky: always the same.
+SkyState nether_sky();
 // How bright a light level (0..15) looks, Beta's curve (the same one the world shader uses).
 float light_brightness(float level);
 

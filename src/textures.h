@@ -27,6 +27,8 @@ std::map<int, Image> make_tiles(int seed = 1234);
 std::map<int, Image> make_building_tiles();
 // Redstone's tiles (redstone_art.cpp); part of make_tiles.
 std::map<int, Image> make_redstone_tiles();
+// The Nether's tiles (nether_art.cpp): portal, ghast, fireball, zombie pigman; part of make_tiles.
+std::map<int, Image> make_nether_tiles();
 Image make_atlas(const std::map<int, Image>& tiles);
 
 // Rain streaks and snowflakes, drawn repeating on the columns of falling weather.

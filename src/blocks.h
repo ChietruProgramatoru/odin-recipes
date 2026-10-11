@@ -59,6 +59,9 @@ enum Block : BlockId {
     REDSTONE_WIRE, REDSTONE_TORCH_ON, REDSTONE_TORCH_OFF, LEVER_BLOCK, BUTTON_BLOCK, STONE_PLATE_BLOCK,
     WOOD_PLATE_BLOCK, REPEATER_OFF, REPEATER_ON, PISTON_BASE, STICKY_PISTON_BASE, PISTON_HEAD, DISPENSER_BLOCK,
     GLOWING_REDSTONE_ORE,
+    // The Nether (M14): the purple sheet inside a lit obsidian frame. Its data value says which way
+    // the frame runs (0 along x, 1 along z). Nothing to bump into; standing in it takes you across.
+    PORTAL,
     BLOCK_COUNT
 };
 
@@ -112,6 +115,9 @@ enum Tile : int {
     // piston. Their items' tiles (piston faces, the dispenser's front) are in icons.h.
     T_WIRE_CROSS, T_WIRE_LINE, T_REDSTONE_TORCH_ON, T_REDSTONE_TORCH_OFF, T_LEVER, T_REPEATER_OFF, T_REPEATER_ON,
     T_PISTON_BOTTOM, T_PISTON_INNER,
+    // The Nether (M14): the portal, the ghast (skin, face, face while shooting), its fireball, and
+    // the zombie pigman's pink skin and rotten green.
+    T_PORTAL, T_GHAST, T_GHAST_FACE, T_GHAST_FACE_FIRING, T_FIREBALL, T_PIGMAN_SKIN, T_PIGMAN_ROT,
     TILE_COUNT
 };
 
@@ -169,6 +175,7 @@ bool falls(BlockId id);     // sand and gravel fall when nothing holds them up
 // boxes (for bumping into, aiming at and drawing) depend on the data value; see building.h.
 bool is_shaped(BlockId id);
 bool is_door(BlockId id);  // either half of a wooden or iron door
+bool is_portal(BlockId id);
 // How tall a solid block is for walking on it: 1, 9/16 for a bed, 15/16 for farmland and cactus,
 // 1/2 for cake, 14/16 for soul sand. Shaped blocks have their own boxes (building.h).
 float block_height(BlockId id);

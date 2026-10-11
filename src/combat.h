@@ -43,8 +43,10 @@ private:
 
 // --- Monsters -----------------------------------------------------------------------------------
 
-enum class MobKind : uint8_t { Zombie, Skeleton, Creeper, Spider, Slime };
-constexpr int MOB_KIND_COUNT = 5;
+// Ghasts and zombie pigmen (M14) live in the Nether.
+enum class MobKind : uint8_t { Zombie, Skeleton, Creeper, Spider, Slime, Ghast, PigZombie };
+constexpr int MOB_KIND_COUNT = 7;
+constexpr int OVERWORLD_MOB_KINDS = 5;  // the ones before Ghast
 const char* mob_name(MobKind kind);
 
 struct MobInfo {
@@ -53,6 +55,7 @@ struct MobInfo {
     double half_width, height;
     int attack;          // half-hearts a melee hit does (0: doesn't hit)
     bool burns_in_daylight;
+    bool fire_immune = false;  // lava and fire don't hurt it (the Nether's monsters)
 };
 // Beta's stats. `size` is a slime's size (1, 2 or 4); other monsters ignore it.
 MobInfo mob_info(MobKind kind, int size = 1);
@@ -100,6 +103,24 @@ constexpr double DESPAWN_DISTANCE = 128.0;    // monsters this far away vanish a
 constexpr double DESPAWN_SAFE_DISTANCE = 32.0;  // closer than this they never despawn
 // Which monster a random spawn tries: zombie, skeleton, creeper, spider and slime equally often.
 MobKind random_monster(Rng& rng);
+// In the Nether: ghasts and zombie pigmen equally often (Beta's Hell spawn list). A ghast then only
+// spawns one try in 20 (Beta), so pigmen are far more common.
+MobKind random_nether_monster(Rng& rng);
+constexpr int GHAST_SPAWN_ODDS = 20;
+
+// --- The Nether's monsters (M14) ----------------------------------------------------------------
+
+constexpr double GHAST_RANGE = 64.0;        // ghasts shoot at a player they can see this close
+constexpr int GHAST_CHARGE_TICKS = 10;      // its face turns angry this many ticks before it shoots
+constexpr int GHAST_SHOOT_TICKS = 20;       // ticks seeing the player before a fireball
+constexpr int GHAST_RELOAD_TICKS = 40;      // ...and the wait after one (Beta: the counter goes back to -40)
+constexpr double GHAST_WANDER = 16.0;       // it flies to points this far away in each direction
+constexpr int FIREBALL_HIT_DAMAGE = 4;      // a fireball hitting something straight on (Beta)
+constexpr double FIREBALL_POWER = 1.0;      // its blast, which sets fires
+constexpr double FIREBALL_LIFE = 30.0;      // seconds before one that hits nothing fizzles out
+constexpr double PIGMAN_ANGER_RANGE = 32.0; // hitting a zombie pigman angers every one this close
+// How long a zombie pigman stays angry (Beta: 400 + 0-399 ticks).
+int pigman_anger_ticks(Rng& rng);
 // One chunk in ten is a slime chunk, where slimes spawn below y 16 whatever the light.
 bool is_slime_chunk(uint64_t seed, int cx, int cz);
 constexpr int SLIME_MAX_Y = 16;

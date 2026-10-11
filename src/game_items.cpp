@@ -43,14 +43,17 @@ MapData* Game::held_map() {
 
 void Game::tick_navigation() {
     // The needles move every tick, held or not, like Beta's animated textures.
-    compass_needle.tick(compass_target({player.x, player.y, player.z}, yaw, spawn));
-    clock_needle.tick(clock_target(static_cast<double>(level.time)));
+    // In the Nether both spin about at random (Beta).
+    const bool lost = world.nether();
+    compass_needle.tick(lost ? rng.uniform(0, 6.283185307179586) : compass_target({player.x, player.y, player.z}, yaw, spawn));
+    clock_needle.tick(lost ? rng.uniform(0, 6.283185307179586) : clock_target(static_cast<double>(level.time)));
     renderer->update_atlas(item_info(COMPASS)->icon.top, compass_icon(compass_needle.angle));
     renderer->update_atlas(item_info(CLOCK)->icon.top, clock_icon(clock_needle.angle));
     // A map in hand fills in as the player goes, and its picture goes into the atlas when it changed.
     if (vitals.dead()) return;
     if (MapData* m = held_map()) {
-        update_map(*m, world, player.x, player.z, level.time);
+        // Maps only draw the overworld; one held in the Nether stays as it was.
+        if (!world.nether()) update_map(*m, world, player.x, player.z, level.time);
         if (m->id != shown_map_ || m->version != shown_map_version_) {
             renderer->update_atlas(MAP_TILE_BASE, map_image(*m));
             shown_map_ = m->id;

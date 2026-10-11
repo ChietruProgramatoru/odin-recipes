@@ -8,6 +8,7 @@
 #include "rails.h"
 #include "items.h"
 #include "nature.h"
+#include "nether.h"
 #include "torch.h"
 
 namespace {
@@ -231,6 +232,9 @@ void BlockUpdater::neighbour_changed(glm::ivec3 p, BlockEvents& out) {
             set(p, AIR, 0, out);
             out.drops.push_back({p, TORCH});
         }
+    } else if (b == PORTAL) {
+        // A portal whose frame was broken goes out, one block telling the next (Beta).
+        if (!portal_can_stay(world_, p)) set(p, AIR, 0, out);
     } else if (is_rail(b)) {
         // A rail with nothing under it (or a slope with nothing on its high side) pops off.
         if (!rail_can_stay(world_, p)) {
@@ -380,7 +384,7 @@ bool BlockUpdater::harden(glm::ivec3 p, BlockEvents& out) {
 bool BlockUpdater::blocks_flow(glm::ivec3 p) {
     // Signs and paintings hold water back too (Beta: they are wood, not something water washes away).
     const BlockId b = block_at(world_, p);
-    return is_solid(b) || b == SIGN_POST || b == WALL_SIGN || b == PAINTING_BLOCK;
+    return is_solid(b) || b == SIGN_POST || b == WALL_SIGN || b == PAINTING_BLOCK || b == PORTAL;
 }
 
 bool BlockUpdater::can_displace(glm::ivec3 p, BlockId fluid) {
@@ -504,7 +508,9 @@ void BlockUpdater::tick_fire(glm::ivec3 p, Rng& rng, const RainCheck& rain, Bloc
         return rain(q) || rain(q + glm::ivec3(1, 0, 0)) || rain(q - glm::ivec3(1, 0, 0)) || rain(q + glm::ivec3(0, 0, 1)) ||
                rain(q - glm::ivec3(0, 0, 1));
     };
-    if (rained_on(p)) {
+    // Fire on netherrack burns for ever, rain or not (Beta).
+    const bool forever = block_at(world_, p - UP) == NETHERRACK;
+    if (!forever && rained_on(p)) {
         set(p, AIR, 0, out);
         return;
     }
@@ -517,11 +523,11 @@ void BlockUpdater::tick_fire(glm::ivec3 p, Rng& rng, const RainCheck& rain, Bloc
     schedule(p, FIRE_TICKS);
     bool fuel = false;
     for (glm::ivec3 d : NEIGHBOURS) fuel |= is_flammable(block_at(world_, p + d));
-    if (!fuel) {
+    if (!fuel && !forever) {
         if (!is_opaque(block_at(world_, p - UP)) || age > 3) set(p, AIR, 0, out);
         return;
     }
-    if (!is_flammable(block_at(world_, p - UP)) && age == 15 && rng.below(4) == 0) {
+    if (!forever && !is_flammable(block_at(world_, p - UP)) && age == 15 && rng.below(4) == 0) {
         set(p, AIR, 0, out);
         return;
     }

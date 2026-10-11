@@ -2,7 +2,7 @@
 // Drives the real program for a few hundred frames: the menus, creating a world, mining, building,
 // cows, eating, fall damage, furnaces, tools, armor, the bow, fire and buckets, a tour of the biomes and caves, the F3 and F5 views,
 // monsters, explosions and dying, the first-person hand, flowing water and lava, falling sand and fire, farming, animals,
-// rails, minecarts and boats, redstone and pistons, the compass, clock, maps, fishing and snowballs,
+// rails, minecarts and boats, redstone and pistons, the compass, clock, maps, fishing and snowballs, the Nether,
 // the pause menu,
 // then saving, quitting to the
 // title and loading the world again. Saves screenshots to OUT_DIR and writes OUT_DIR/report.txt.
@@ -55,6 +55,7 @@ private:
     void transport(App& app, Game& g); // rails, riding a minecart, the chest and furnace minecarts, a boat
     void redstone(App& app, Game& g);  // M13: levers, dust, torches, repeaters, doors, pistons, plates, a dispenser
     void finding_and_fishing(App& app, Game& g);  // M15: compass, clock, a map, fishing, snowballs
+    void nether(App& app, Game& g);    // M14: lighting a portal, the Nether, pigmen, a ghast's fireball, back again
     void reload(App& app);      // quit to the title and load the world again
 
     std::string out_;
@@ -138,4 +139,15 @@ private:
     int map_id_ = 0, fish_before_ = 0;
     Animal* pig_ = nullptr;
     double pig_start_ = 0;
+    // The Nether: the portal lit in the overworld (its bottom inside cell), where the player was
+    // before, the portal they came out of in the Nether, and the ghast and its fireball.
+    glm::ivec3 portal_{0};
+    glm::dvec3 before_nether_{0};
+    std::optional<std::pair<glm::ivec3, int>> nether_portal_;  // origin and axis
+    Monster* ghast_ = nullptr;
+    std::vector<const Monster*> pigmen_;  // the scene's own; others spawning in the Nether are removed
+    bool fireball_seen_ = false, fireball_hit_back_ = false;
+    long fireball_frame_ = 0;
+    glm::dvec3 ghast_pin_{0};
+    std::optional<Inventory> nether_inventory_;  // put back after the trip
 };

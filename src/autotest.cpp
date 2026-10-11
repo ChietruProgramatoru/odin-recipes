@@ -312,12 +312,13 @@ void AutoTest::play(App& app, Game& g) {
     if (f >= 1720 && f < 1770) nature(app, g);
     if (f >= 1770 && f < 1820) redstone(app, g);
     if (f >= 1820 && f < 1950) finding_and_fishing(app, g);
-    if (f == 1950) {
+    if (f >= 1950 && f < 2110) nether(app, g);
+    if (f == 2110) {
         app.pause();
         check("Escape menu pauses the game", g.paused && app.screen());
         shot(app, "7_pause.png");
     }
-    if (f == 1960) {
+    if (f == 2120) {
         // Change something, then save and quit to the title.
         marker_ = {static_cast<int>(std::floor(p.x)) + 2, static_cast<int>(std::floor(p.y)) + 1, static_cast<int>(std::floor(p.z))};
         g.renderer->rebuild(g.world.set_block(marker_.x, marker_.y, marker_.z, BRICK));
@@ -3001,5 +3002,247 @@ void AutoTest::finding_and_fishing(App& app, Game& g) {
         g.creative = items_creative_;
         stand(items_return_);
         if (items_raining_) g.weather = Weather(WeatherState{true, false, 100000, 100000});
+    }
+}
+
+void AutoTest::nether(App& app, Game& g) {
+    const long f = g.frame - 1950;  // runs after fishing
+    Body& p = g.player;
+    Inventory& inv = g.inventory;
+    auto set = [&](glm::ivec3 c, BlockId b) { g.renderer->rebuild(g.world.set_block(c.x, c.y, c.z, b)); };
+    auto at = [&](glm::ivec3 c) { return g.world.get_block(c.x, c.y, c.z); };
+    auto hold = [&](ItemId item, int count = 1) { inv.slots[inv.selected] = Stack{item, count}; };
+    auto stand = [&](glm::dvec3 q) {
+        p.x = q.x;
+        p.y = q.y;
+        p.z = q.z;
+        p.vx = p.vy = p.vz = 0;
+        g.fall_peak = p.y;
+    };
+    auto look_at = [&](glm::dvec3 q) {
+        glm::vec3 e = g.eye();
+        glm::vec3 d = glm::vec3(q) - e;
+        g.yaw = degrees(std::atan2(d.x, d.z));
+        g.pitch = -degrees(std::asin(d.y / glm::length(d)));
+        g.update_target();
+    };
+    // The portal the player is standing in, if any.
+    auto portal_here = [&]() -> std::optional<PortalShape> {
+        for (int dy = 0; dy < 2; ++dy)
+            if (auto s = portal_at(g.world, {static_cast<int>(std::floor(p.x)), static_cast<int>(std::floor(p.y)) + dy,
+                                             static_cast<int>(std::floor(p.z))}))
+                return s;
+        return std::nullopt;
+    };
+    // Step into a portal and wait out most of the delay.
+    auto go_through = [&](glm::dvec3 exit) {
+        stand(exit);
+        g.portal_cooldown = false;
+        g.portal_ticks = PORTAL_TICKS - 2;
+    };
+    const glm::ivec3 o = portal_;
+
+    if (f == 0) {
+        before_nether_ = {p.x, p.y, p.z};
+        nether_inventory_ = inv;  // the map the fishing scene left in hand is checked after loading
+        portal_ = {static_cast<int>(std::floor(p.x)) + 30, 100, static_cast<int>(std::floor(p.z)) - 30};
+        g.monsters.clear();
+        g.target_monster = nullptr;
+        g.arrows.clear();
+        g.drops.clear();
+        g.creative = false;
+        g.flying = false;
+        g.vitals.reset();
+        // A stone floor in the sky with an obsidian frame on it, then light it with flint and steel.
+        const glm::ivec3 q = portal_;
+        for (int dx = -4; dx <= 5; ++dx)
+            for (int dz = -4; dz <= 4; ++dz) {
+                set(q + glm::ivec3(dx, -2, dz), STONE);
+                for (int dy = -1; dy <= 4; ++dy) set(q + glm::ivec3(dx, dy, dz), AIR);
+            }
+        for (int i = -1; i <= 2; ++i) {
+            set(q + glm::ivec3(i, -1, 0), OBSIDIAN);
+            set(q + glm::ivec3(i, 3, 0), OBSIDIAN);
+        }
+        for (int j = 0; j < 3; ++j) {
+            set(q + glm::ivec3(-1, j, 0), OBSIDIAN);
+            set(q + glm::ivec3(2, j, 0), OBSIDIAN);
+        }
+        stand(glm::dvec3(q) + glm::dvec3(1.0, -1, 3.5));
+        hold(FLINT_AND_STEEL);
+        look_at(glm::dvec3(q) + glm::dvec3(0.5, -0.05, 0.5));
+        g.use_item();
+        bool lit = true;
+        for (int i = 0; i < 2; ++i)
+            for (int j = 0; j < 3; ++j) lit = lit && at(q + glm::ivec3(i, j, 0)) == PORTAL;
+        check("flint and steel inside an obsidian frame lights a portal", lit);
+        check("the lit portal is remembered for linking",
+              std::count(g.level.portals.begin(), g.level.portals.end(), LevelData::Portal{Dimension::Overworld, q}) == 1);
+        look_at(glm::dvec3(q) + glm::dvec3(1.0, 1.5, 0.5));
+    }
+    if (f == 1) shot(app, "m14_portal.png");
+    if (f == 2) go_through(glm::dvec3(o) + glm::dvec3(1.0, 0, 0.5));
+    if (f == 4) {
+        check("standing in a portal fills the screen with purple first", g.portal_ticks > 0 || g.world.nether());
+        shot(app, "m14_portal_inside.png");
+    }
+    if (f == 10) {
+        check("the portal takes the player to the Nether", g.world.nether() && g.dimension() == Dimension::Nether);
+        const auto here = portal_here();
+        check("the player comes out of a portal in the Nether", here.has_value());
+        if (here) nether_portal_ = std::make_pair(here->origin, here->axis);
+        const glm::ivec3 scaled = portal_target(o, Dimension::Nether);
+        check("the Nether portal is near the overworld spot divided by 8",
+              here && std::abs(here->origin.x - scaled.x) <= 16 && std::abs(here->origin.z - scaled.z) <= 16);
+        check("the Nether's sky is a red fog with no day or night", g.current_sky().nether && g.current_sky().darkness == 0);
+        int netherrack = 0;
+        for (Chunk* c : g.world.all_chunks())
+            for (BlockId b : c->blocks) netherrack += b == NETHERRACK;
+        check("the Nether is made of netherrack", netherrack > 10000);
+        check("no rain in the Nether", !g.raining());
+        // Step out of the portal and look out across the Nether.
+        if (here) {
+            const glm::dvec3 across(glm::ivec3(1, 0, 1) - here->dir());
+            stand(here->exit() + across * 1.0);
+            look_at(glm::dvec3(g.eye()) + across * 10.0 - glm::dvec3(0, 1.4, 0));
+        }
+        g.hud->show_message("", 0);
+    }
+    if (f == 11) shot(app, "m14_nether.png");
+    // Only the scene's own monsters: the Nether spawns its own ghasts and pigmen too.
+    if (f > 12 && f < 150) {
+        auto ours = [&](const Monster* m) { return m == ghast_ || std::find(pigmen_.begin(), pigmen_.end(), m) != pigmen_.end(); };
+        for (size_t i = 0; i < g.monsters.size();)
+            if (ours(g.monsters[i].get())) ++i;
+            else g.monsters.erase(g.monsters.begin() + static_cast<std::ptrdiff_t>(i));
+        if (g.target_monster && !ours(g.target_monster)) g.target_monster = nullptr;
+    }
+    if (f == 12 && nether_portal_) {
+        const PortalShape s{nether_portal_->first, nether_portal_->second};
+        const glm::ivec3 across = glm::ivec3(1, 0, 1) - s.dir();
+        // Water boils away here.
+        stand(s.exit() + glm::dvec3(across) * 1.0);
+        hold(WATER_BUCKET);
+        const glm::ivec3 spot = s.origin + across * 1 + s.dir() * 2;
+        look_at(glm::dvec3(spot) + glm::dvec3(0.5, -0.05, 0.5));
+        g.use_item();
+        bool wet = false;
+        for (int dx = -3; dx <= 3; ++dx)
+            for (int dy = -2; dy <= 3; ++dy)
+                for (int dz = -3; dz <= 3; ++dz) wet = wet || at(spot + glm::ivec3(dx, dy, dz)) == WATER;
+        check("water poured in the Nether boils away and empties the bucket", !wet && inv.slots[inv.selected]->item == BUCKET);
+        // Two zombie pigmen on the ledge either side of the portal.
+        g.vitals.reset();
+        stand(s.exit() + glm::dvec3(across) * 1.0);
+        g.monsters.clear();
+        g.target_monster = nullptr;
+        pigmen_.push_back(g.spawn_monster(MobKind::PigZombie, s.origin.x + 0.5 + across.x - s.dir().x, s.origin.y,
+                                          s.origin.z + 0.5 + across.z - s.dir().z));
+        pigmen_.push_back(g.spawn_monster(MobKind::PigZombie, s.origin.x + 0.5 - across.x + s.dir().x * 2, s.origin.y,
+                        s.origin.z + 0.5 - across.z + s.dir().z * 2));
+        hold(STONE_SWORD);
+    }
+    if (f == 30 && g.monsters.size() == 2) {
+        check("zombie pigmen leave the player alone", g.vitals.health == MAX_HEALTH &&
+                                                          std::none_of(g.monsters.begin(), g.monsters.end(),
+                                                                       [](const auto& m) { return m->targeting; }));
+        Monster& a = *g.monsters[0];
+        look_at({a.body.x, a.body.y + 1.2, a.body.z});
+        g.target_monster = &a;
+        g.attack_cooldown = 0;
+        g.try_attack();
+        check("hitting one zombie pigman angers them all",
+              std::all_of(g.monsters.begin(), g.monsters.end(), [](const auto& m) { return m->anger > 0; }));
+    }
+    if (f == 45) {
+        check("angry zombie pigmen go for the player", std::any_of(g.monsters.begin(), g.monsters.end(), [](const auto& m) {
+                  return m->targeting;
+              }));
+        shot(app, "m14_pigmen.png");
+    }
+    if (f == 46 && nether_portal_) {
+        // A ghast in a hollow carved out in front of the portal.
+        g.monsters.clear();
+        g.target_monster = nullptr;
+        pigmen_.clear();
+        const PortalShape s{nether_portal_->first, nether_portal_->second};
+        const glm::ivec3 across = glm::ivec3(1, 0, 1) - s.dir();
+        for (int a = 2; a <= 13; ++a)
+            for (int i = -3; i <= 4; ++i)
+                for (int h = 0; h <= 7; ++h) set(s.origin + across * a + s.dir() * i + glm::ivec3(0, h, 0), AIR);
+        g.vitals.reset();
+        stand(s.exit() + glm::dvec3(across) * 1.0);
+        const glm::dvec3 spot = glm::dvec3(s.origin) + glm::dvec3(across) * 10.0 + glm::dvec3(s.dir()) * 0.5 + glm::dvec3(0.5, 1, 0.5);
+        ghast_ = g.spawn_monster(MobKind::Ghast, spot.x, spot.y, spot.z);
+        look_at({spot.x, spot.y + 2, spot.z});
+    }
+    auto ghast_alive = [&] {
+        return ghast_ && std::any_of(g.monsters.begin(), g.monsters.end(), [&](const auto& m) { return m.get() == ghast_; });
+    };
+    if (f > 46 && f < 140 && ghast_alive()) {
+        g.vitals.health = MAX_HEALTH;  // the blasts shouldn't kill the player during the test
+        if (fireball_hit_back_) {
+            // Keep the ghast where the fireball was sent, so drifting off can't make it miss.
+            ghast_->body.x = ghast_pin_.x;
+            ghast_->body.y = ghast_pin_.y;
+            ghast_->body.z = ghast_pin_.z;
+            ghast_->knock_x = ghast_->knock_z = ghast_->body.vy = 0;
+        }
+        if (!fireball_seen_ && !g.fireballs.empty()) {
+            fireball_seen_ = true;
+            fireball_frame_ = f;
+            look_at({ghast_->body.x, ghast_->body.y + 2, ghast_->body.z});
+            shot(app, "m14_ghast.png");
+        } else if (fireball_seen_ && !fireball_hit_back_ && f == fireball_frame_ + 2 && !g.fireballs.empty()) {
+            // Meet it a couple of blocks in front of the player and hit it back.
+            Fireball& fb = *g.fireballs.front();
+            const glm::dvec3 eye(g.eye());
+            const glm::dvec3 to_ghast = glm::normalize(glm::dvec3(ghast_->body.x, ghast_->body.y + 2, ghast_->body.z) - eye);
+            fb.pos = eye + to_ghast * 2.0;
+            look_at(fb.pos);
+            fireball_hit_back_ = g.hit_fireball();
+            ghast_pin_ = glm::dvec3(ghast_->body.x, ghast_->body.y, ghast_->body.z);
+            check("a left click hits a ghast's fireball back", fireball_hit_back_ && fb.deflected && glm::dot(fb.vel, to_ghast) > 0);
+        }
+    }
+    if (f == 140) {
+        check("a ghast shoots fireballs at a player it can see", fireball_seen_);
+        check("a fireball hit back hurts its ghast", !ghast_alive() || ghast_->health < mob_info(MobKind::Ghast).health);
+        g.fireballs.clear();
+    }
+    if (f == 141 && nether_portal_) {
+        // A bed blows up in the Nether.
+        const PortalShape s{nether_portal_->first, nether_portal_->second};
+        const glm::ivec3 across = glm::ivec3(1, 0, 1) - s.dir();
+        g.creative = true;
+        const glm::ivec3 foot = s.origin + across * 6, head = foot + across;
+        const int dir = facing_of(across);
+        set(foot - glm::ivec3(0, 1, 0), NETHERRACK);
+        set(head - glm::ivec3(0, 1, 0), NETHERRACK);
+        set(foot, static_cast<BlockId>(BED_FOOT_SOUTH + dir));
+        set(head, static_cast<BlockId>(BED_HEAD_SOUTH + dir));
+        g.try_sleep(head);
+        check("a bed blows up in the Nether instead of letting you sleep", !g.sleeping_in && !is_bed(at(foot)) && !is_bed(at(head)));
+        g.creative = false;
+        g.monsters.clear();
+        g.target_monster = nullptr;
+        ghast_ = nullptr;
+    }
+    if (f == 150 && nether_portal_) {
+        const PortalShape s{nether_portal_->first, nether_portal_->second};
+        // The fireballs and the bed's blast may have put the portal out: light it again.
+        if (!portal_at(g.world, s.origin)) g.try_light_portal(s.origin);
+        go_through(s.exit());
+    }
+    if (f == 158) {
+        check("the portal in the Nether leads back to the overworld", !g.world.nether());
+        const auto here = portal_here();
+        check("coming back links to the portal first lit (8 to 1)", here && here->origin == o);
+        if (nether_inventory_) inv = *nether_inventory_;
+        stand(before_nether_);
+        g.portal_cooldown = false;
+        g.portal_ticks = 0;
+        g.vitals.reset();
+        g.renderer->load_all(p.x, p.z, 2);
     }
 }

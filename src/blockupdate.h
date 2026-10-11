@@ -87,6 +87,11 @@ public:
     // Start up the blocks of a chunk that were busy when it was saved: fires, water or lava
     // that was flowing, pressed buttons and plates (block ticks aren't saved).
     void wake_chunk(const Chunk& c);
+    // Forget every waiting tick (the world was swapped for another dimension).
+    void clear() {
+        queue_.clear();
+        waiting_.clear();
+    }
 
 private:
     using Key = std::tuple<int, int, int>;

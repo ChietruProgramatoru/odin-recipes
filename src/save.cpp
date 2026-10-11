@@ -117,7 +117,7 @@ int region_index(int cx, int cz) { return (cz & (REGION_SIZE - 1)) * REGION_SIZE
 bool PlayerData::operator==(const PlayerData& o) const {
     return pos == o.pos && yaw == o.yaw && pitch == o.pitch && health == o.health && hunger == o.hunger &&
            saturation == o.saturation && exhaustion == o.exhaustion && creative == o.creative && flying == o.flying &&
-           inventory == o.inventory && bed == o.bed;
+           inventory == o.inventory && bed == o.bed && dimension == o.dimension;
 }
 
 // --- level.json ------------------------------------------------------------------------
@@ -136,6 +136,16 @@ std::string level_to_json(const LevelData& level) {
     j["thundering"] = level.weather.thundering;
     j["thunderTime"] = level.weather.thunder_time;
     j["nextMap"] = level.next_map;
+    if (!level.portals.empty()) {
+        Json list = Json::array();
+        for (const LevelData::Portal& portal : level.portals) {
+            Json e = Json::array();
+            e.push(static_cast<int>(portal.dimension));
+            for (int k = 0; k < 3; ++k) e.push(portal.pos[k]);
+            list.push(std::move(e));
+        }
+        j["portals"] = std::move(list);
+    }
     if (level.player) {
         const PlayerData& p = *level.player;
         Json& pj = j["player"];
@@ -149,6 +159,7 @@ std::string level_to_json(const LevelData& level) {
         pj["creative"] = p.creative;
         pj["flying"] = p.flying;
         if (p.bed) pj["bed"] = vec3(glm::dvec3(*p.bed));
+        if (p.dimension != Dimension::Overworld) pj["dimension"] = static_cast<int>(p.dimension);  // Beta's name
         pj["selected"] = p.inventory.selected;
         Json inv = Json::array();
         auto put = [&](int index, const std::optional<Stack>& s) {
@@ -184,6 +195,15 @@ std::optional<LevelData> level_from_json(const std::string& text) {
     level.weather.thundering = j.boolean("thundering", false);
     level.weather.thunder_time = static_cast<int>(std::clamp(j.number("thunderTime", 0), 0.0, 1e9));
     level.next_map = static_cast<int>(std::clamp(j.number("nextMap", 1), 1.0, 1e9));
+    if (const Json* list = j.get("portals"); list && list->is_array())
+        for (const Json& e : list->items()) {
+            if (!e.is_array() || e.items().size() != 4) continue;
+            const int dim = static_cast<int>(e.items()[0].as_number(0));
+            if (dim != 0 && dim != -1) continue;
+            glm::ivec3 pos;
+            for (int k = 0; k < 3; ++k) pos[k] = static_cast<int>(std::clamp(e.items()[k + 1].as_number(0), -3e7, 3e7));
+            level.portals.push_back({static_cast<Dimension>(dim), pos});
+        }
     if (const Json* pj = j.get("player"); pj && pj->is_object()) {
         auto pos = read_vec3(pj->get("pos"));
         if (pos) {
@@ -200,6 +220,7 @@ std::optional<LevelData> level_from_json(const std::string& text) {
             auto bed = read_vec3(pj->get("bed"));
             if (bed && std::abs(bed->x) < 3e7 && std::abs(bed->y) < 3e7 && std::abs(bed->z) < 3e7)
                 p.bed = glm::ivec3(std::floor(bed->x), std::floor(bed->y), std::floor(bed->z));
+            if (pj->number("dimension", 0) == -1) p.dimension = Dimension::Nether;
             p.inventory.selected = std::clamp(static_cast<int>(pj->number("selected", 0)), 0, Inventory::HOTBAR - 1);
             if (const Json* inv = pj->get("inventory"); inv && inv->is_array())
                 for (const Json& s : inv->items()) {
@@ -546,7 +567,7 @@ bool RegionStore::write(const std::vector<std::pair<ChunkPos, std::vector<uint8_
 // --- Background saving ---------------------------------------------------------------------
 
 WorldSaver::WorldSaver(fs::path world_dir)
-    : dir_(std::move(world_dir)), store_(dir_ / "region"), thread_([this] { run(); }) {}
+    : dir_(std::move(world_dir)), store_(dir_ / "region"), nether_store_(dir_ / "DIM-1" / "region"), thread_([this] { run(); }) {}
 
 WorldSaver::~WorldSaver() {
     {
@@ -557,10 +578,10 @@ WorldSaver::~WorldSaver() {
     thread_.join();
 }
 
-void WorldSaver::save(LevelData level, std::vector<std::unique_ptr<Chunk>> chunks) {
+void WorldSaver::save(LevelData level, std::vector<std::unique_ptr<Chunk>> chunks, Dimension dimension) {
     {
         std::lock_guard lock(mutex_);
-        jobs_.push_back({std::move(level), std::move(chunks)});
+        jobs_.push_back({std::move(level), std::move(chunks), dimension});
     }
     cv_.notify_all();
 }
@@ -592,7 +613,7 @@ void WorldSaver::run() {
         std::vector<std::pair<ChunkPos, std::vector<uint8_t>>> compressed;
         compressed.reserve(job.chunks.size());
         for (const auto& c : job.chunks) compressed.push_back({{c->cx, c->cz}, zlib_compress(encode_chunk(*c))});
-        bool ok = store_.write(compressed);
+        bool ok = store(job.dimension).write(compressed);
         ok &= write_level(dir_, job.level);
         if (!ok) std::fprintf(stderr, "PetrutzCraft: could not save the world to %s\n", dir_.string().c_str());
         {

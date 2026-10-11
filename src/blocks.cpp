@@ -22,7 +22,7 @@ const BlockInfo BLOCKS[BLOCK_COUNT] = {
     {"Crafting Table", {IT_CRAFT_TOP, IT_CRAFT_FRONT, T_PLANKS}, 2.5f, CRAFTING_TABLE},
     {"Chest", {IT_CHEST_TOP, IT_CHEST_SIDE, IT_CHEST_TOP}, 2.5f, CHEST},  // the front goes on one side (data value)
     {"Furnace", {IT_FURNACE_TOP, IT_FURNACE_SIDE, IT_FURNACE_TOP}, 3.5f, FURNACE},
-    {"Glowstone", {IT_GLOWSTONE, IT_GLOWSTONE, IT_GLOWSTONE}, 0.3f, GLOWSTONE},
+    {"Glowstone", {IT_GLOWSTONE, IT_GLOWSTONE, IT_GLOWSTONE}, 0.3f, GLOWSTONE_DUST, 2, 4},  // Beta: 2-4 dust
     {"Torch", {T_TORCH, T_TORCH, T_TORCH}, 0.0f, TORCH},
     {"Torch", {T_TORCH, T_TORCH, T_TORCH}, 0.0f, TORCH},
     {"Torch", {T_TORCH, T_TORCH, T_TORCH}, 0.0f, TORCH},
@@ -129,6 +129,8 @@ const BlockInfo BLOCKS[BLOCK_COUNT] = {
     {"Piston", {IT_PISTON_TOP, IT_PISTON_SIDE, IT_PISTON_SIDE}, 0.5f, std::nullopt},
     {"Dispenser", {IT_FURNACE_TOP, IT_FURNACE_SIDE, IT_FURNACE_TOP}, 3.5f, DISPENSER},
     {"Redstone Ore", {T_REDSTONE_ORE, T_REDSTONE_ORE, T_REDSTONE_ORE}, 3.0f, REDSTONE, 4, 5},
+    // The Nether (M14). Beta: a portal can't be mined; breaking its frame (or an explosion) takes it away.
+    {"Portal", {T_PORTAL, T_PORTAL, T_PORTAL}, std::nullopt, std::nullopt},
 };
 
 static_assert(TILE_COUNT <= ITEM_TILE_BASE, "world tiles run into the item tiles");
@@ -176,10 +178,11 @@ float block_height(BlockId id) {
 }
 bool falls(BlockId id) { return id == SAND || id == GRAVEL; }
 bool is_shaped(BlockId id) { return id == SLAB || (id >= WOOD_STAIRS && id <= PAINTING_BLOCK) || is_redstone_shaped(id); }
+bool is_portal(BlockId id) { return id == PORTAL; }
 bool is_door(BlockId id) { return id == WOOD_DOOR_BLOCK || id == IRON_DOOR_BLOCK; }
 // Signs and paintings have nothing to bump into (Beta); they are aimed at by their boxes.
 bool is_thin(BlockId id) { return is_torch(id) || id == FIRE || is_plant(id) || id == SIGN_POST || id == WALL_SIGN || id == PAINTING_BLOCK ||
-                                    is_rail(id) || id == SNOW_LAYER || is_redstone_thin(id); }
+                                    is_rail(id) || id == SNOW_LAYER || is_redstone_thin(id) || id == PORTAL; }
 bool is_solid(BlockId id) { return id != AIR && !is_fluid(id) && !is_thin(id); }
 bool is_opaque(BlockId id) {
     return id != AIR && !is_fluid(id) && id != ICE && !is_cutout(id) && !is_thin(id) && !is_bed(id) && id != CAKE_BLOCK &&
@@ -211,6 +214,7 @@ int light_opacity(BlockId id) {
 
 int light_emission(BlockId id) {
     if (id == GLOWSTONE || id == LAVA || id == FIRE) return 15;
+    if (id == PORTAL) return 11;  // Beta
     if (is_torch(id)) return 14;
     if (id == BROWN_MUSHROOM) return 1;  // Beta's brown mushrooms glow very faintly
     if (is_lit_furnace(id)) return 13;
