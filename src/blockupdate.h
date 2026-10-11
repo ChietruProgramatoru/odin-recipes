@@ -92,7 +92,7 @@ private:
     void tick_fire(glm::ivec3 p, Rng& rng, const RainCheck& rain, BlockEvents& out);
     void tick_falling(glm::ivec3 p, BlockEvents& out);
     void random_tick(glm::ivec3 p, Rng& rng, const RainCheck& rain, BlockEvents& out);
-    void decay(glm::ivec3 p, Rng& rng, BlockEvents& out);  // leaves marked LEAVES_CHECK
+    void decay(glm::ivec3 p, BlockEvents& out);  // leaves marked LEAVES_CHECK
     void grow_cactus(glm::ivec3 p, BlockEvents& out);
 
     // Fluid helpers (Beta's BlockFlowing).
@@ -109,7 +109,8 @@ private:
     bool area_loaded(glm::ivec3 p);
 
     World& world_;
-    Rng snow_rng_{0x5A0F};  // its own, so snow doesn't change what the other random numbers do
+    // Its own for snow and leaf decay, so they don't change the random numbers fire and the rest get.
+    Rng nature_rng_{0x5A0F};
     long now_ = 0;
     std::set<std::tuple<long, int, int, int>> queue_;  // (due tick, x, y, z), in the order they run
     std::map<Key, std::pair<long, BlockId>> waiting_;   // cell -> (due tick, block it was for)

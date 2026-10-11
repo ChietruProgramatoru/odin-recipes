@@ -79,6 +79,8 @@ enum Tile : int {
     // Farming (M8): farmland, wheat in its 8 stages, plants (drawn as crossed sheets) and cake.
     T_FARMLAND_DRY, T_FARMLAND_WET, T_WHEAT_0, T_WHEAT_7 = T_WHEAT_0 + 7, T_SUGAR_CANE, T_TALL_GRASS, T_FERN,
     T_DANDELION, T_ROSE, T_BROWN_MUSHROOM, T_RED_MUSHROOM, T_CAKE_TOP, T_CAKE_SIDE, T_CAKE_INSIDE,
+    // Animals (M9). Sheep's wool uses the wool item tiles (see icons.h).
+    T_PIG, T_PIG_SNOUT, T_SADDLE, T_SHEEP_SKIN, T_SHEEP_FACE, T_BEAK, T_WATTLE, T_SQUID, T_WOLF, T_WOLF_DARK,
     // Nature (M6 part 2). The snow layer uses the snow block's tile (IT_SNOW, icons.h).
     T_SAPLING, T_SPRUCE_SAPLING, T_BIRCH_SAPLING, T_CACTUS_TOP, T_CACTUS_SIDE, T_CACTUS_BOTTOM, T_COBWEB,
     T_GRASS_SNOW_SIDE,

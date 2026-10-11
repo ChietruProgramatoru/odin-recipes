@@ -150,8 +150,8 @@ void BlockUpdater::random_ticks(ChunkPos center, int radius, Rng& rng, const Rai
 void BlockUpdater::snow_ticks(ChunkPos center, int radius, bool snowing, BlockEvents& out) {
     for (int cx = center.cx - radius; cx <= center.cx + radius; ++cx)
         for (int cz = center.cz - radius; cz <= center.cz + radius; ++cz) {
-            if (!world_.find(cx, cz) || snow_rng_.below(SNOW_ODDS) != 0) continue;
-            const int x = cx * CHUNK + snow_rng_.below(CHUNK), z = cz * CHUNK + snow_rng_.below(CHUNK);
+            if (!world_.find(cx, cz) || nature_rng_.below(SNOW_ODDS) != 0) continue;
+            const int x = cx * CHUNK + nature_rng_.below(CHUNK), z = cz * CHUNK + nature_rng_.below(CHUNK);
             const auto top = world_.rain_height(x, z);
             const auto biome = world_.biome_at(x, z);
             if (!top || !biome || !is_cold(*biome) || *top <= 0 || *top >= HEIGHT) continue;
@@ -254,7 +254,7 @@ void BlockUpdater::random_tick(glm::ivec3 p, Rng& rng, const RainCheck& rain, Bl
         return;
     }
     if (is_leaves(here)) {
-        decay(p, rng, out);
+        decay(p, out);
         return;
     }
     if (here == CACTUS) {
@@ -282,7 +282,7 @@ void BlockUpdater::random_tick(glm::ivec3 p, Rng& rng, const RainCheck& rain, Bl
 
 // --- Leaves and cactus (nature.h) ------------------------------------------------------------------
 
-void BlockUpdater::decay(glm::ivec3 p, Rng& rng, BlockEvents& out) {
+void BlockUpdater::decay(glm::ivec3 p, BlockEvents& out) {
     const int data = world_.get_data(p.x, p.y, p.z);
     if (!(data & LEAVES_CHECK)) return;
     if ((data & LEAVES_PLAYER) || log_near(world_, p)) {
@@ -291,7 +291,7 @@ void BlockUpdater::decay(glm::ivec3 p, Rng& rng, BlockEvents& out) {
     }
     const BlockId leaves = block_at(world_, p);
     set(p, AIR, 0, out);
-    for (ItemId item : leaf_drops(leaves, rng)) out.drops.push_back({p, item});
+    for (ItemId item : leaf_drops(leaves, nature_rng_)) out.drops.push_back({p, item});
 }
 
 // Beta's BlockCactus.updateTick: the top of a stalk shorter than 3 ages, and grows one more at 15.

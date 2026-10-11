@@ -1,4 +1,4 @@
-// One world being played: player input, mining/building, survival, cows, monsters, drawing and saving.
+// One world being played: player input, mining/building, survival, animals, monsters, drawing and saving.
 #pragma once
 #include <array>
 #include <filesystem>
@@ -10,6 +10,7 @@
 
 #include <glm/vec3.hpp>
 
+#include "animals.h"
 #include "hand.h"
 #include "blockupdate.h"
 #include "farming.h"
@@ -40,7 +41,9 @@ constexpr double SNEAK_SPEED = 1.3;
 constexpr double FLY_SPEED = 11.0;
 constexpr double JUMP_SPEED = 8.4;
 constexpr double THIRD_PERSON_DISTANCE = 4.0;
-constexpr size_t MAX_COWS = 24;
+constexpr size_t MAX_ANIMALS = 30;  // land animals simulated at once (the world spawns no more past this)
+constexpr size_t MAX_SQUID = 5;     // Beta's cap on water animals
+constexpr double RIDE_HEIGHT = 0.55;  // the player's feet above a pig's while riding it
 constexpr int MONSTER_SPAWN_CHUNKS = 8;  // monsters spawn in chunks this close to the player (Beta)
 
 struct GameSetup {
@@ -90,7 +93,8 @@ public:
     int sleep_ticks = 0;
     int sleep_dir = 0;  // facing of that bed (foot to head)
 
-    std::vector<std::unique_ptr<Cow>> cows;
+    std::vector<std::unique_ptr<Animal>> animals;
+    Animal* riding = nullptr;  // the saddled pig the player sits on
     std::vector<std::unique_ptr<Monster>> monsters;
     std::vector<std::unique_ptr<ItemDrop>> drops;
     std::vector<std::unique_ptr<Arrow>> arrows;
@@ -117,7 +121,7 @@ public:
     double mining_progress = 0;
     double attack_cooldown = 0, break_cooldown = 0, use_cooldown = 0;
     std::optional<RayHit> target;
-    Cow* target_cow = nullptr;
+    Animal* target_animal = nullptr;
     Monster* target_monster = nullptr;
     bool paused = false;
     bool hud_hidden = false, debug_screen = false, third_person = false;  // F1, F3, F5
@@ -126,8 +130,8 @@ public:
     double fps = 60;
 
     Inventory& active_inventory() { return creative ? creative_inventory : inventory; }
-    // The crosshair is on a cow or a monster (not a block).
-    bool targeting_mob() const { return target_cow || target_monster; }
+    // The crosshair is on an animal or a monster (not a block).
+    bool targeting_mob() const { return target_animal || target_monster; }
     int difficulty() const { return options.difficulty; }
     glm::vec3 eye() const;
     glm::vec3 forward() const;
@@ -141,8 +145,24 @@ public:
     void use_item();
     // Right click: use_item(), swinging the hand if that changed a block or opened something (Beta).
     void use_item_by_hand();
-    // Left click on a cow or monster in reach.
+    // Left click on an animal or monster in reach.
     void try_attack();
+    // Right click on an animal: milk, saddle, ride, shear, dye, tame, feed or sit. False if nothing happened.
+    bool interact(Animal& a);
+    // Throw the egg in hand (right click with an egg).
+    void throw_egg();
+    // Get off the pig (sneak), standing on top of it or next to it.
+    void dismount();
+    // The player was hit by, or hit, this monster or animal: their tamed wolves go for it (Beta).
+    void alert_wolves(const void* enemy);
+    // An animal at a spot. Returns it.
+    Animal* spawn_animal(AnimalKind kind, double x, double y, double z);
+    // A group of 1 to 4 animals of one kind (Beta's packs) on grass rmin..rmax blocks from a point,
+    // of the kind the biome there picks unless `kind` is given. Returns how many appeared.
+    int spawn_animal_group(double x, double z, double rmin, double rmax, std::optional<AnimalKind> kind = std::nullopt);
+    // A few squid in deep water rmin..rmax blocks from a point. Returns how many appeared.
+    int spawn_squid(double x, double z, double rmin, double rmax);
+    size_t land_animal_count() const;
     // Damage the player, less what their armor takes off. Returns true if it hurt.
     bool hurt_player(int amount, bool ignore_cooldown = false);
     // A monster (or its arrow or blast) hits the player: scaled by the difficulty, and a hit
@@ -214,7 +234,6 @@ public:
 private:
     glm::dvec3 find_spawn();
     void restore_player(const PlayerData& p);
-    bool spawn_cow_near(double x, double z, double rmin, double rmax);
     void on_chunk_shown(ChunkPos pos);
     void spawn_entity(const EntityRecord& e);
     void stash_entity(const EntityRecord& e);
@@ -222,7 +241,7 @@ private:
     void mine(double dt);
     void spawn_drop(ItemId item, double x, double y, double z);
     void on_death();
-    void update_cows(double dt);
+    void update_animals(double dt);
     void update_monsters(double dt);
     void update_tnts(double dt);
     // A monster died: its drops, and a big slime's smaller slimes.
@@ -259,7 +278,8 @@ private:
     bool have_cursor_ = false;
     double cursor_x_ = 0, cursor_y_ = 0;
     double ticks_ = 0;  // fraction of a game tick not yet added to level.time
-    Rng weather_rng_;   // its own random numbers, so weather doesn't change what cows do
+    Rng weather_rng_;   // its own random numbers, so weather doesn't change what animals do
+    Rng animal_rng_;    // and for animals, so they don't change what the rest does
     Rng monster_rng_;   // and its own for monsters, so they don't change what the rest does
     Rng farm_rng_;      // and for random block ticks (crops growing, farmland drying)
 };

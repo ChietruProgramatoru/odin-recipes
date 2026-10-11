@@ -173,6 +173,7 @@ TEST_CASE("armor takes 4% off per point and wears with every hit") {
 
 // --- Arrows and fire --------------------------------------------------------------------------
 
+#include "animals.h"
 #include "mobs.h"
 
 namespace {
@@ -221,7 +222,7 @@ TEST_CASE("an arrow hits the first cow in its path, but never the one who shot i
     clear_sky(w);
     w.set_block(5, 109, 5, STONE);
     Rng rng(1);
-    Cow near(w, 5.5, 110, 3.5, rng), far(w, 5.5, 110, 6.5, rng);
+    Animal near(w, AnimalKind::Cow, 5.5, 110, 3.5, rng), far(w, AnimalKind::Cow, 5.5, 110, 6.5, rng);
     std::vector<ArrowTarget> targets{far.target(0, 1), near.target(0, 0)};
     Arrow a({5.5, 110.8, 0.5}, {0, 0, Arrow::SPEED});
     a.shooter = &near;  // flies through its own shooter
@@ -230,7 +231,7 @@ TEST_CASE("an arrow hits the first cow in its path, but never the one who shot i
     REQUIRE(hit);
     CHECK(hit->index == 1);
     far.hurt(ARROW_DAMAGE, a.pos.x, a.pos.z - 1);
-    CHECK(far.health == COW_MAX_HEALTH - ARROW_DAMAGE);
+    CHECK(far.health == animal_info(AnimalKind::Cow).health - ARROW_DAMAGE);
 }
 
 TEST_CASE("fire is a thin light source you walk through") {
