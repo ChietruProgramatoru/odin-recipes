@@ -11,7 +11,7 @@
 
 class InventoryScreen {
 public:
-    enum class Kind { Inventory, CraftingTable, Creative, Furnace, Chest };
+    enum class Kind { Inventory, CraftingTable, Creative, Furnace, Chest, Dispenser };
 
     // Inventory and CraftingTable work on the survival inventory; Creative on the creative hotbar.
     InventoryScreen(Kind kind, Inventory& inventory);
@@ -20,6 +20,8 @@ public:
     // A chest's screen with its title ("Chest", "Large chest", "Minecart"); bottom: the lower half
     // of a double chest.
     InventoryScreen(Inventory& inventory, ChestSlots& top, ChestSlots* bottom, std::string title);
+    // A dispenser's screen: its 9 slots (the first of `slots`) in a 3 x 3 square.
+    InventoryScreen(Inventory& inventory, ChestSlots& slots);
 
     const Kind kind;
     std::optional<CraftingMenu> crafting;

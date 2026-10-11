@@ -88,6 +88,11 @@ InventoryScreen::InventoryScreen(Inventory& inventory, ChestSlots& top, ChestSlo
     crafting.emplace(inventory, top, bottom);
 }
 
+InventoryScreen::InventoryScreen(Inventory& inventory, ChestSlots& slots) : kind(Kind::Dispenser), title("Dispenser") {
+    crafting.emplace(inventory, slots, nullptr);
+    crafting->chest_size = DISPENSER_SLOTS;
+}
+
 int InventoryScreen::chest_rows() const { return kind == Kind::Chest ? crafting->chest_slots() / 9 : 0; }
 
 int InventoryScreen::gui_scale(int width, int height) {
@@ -121,6 +126,9 @@ std::vector<InventoryScreen::SlotPos> InventoryScreen::slot_positions() const {
     } else if (kind == Kind::Chest) {
         for (int r = 0; r < 3; ++r)
             for (int c = 0; c < 9; ++c) out.push_back({{Slot::Chest, r * 9 + c}, 8 + c * 18, 18 + r * 18});
+    } else if (kind == Kind::Dispenser) {
+        for (int r = 0; r < 3; ++r)
+            for (int c = 0; c < 3; ++c) out.push_back({{Slot::Chest, r * 3 + c}, 62 + c * 18, 17 + r * 18});
     } else if (kind == Kind::Furnace) {
         out.push_back({{Slot::Furnace, FURNACE_INPUT}, 56, 17});
         out.push_back({{Slot::Furnace, FURNACE_FUEL}, 56, 53});
@@ -254,6 +262,9 @@ void InventoryScreen::draw(Painter& p, int width, int height, double mx, double 
     } else if (kind == Kind::Chest) {
         f.label(title, 8, 6);
         f.label("Inventory", 8, ph - 94);
+    } else if (kind == Kind::Dispenser) {
+        f.label(title, 60, 6);
+        f.label("Inventory", 8, 72);
     } else if (kind == Kind::CraftingTable) {
         f.label("Crafting", 28, 6);
         f.arrow(90, 35);

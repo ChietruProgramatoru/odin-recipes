@@ -427,7 +427,7 @@ std::unique_ptr<Chunk> decode_chunk(const std::vector<uint8_t>& bytes, int cx, i
                 auto st = slot();
                 if (at < CHEST_SLOTS) slots[at] = st;
             }
-            if (block_is(index, [](BlockId b) { return b == CHEST; })) c->chests[index] = slots;
+            if (block_is(index, [](BlockId b) { return b == CHEST || b == DISPENSER_BLOCK; })) c->chests[index] = slots;
         }
         const int signs = r.u16();
         for (int i = 0; i < signs && r.ok(); ++i) {

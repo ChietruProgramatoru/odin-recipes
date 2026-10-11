@@ -21,6 +21,8 @@ std::array<float, 4> tile_uv(int index);
 std::map<int, Image> make_tiles(int seed = 1234);
 // The building blocks' tiles (building_art.cpp), the sign font and the paintings; part of make_tiles.
 std::map<int, Image> make_building_tiles();
+// Redstone's tiles (redstone_art.cpp); part of make_tiles.
+std::map<int, Image> make_redstone_tiles();
 Image make_atlas(const std::map<int, Image>& tiles);
 
 // Rain streaks and snowflakes, drawn repeating on the columns of falling weather.

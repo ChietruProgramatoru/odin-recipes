@@ -94,8 +94,8 @@ glm::ivec3 door_other_half(glm::ivec3 pos, int data);
 // BlockInfo drop as before.
 std::optional<std::vector<ItemId>> data_drops(BlockId block, int data);
 
-// Cells that go together: both halves of a door, or every cell of a painting (painting.h finds
-// those). Breaking one breaks the rest, and only one item drops.
+// Cells that go together: both halves of a door, every cell of a painting (painting.h finds
+// those), or a piston and its head. Breaking one breaks the rest, and only one item drops.
 std::vector<glm::ivec3> joined_cells(World& world, glm::ivec3 pos);
 
 // After the block at `pos` changed, the neighbours that can't stay any more (a ladder whose wall

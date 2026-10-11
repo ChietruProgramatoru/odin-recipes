@@ -15,6 +15,7 @@
 #include <glm/vec3.hpp>
 
 #include "physics.h"
+#include "redstone.h"
 #include "rng.h"
 #include "world.h"
 
@@ -33,6 +34,7 @@ struct BlockEvents {
     std::vector<glm::ivec3> fizz;                            // lava met water (the block is already set)
     std::vector<std::pair<glm::ivec3, BlockId>> falling;     // sand or gravel let go (the block is already gone)
     std::vector<glm::ivec3> tnt;                             // TNT the fire reached (the block is already gone)
+    RedstoneEvents redstone;                                 // what the circuits did (M13)
     void rebuild(const std::vector<ChunkPos>& chunks);
 };
 
@@ -59,7 +61,12 @@ bool can_fall_into(BlockId b);
 
 class BlockUpdater {
 public:
-    explicit BlockUpdater(World& world) : world_(world) {}
+    explicit BlockUpdater(World& world) : world_(world), redstone_(world) {}
+
+    // Redstone runs inside the block ticks (it sees every change); the game tells it who stands on
+    // pressure plates, and flips levers and presses buttons through it.
+    Redstone& redstone() { return redstone_; }
+    void set_plate_sensor(PlateSensor sensor) { plate_sensor_ = std::move(sensor); }
 
     // Ask for a block tick at a cell `delay` game ticks from now (once: a cell already waiting
     // keeps its time). The tick only runs if the cell still holds the same block.
@@ -77,8 +84,8 @@ public:
     // Cold biomes within `radius` (Beta's World.tickBlocks): now and then still water at the top of a
     // column freezes, and while it snows (`snowing`: it is raining) a snow layer settles there.
     void snow_ticks(ChunkPos center, int radius, bool snowing, BlockEvents& out);
-    // Start up the blocks of a chunk that were busy when it was saved: fires, and water or lava
-    // that was flowing (block ticks aren't saved).
+    // Start up the blocks of a chunk that were busy when it was saved: fires, water or lava
+    // that was flowing, pressed buttons and plates (block ticks aren't saved).
     void wake_chunk(const Chunk& c);
 
 private:
@@ -109,6 +116,8 @@ private:
     bool area_loaded(glm::ivec3 p);
 
     World& world_;
+    Redstone redstone_;
+    PlateSensor plate_sensor_;
     // Its own for snow and leaf decay, so they don't change the random numbers fire and the rest get.
     Rng nature_rng_{0x5A0F};
     long now_ = 0;
