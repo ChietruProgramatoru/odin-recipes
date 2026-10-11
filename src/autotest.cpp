@@ -100,24 +100,23 @@ void AutoTest::menus(App& app) {
 void AutoTest::play(App& app, Game& g) {
     const long f = g.frame;
     Body& p = g.player;
-    auto dist_to = [&](const Cow* c) { return std::hypot(c->body.x - p.x, c->body.z - p.z); };
+    auto dist_to = [&](const Animal* c) { return std::hypot(c->body.x - p.x, c->body.z - p.z); };
     auto cow_alive_in_world = [&] {
-        return std::any_of(g.cows.begin(), g.cows.end(), [&](const auto& c) { return c.get() == cow_; });
+        return std::any_of(g.animals.begin(), g.animals.end(), [&](const auto& c) { return c.get() == cow_; });
     };
 
     if (f == 2) g.hud->show_help = false;
     if (f == 120) {
         char buf[128];
-        std::snprintf(buf, sizeof buf, "seed %llu, chunks meshed %zu, cows %zu", static_cast<unsigned long long>(g.level.seed),
-                      g.renderer->mesh_count(), g.cows.size());
+        std::snprintf(buf, sizeof buf, "seed %llu, chunks meshed %zu, animals %zu", static_cast<unsigned long long>(g.level.seed),
+                      g.renderer->mesh_count(), g.animals.size());
         log(buf);
         shot(app, "1_spawn.png");
-        check("cows spawned near the player", !g.cows.empty());
-        if (!g.cows.empty()) {
-            cow_ = std::min_element(g.cows.begin(), g.cows.end(),
-                                    [&](const auto& a, const auto& b) { return dist_to(a.get()) < dist_to(b.get()); })
-                       ->get();
-            cow_->state = Cow::State::Idle;
+        for (const auto& a : g.animals)
+            if (a->kind == AnimalKind::Cow && (!cow_ || dist_to(a.get()) < dist_to(cow_))) cow_ = a.get();
+        check("cows spawned near the player", cow_ != nullptr);
+        if (cow_) {
+            cow_->state = Animal::State::Idle;
             cow_->state_timer = 1000;
             cow_->graze = false;
             // Walk the player up to the cow and look at it.
@@ -153,14 +152,14 @@ void AutoTest::play(App& app, Game& g) {
     }
     if (f == 160 && cow_) {
         shot(app, "2_cow.png");
-        check("cow is targetable by the crosshair", g.target_cow == cow_);
-        if (g.target_cow != cow_) {
+        check("cow is targetable by the crosshair", g.target_animal == cow_);
+        if (g.target_animal != cow_) {
             auto d = cow_->ray_hit(g.eye(), g.forward(), 10.0f);
             char buf[200];
-            std::snprintf(buf, sizeof buf, "  cow ray distance %.2f, crosshair block %s at %.2f, other cow %s",
+            std::snprintf(buf, sizeof buf, "  cow ray distance %.2f, crosshair block %s at %.2f, other animal %s",
                           d ? *d : -1.0f,
                           g.target ? item_name(g.world.get_block(g.target->block.x, g.target->block.y, g.target->block.z)).c_str() : "none",
-                          g.target ? g.target->distance : -1.0f, g.target_cow ? "yes" : "no");
+                          g.target ? g.target->distance : -1.0f, g.target_animal ? "yes" : "no");
             log(buf);
         }
     }
@@ -305,12 +304,13 @@ void AutoTest::play(App& app, Game& g) {
     if (f >= 1200 && f < 1350) fluids_and_fire(app, g);
     if (f >= 1350 && f < 1450) farming(app, g);
     if (f >= 1380 && f < 1400) building(app, g);
-    if (f == 1450) {
+    if (f >= 1450 && f < 1650) animals(app, g);
+    if (f == 1650) {
         app.pause();
         check("Escape menu pauses the game", g.paused && app.screen());
         shot(app, "7_pause.png");
     }
-    if (f == 1460) {
+    if (f == 1660) {
         // Change something, then save and quit to the title.
         marker_ = {static_cast<int>(std::floor(p.x)) + 2, static_cast<int>(std::floor(p.y)) + 1, static_cast<int>(std::floor(p.z))};
         g.renderer->rebuild(g.world.set_block(marker_.x, marker_.y, marker_.z, BRICK));
@@ -321,7 +321,7 @@ void AutoTest::play(App& app, Game& g) {
         fur = Furnace{Stack{SAND, 5}, Stack{COAL, 2}, Stack{GLASS, 3}, 1000, 1600, 50};
         saved_player_ = g.player_data();
         saved_raining_ = g.weather.state.raining;
-        saved_cows_ = g.cows.size();
+        saved_animals_ = g.animals.size();
         // A zombie next to the player, to see it again after loading.
         g.monsters.clear();
         g.target_monster = nullptr;
@@ -536,15 +536,15 @@ void AutoTest::monsters(App& app, Game& g) {
         place(0, 0);
         g.yaw = 0;
         g.pitch = 12;
-        // Cows in the arena walk behind the player, out of the pictures.
-        for (auto& c : g.cows)
+        // Animals in the arena walk behind the player, out of the pictures.
+        for (auto& c : g.animals)
             if (std::hypot(c->body.x - p.x, c->body.z - p.z) < 24) {
                 c->body.x = p.x + (c->body.x - p.x) * 0.3;
                 c->body.z = p.z - 26;
                 c->body.y = w.surface_y(static_cast<int>(std::floor(c->body.x)), static_cast<int>(std::floor(c->body.z)));
                 c->body.vx = c->body.vy = c->body.vz = 0;
             }
-        g.target_cow = nullptr;
+        g.target_animal = nullptr;
         g.hud->show_message("", 0);
         spawn(MobKind::Zombie, -4, 6);
         spawn(MobKind::Skeleton, -2, 6);
@@ -559,7 +559,11 @@ void AutoTest::monsters(App& app, Game& g) {
     if (f == 702) {
         for (auto& m : g.monsters) m->burning = 0;
         shot(app, "m10_monsters.png");
-        check("zombie, skeleton, creeper, spider, slime and a spider jockey stand in the arena", g.monsters.size() == 7);
+        // (Counting only the arena: one may have spawned in a cave somewhere in the meantime.)
+        const auto in_arena = std::count_if(g.monsters.begin(), g.monsters.end(), [&](const auto& m) {
+            return std::hypot(m->body.x - arena_.x, m->body.z - arena_.z) < 16;
+        });
+        check("zombie, skeleton, creeper, spider, slime and a spider jockey stand in the arena", in_arena == 7);
         check("the jockey's skeleton rides on its spider",
               g.monsters[6]->mount == g.monsters[5].get() && g.monsters[6]->body.y > g.monsters[5]->body.y + 0.2);
     }
@@ -968,6 +972,252 @@ void AutoTest::farming(App& app, Game& g) {
         p.y = a.y;
         p.z = a.z + 0.5;
         g.fall_peak = p.y;
+        g.weather = Weather(WeatherState{true, false, 100000, 100000});  // the rain the save check looks for
+    }
+}
+
+void AutoTest::animals(App& app, Game& g) {
+    const long f = g.frame - 1450;  // runs after farming
+    Body& p = g.player;
+    World& w = g.world;
+    // A flat grass pen behind the farm: the animals stand in a row along its middle (z = 2).
+    const glm::ivec3 b = arena_ + glm::ivec3(0, 0, -20);
+    auto set = [&](glm::ivec3 c, BlockId id) { g.renderer->rebuild(w.set_block(c.x, c.y, c.z, id)); };
+    auto hold = [&](ItemId item, int count = 1) { g.inventory.slots[g.inventory.selected] = Stack{item, count}; };
+    auto held = [&] { return g.inventory.slots[g.inventory.selected]; };
+    auto stand = [&](double x, double z) {
+        p.x = x;
+        p.y = b.y;
+        p.z = z;
+        p.vx = p.vy = p.vz = 0;
+        g.fall_peak = p.y;
+    };
+    // Stand 2.5 blocks in front of an animal and look at its middle.
+    auto aim = [&](Animal* a) {
+        if (!a) return false;
+        stand(a->body.x, a->body.z - 2.5);
+        const glm::vec3 e = g.eye(), c(a->body.x, a->body.y + a->body.height * 0.5, a->body.z);
+        const glm::vec3 d = c - e;
+        g.yaw = degrees(std::atan2(d.x, d.z));
+        g.pitch = -degrees(std::asin(d.y / glm::length(d)));
+        g.update_target();
+        return g.target_animal == a;
+    };
+    auto alive = [&](const Animal* a) {
+        return std::any_of(g.animals.begin(), g.animals.end(), [&](const auto& o) { return o.get() == a && o->alive(); });
+    };
+    auto count = [&](AnimalKind k) {
+        return std::count_if(g.animals.begin(), g.animals.end(), [&](const auto& a) { return a->kind == k && a->alive(); });
+    };
+    auto exists = [&](const Monster* m) {
+        return std::any_of(g.monsters.begin(), g.monsters.end(), [&](const auto& o) { return o.get() == m && o->alive(); });
+    };
+    auto dropped = [&](ItemId item) {
+        int n = 0;
+        for (const auto& d : g.drops) n += d->stack.item == item ? d->stack.count : 0;
+        return n;
+    };
+
+    if (f == 0) {
+        g.monsters.clear();
+        g.target_monster = nullptr;
+        g.arrows.clear();
+        g.drops.clear();
+        g.puffs.clear();
+        g.animals.clear();
+        g.target_animal = nullptr;
+        g.riding = nullptr;
+        g.weather.clear();
+        g.creative = false;
+        g.flying = false;
+        g.vitals.reset();
+        g.level.time = 6000 + (g.level.time / DAY_TICKS) * DAY_TICKS;  // noon
+        for (int dx = -7; dx <= 7; ++dx)
+            for (int dz = -16; dz <= 6; ++dz) {
+                set(b + glm::ivec3(dx, -2, dz), DIRT);
+                set(b + glm::ivec3(dx, -1, dz), GRASS);
+                for (int dy = 0; dy <= 5; ++dy) set(b + glm::ivec3(dx, dy, dz), AIR);
+            }
+        // A pond for the squid in the far corner.
+        for (int dx = 4; dx <= 6; ++dx)
+            for (int dz = 3; dz <= 5; ++dz)
+                for (int dy = -4; dy <= -1; ++dy) set(b + glm::ivec3(dx, dy, dz), dy == -4 ? DIRT : WATER);
+        const AnimalKind row[] = {AnimalKind::Cow, AnimalKind::Pig, AnimalKind::Sheep, AnimalKind::Sheep, AnimalKind::Chicken,
+                                  AnimalKind::Wolf};
+        for (int i = 0; i < 6; ++i) {
+            Animal* a = g.spawn_animal(row[i], b.x - 5.5 + i * 2, b.y, b.z + 2.5);
+            a->state = Animal::State::Idle;
+            a->state_timer = 1000;
+            a->graze = false;
+            a->yaw = a->target_yaw = 180;  // looking at the player
+            if (i == 2) a->wool = 0;
+            if (i == 3) a->wool = 6;  // a rare pink sheep
+            pen_[i] = a;
+        }
+        pen_[6] = g.spawn_animal(AnimalKind::Squid, b.x + 5.5, b.y - 2.5, b.z + 4.5);
+        check("every kind of animal can be made", std::all_of(pen_.begin(), pen_.end(), [](Animal* a) { return a != nullptr; }));
+        stand(b.x + 0.5, b.z - 4.5);
+        g.yaw = 0;
+        g.pitch = 18;
+        g.hud->show_message("", 0);
+    }
+    if (f == 2) shot(app, "m9_animals.png");
+    if (f == 4) {
+        Animal *cow = pen_[0], *pig = pen_[1], *sheep = pen_[2], *pink = pen_[3], *wolf = pen_[5];
+        // A saddle on the pig.
+        hold(SADDLE);
+        check("aiming at the pig", aim(pig));
+        g.use_item();
+        check("a saddle goes on a pig", pig->saddled && !held());
+        // Shears take 1 to 3 wool off a sheep, and it stays bare.
+        hold(SHEARS);
+        check("aiming at the white sheep", aim(sheep));
+        g.use_item();
+        const int wool = dropped(WHITE_WOOL);
+        check("shearing a sheep drops 1 to 3 white wool (" + std::to_string(wool) + ")", sheep->sheared && wool >= 1 && wool <= 3);
+        check("shearing wears the shears", held() && held()->damage == 1);
+        g.use_item();
+        check("a sheared sheep can't be sheared again", dropped(WHITE_WOOL) == wool && held()->damage == 1);
+        // Dye turns a sheep's wool.
+        hold(ROSE_RED, 2);
+        check("aiming at the pink sheep", aim(pink));
+        g.use_item();
+        check("rose red dyes a sheep red", pink->wool == 14 && held()->count == 1);
+        // Milk from the cow.
+        hold(BUCKET);
+        check("aiming at the cow", aim(cow));
+        g.use_item();
+        check("a bucket milks a cow", held() && held()->item == MILK_BUCKET);
+        // Bones until the wolf is tame (one in three works).
+        hold(BONE, 30);
+        check("aiming at the wolf", aim(wolf));
+        int bones = 0;
+        while (!wolf->tamed && held() && bones < 30) {
+            g.use_item();
+            ++bones;
+        }
+        log("the wolf took " + std::to_string(bones) + " bone(s) to tame");
+        check("bones tame a wolf, and it sits down", wolf->tamed && wolf->sitting && wolf->health == TAMED_WOLF_HEALTH);
+        hold(STICK);
+        stand(b.x + 0.5, b.z - 4.5);
+        g.yaw = 0;
+        g.pitch = 18;
+        g.hud->show_message("", 0);
+    }
+    if (f == 6) shot(app, "m9_sheared_saddled_tamed.png");
+    if (f == 8) {
+        // Right click the saddled pig with an empty hand to ride it.
+        g.inventory.slots[g.inventory.selected].reset();
+        check("aiming at the saddled pig", aim(pen_[1]));
+        g.use_item();
+        check("right clicking a saddled pig rides it", g.riding == pen_[1] && pen_[1]->ridden);
+        g.third_person = true;
+        g.yaw = 30;
+        g.pitch = 25;
+    }
+    if (f == 10) {
+        Animal* pig = pen_[1];
+        check("the rider sits on the pig", std::abs(p.y - (pig->body.y + RIDE_HEIGHT)) < 1e-6 &&
+                                               std::hypot(p.x - pig->body.x, p.z - pig->body.z) < 1e-6);
+        shot(app, "m9_riding.png");
+        g.dismount();
+        g.third_person = false;
+        check("getting off leaves the player beside or on the pig", !g.riding && !pig->ridden && !p.collides());
+    }
+    if (f == 12) {
+        // The tamed wolf stands up, and the player walks off: it turns up next to them.
+        pen_[5]->sitting = false;
+        stand(b.x + 0.5, b.z - 14.5);
+        g.yaw = 0;
+        g.pitch = 10;
+    }
+    if (f == 30) {
+        Animal* wolf = pen_[5];
+        const double d = std::hypot(wolf->body.x - p.x, wolf->body.z - p.z);
+        check("a tamed wolf follows its owner (" + std::to_string(d).substr(0, 4) + " blocks away)", d < WOLF_FOLLOW_DISTANCE + 1);
+        // A zombie: when the player hits it, the wolf goes for it too.
+        mob_ = g.spawn_monster(MobKind::Zombie, p.x + 1.5, p.y, p.z + 3);
+        g.update_target();
+        g.target_animal = nullptr;
+        g.target_monster = mob_;
+        g.attack_cooldown = 0;
+        g.inventory.slots[g.inventory.selected].reset();
+        g.try_attack();
+        check("hitting a monster sends the tamed wolf after it", wolf->prey == mob_);
+    }
+    if (f == 32) shot(app, "m9_wolf_fights.png");
+    if (f == 90) {
+        const bool bitten = !exists(mob_) || mob_->health < mob_->info().health - 1;
+        if (!bitten) {
+            char buf[200];
+            const Animal* wolf = pen_[5];
+            std::snprintf(buf, sizeof buf, "  wolf at %.1f %.1f %.1f (sitting %d, prey %d), zombie at %.1f %.1f %.1f with %d health",
+                          wolf->body.x, wolf->body.y, wolf->body.z, wolf->sitting, wolf->prey == mob_, mob_->body.x, mob_->body.y,
+                          mob_->body.z, mob_->health);
+            log(buf);
+        }
+        check("the wolf bites the zombie", bitten);
+        g.monsters.clear();
+        g.target_monster = nullptr;
+        mob_ = nullptr;
+        g.vitals.reset();
+        // A wild wolf turns on whoever hits it.
+        Animal* wild = g.spawn_animal(AnimalKind::Wolf, p.x - 3, p.y, p.z + 2);
+        g.update_target();
+        g.target_monster = nullptr;
+        g.target_animal = wild;
+        g.attack_cooldown = 0;
+        g.try_attack();
+        check("a wild wolf gets angry when hit, a tamed one doesn't", wild->angry && !pen_[5]->angry);
+        g.animals.erase(std::remove_if(g.animals.begin(), g.animals.end(), [&](const auto& a) { return a.get() == wild; }),
+                        g.animals.end());
+        for (const auto& a : g.animals)
+            if (a->prey == wild) a->prey = nullptr;
+        g.target_animal = nullptr;
+        // The chicken lays an egg.
+        pen_[4]->egg_timer = 0;
+        chickens_ = count(AnimalKind::Chicken);
+    }
+    if (f == 92) {
+        check("a chicken lays an egg", dropped(EGG) == 1);
+        // Throw a lot of eggs on the ground in front: some hatch.
+        g.drops.clear();
+        stand(b.x + 0.5, b.z - 10.5);
+        g.yaw = 0;
+        g.pitch = 40;
+        hold(EGG, 16);
+        for (int i = 0; i < 64; ++i) {
+            if (!held()) hold(EGG, 16);
+            g.throw_egg();
+        }
+        check("throwing eggs uses them up", !held() || held()->count < 16);
+    }
+    if (f == 110) {
+        const bool eggs_gone = std::none_of(g.arrows.begin(), g.arrows.end(), [](const auto& a) { return a->item == EGG; });
+        const auto now = count(AnimalKind::Chicken);
+        check("thrown eggs break, and chickens hatch from some (" + std::to_string(now - chickens_) + ")",
+              eggs_gone && now > chickens_);
+        // The pig (with its saddle) and the squid die and drop their things.
+        drops_before_death_ = g.drops.size();
+        pen_[1]->hurt(20, p.x, p.z);
+        pen_[6]->hurt(20, p.x, p.z);
+    }
+    if (f == 160) {
+        check("a saddled pig drops its saddle", dropped(SADDLE) == 1 && !alive(pen_[1]));
+        check("a squid drops ink sacs", dropped(INK_SAC) >= 1 && !alive(pen_[6]));
+        // Leave the tamed wolf (sitting) and the sheared sheep by the farm, to see them after loading.
+        const glm::dvec3 home(arena_.x + 0.5, arena_.y, arena_.z + 0.5);
+        pen_[5]->sitting = true;
+        pen_[5]->body.x = home.x + 2;
+        pen_[5]->body.y = home.y;
+        pen_[5]->body.z = home.z - 1;
+        pen_[2]->body.x = home.x - 2;
+        pen_[2]->body.y = home.y;
+        pen_[2]->body.z = home.z - 1;
+        stand(home.x, home.z);
+        p.y = home.y;
+        g.yaw = 0;
+        g.pitch = 0;
         g.weather = Weather(WeatherState{true, false, 100000, 100000});  // the rain the save check looks for
     }
 }
@@ -1909,8 +2159,14 @@ void AutoTest::reload(App& app) {
                   now.inventory == saved_player_.inventory && now.creative == saved_player_.creative);
         check("the bed spawn point and the weather are restored",
               now.bed == saved_player_.bed && now.bed && g.weather.state.raining == saved_raining_ && saved_raining_);
-        check("cows near the player are back (" + std::to_string(g.cows.size()) + " of " + std::to_string(saved_cows_) + ")",
-              !g.cows.empty());
+        check("animals near the player are back (" + std::to_string(g.animals.size()) + " of " + std::to_string(saved_animals_) + ")",
+              !g.animals.empty());
+        check("the tamed wolf is back, still tame and sitting",
+              std::any_of(g.animals.begin(), g.animals.end(),
+                          [](const auto& a) { return a->kind == AnimalKind::Wolf && a->tamed && a->sitting; }));
+        check("the sheared sheep is back, still bare",
+              std::any_of(g.animals.begin(), g.animals.end(),
+                          [](const auto& a) { return a->kind == AnimalKind::Sheep && a->sheared; }));
         check("the zombie saved next to the player is back",
               std::any_of(g.monsters.begin(), g.monsters.end(), [&](const auto& m) {
                   return m->kind == MobKind::Zombie && std::hypot(m->body.x - g.player.x, m->body.z - g.player.z) < 6;

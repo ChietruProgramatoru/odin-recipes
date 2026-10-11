@@ -1,7 +1,7 @@
 // Scripted smoke test: `PetrutzCraft --seed 7 --autotest OUT_DIR`.
 // Drives the real program for a few hundred frames: the menus, creating a world, mining, building,
 // cows, eating, fall damage, furnaces, tools, armor, the bow, fire and buckets, a tour of the biomes and caves, the F3 and F5 views,
-// monsters, explosions and dying, the first-person hand, flowing water and lava, falling sand and fire, farming,
+// monsters, explosions and dying, the first-person hand, flowing water and lava, falling sand and fire, farming, animals,
 // the pause menu,
 // then saving, quitting to the
 // title and loading the world again. Saves screenshots to OUT_DIR and writes OUT_DIR/report.txt.
@@ -22,7 +22,7 @@
 
 class App;
 class Game;
-class Cow;
+class Animal;
 class Monster;
 
 class AutoTest {
@@ -49,12 +49,13 @@ private:
     void fluids_and_fire(App& app, Game& g);  // flowing water and lava, falling sand, fire, drowning, burning
     void farming(App& app, Game& g);   // tilling, planting, bone meal, harvesting, cake and the wild plants
     void building(App& app, Game& g);  // M11: building blocks, chests, doors, signs, paintings, note blocks
+    void animals(App& app, Game& g);   // every animal, saddles and riding, shearing, dye, milk, taming wolves, eggs
     void reload(App& app);      // quit to the title and load the world again
 
     std::string out_;
     std::vector<std::string> lines_;
     int failures_ = 0;
-    Cow* cow_ = nullptr;
+    Animal* cow_ = nullptr;
     double cow_start_x_ = 0, cow_start_z_ = 0;
     std::optional<glm::ivec3> broken_;
     BlockId broken_block_ = 0;
@@ -67,7 +68,7 @@ private:
     long phase_start_ = 0;
     glm::ivec3 marker_{0};
     PlayerData saved_player_;
-    size_t saved_cows_ = 0;
+    size_t saved_animals_ = 0;
     // Light and day/night.
     glm::ivec3 torch_{0}, glowstone_{0};
     int64_t day_time_ = 0;
@@ -107,4 +108,7 @@ private:
     Weather build_weather_;
     int64_t build_time_ = 0;
     bool build_creative_ = false;
+    // Animals: the cow, pig, white sheep, pink sheep, chicken, wolf and squid in the pen.
+    std::array<Animal*, 7> pen_{};
+    long chickens_ = 0;
 };
