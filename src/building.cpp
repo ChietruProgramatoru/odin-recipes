@@ -6,6 +6,7 @@
 
 #include "bed.h"
 #include "painting.h"
+#include "redstone.h"
 #include "world.h"
 
 namespace {
@@ -100,7 +101,9 @@ std::vector<Box> shape_boxes(BlockId block, int data, const FenceLinks& links, b
         case PAINTING_BLOCK:
             if (collide) return {};
             return {against(data, 1.0f / 16)};
-        default: return {{{0, 0, 0}, {1, 1, 1}}};
+        default:
+            if (is_redstone_shaped(block)) return redstone_boxes(block, data, collide);
+            return {{{0, 0, 0}, {1, 1, 1}}};
     }
 }
 
@@ -259,6 +262,7 @@ std::optional<std::vector<ItemId>> data_drops(BlockId block, int data) {
         case IRON_DOOR_BLOCK: return std::vector<ItemId>{IRON_DOOR};
         case SIGN_POST: case WALL_SIGN: return std::vector<ItemId>{SIGN};
         case PAINTING_BLOCK: return std::vector<ItemId>{PAINTING};
+        case PISTON_HEAD: return std::vector<ItemId>{*redstone_drop(block, data)};  // the piston behind it goes too
         default: return std::nullopt;
     }
 }
@@ -271,6 +275,7 @@ std::vector<glm::ivec3> joined_cells(World& world, glm::ivec3 pos) {
         return {pos};
     }
     if (b == PAINTING_BLOCK) return painting_cells(world, pos);
+    if (is_piston(b) || b == PISTON_HEAD) return piston_cells(world, pos);
     return {pos};
 }
 

@@ -130,6 +130,39 @@ std::vector<float> click() {
     return s;
 }
 
+// A lever's or button's click: a short, dry tick of wood on stone.
+std::vector<float> switch_click() {
+    const int n = SOUND_RATE / 20;
+    std::vector<float> s(n);
+    Rng rng(79);
+    double low = 0;
+    for (int i = 0; i < n; ++i) {
+        const double t = static_cast<double>(i) / SOUND_RATE;
+        low += (rng.random() * 2 - 1 - low) * 0.35;
+        s[i] = static_cast<float>(low * std::exp(-t * 140) + std::sin(2 * PI * 900 * t) * std::exp(-t * 120) * 0.6);
+    }
+    normalize(s, 0.45f);
+    return s;
+}
+
+// A piston: a low thump sliding down (out) or up (in), with a puff of noise.
+std::vector<float> piston(bool out) {
+    const int n = static_cast<int>(SOUND_RATE * 0.35);
+    std::vector<float> s(n);
+    Rng rng(out ? 80 : 81);
+    double phase = 0, low = 0;
+    for (int i = 0; i < n; ++i) {
+        const double t = static_cast<double>(i) / SOUND_RATE;
+        const double f = out ? 160 - 90 * t / 0.35 : 90 + 70 * t / 0.35;
+        phase += 2 * PI * f / SOUND_RATE;
+        low += (rng.random() * 2 - 1 - low) * 0.15;
+        const double env = std::min(1.0, t / 0.01) * std::exp(-t * 9);
+        s[i] = static_cast<float>((std::sin(phase) * 0.8 + low * 0.9) * env);
+    }
+    normalize(s, 0.5f);
+    return s;
+}
+
 // A tiny synthesiser for the discs: notes mixed into a buffer.
 struct Song {
     std::vector<float> s;
@@ -257,6 +290,9 @@ std::vector<float> make_sound(Sound sound) {
         case Sound::NoteClick: return click();
         case Sound::Record13: return record_13();
         case Sound::RecordCat: return record_cat();
+        case Sound::Click: return switch_click();
+        case Sound::PistonOut: return piston(true);
+        case Sound::PistonIn: return piston(false);
     }
     return {};
 }

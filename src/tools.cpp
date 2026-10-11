@@ -12,7 +12,8 @@ bool pickaxe_block(BlockId b) {
         case STONE: case COBBLE: case SANDSTONE: case MOSSY_COBBLE: case ICE: case OBSIDIAN:
         case COAL_ORE: case IRON_ORE: case GOLD_ORE: case DIAMOND_ORE: case LAPIS_ORE:
         case SLAB: case DOUBLE_SLAB: case IRON_BLOCK: case GOLD_BLOCK: case DIAMOND_BLOCK: case LAPIS_BLOCK:
-        case NETHERRACK:
+        case NETHERRACK: case GLOWING_REDSTONE_ORE: case REDSTONE_ORE: case STONE_PLATE_BLOCK: case BUTTON_BLOCK:
+        case DISPENSER_BLOCK:
             return true;
         default: return false;
     }
@@ -30,11 +31,12 @@ std::optional<int> pickaxe_needed(BlockId b) {
     if (is_furnace(b)) return 0;
     switch (b) {
         case STONE: case COBBLE: case BRICK: case SANDSTONE: case MOSSY_COBBLE: case SPAWNER:
-        case COAL_ORE: case NETHERRACK: case COBBLE_STAIRS: case IRON_DOOR_BLOCK:
+        case COAL_ORE: case NETHERRACK: case COBBLE_STAIRS: case IRON_DOOR_BLOCK: case DISPENSER_BLOCK: case STONE_PLATE_BLOCK:
         case SLAB: case DOUBLE_SLAB:  // Beta: every slab is made of stone, even the wooden one
             return 0;
         case IRON_ORE: case LAPIS_ORE: case IRON_BLOCK: case LAPIS_BLOCK: return 1;
-        case GOLD_ORE: case DIAMOND_ORE: case REDSTONE_ORE: case GOLD_BLOCK: case DIAMOND_BLOCK: return 2;
+        case GOLD_ORE: case DIAMOND_ORE: case REDSTONE_ORE: case GLOWING_REDSTONE_ORE: case GOLD_BLOCK: case DIAMOND_BLOCK:
+            return 2;
         case OBSIDIAN: return 3;
         default: return std::nullopt;
     }
