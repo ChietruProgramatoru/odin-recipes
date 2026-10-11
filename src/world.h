@@ -45,10 +45,11 @@ struct ChunkPosHash {
 // Floor division by 16 for block -> chunk coordinates (works for negatives).
 inline int chunk_of(int block) { return block >> 4; }
 
-// A cow, monster or dropped item stored with the chunk it is in (in a save file, or while the
+// A cow, monster, vehicle or dropped item stored with the chunk it is in (in a save file, or while the
 // player is too far away for it to be simulated).
 struct EntityRecord {
-    enum Kind : uint8_t { COW = 1, ITEM = 2, MONSTER = 3, FALLING = 4 };  // FALLING: sand or gravel in the air (item = the block)
+    // FALLING: sand or gravel in the air (item = the block). VEHICLE: a minecart or boat (mob = its VehicleKind).
+    enum Kind : uint8_t { COW = 1, ITEM = 2, MONSTER = 3, FALLING = 4, VEHICLE = 5 };
     enum Flags : uint8_t { POWERED = 1, JOCKEY = 2 };  // a charged creeper; a spider with a skeleton riding it
     Kind kind = COW;
     double x = 0, y = 0, z = 0;
@@ -61,6 +62,9 @@ struct EntityRecord {
     int mob = 0;     // monsters: the MobKind (combat.h)
     int size = 1;    // monsters: a slime's size
     int flags = 0;   // monsters: Flags
+    int fuel = 0;    // vehicles: a powered minecart's fuel (ticks) and which way it pushes
+    float push_x = 0, push_z = 0;
+    std::vector<std::optional<Stack>> chest{};  // vehicles: a storage minecart's chest
     bool operator==(const EntityRecord&) const = default;
 };
 

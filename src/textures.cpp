@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 #include <functional>
+#include <optional>
 #include <utility>
 #include <vector>
 
@@ -571,6 +572,38 @@ Image cake_side(Rng& rng, bool inside) {
     return img;
 }
 
+// --- Transport (M12) ---------------------------------------------------------------
+// Rails run from the bottom of the picture to the top: two rails over wooden sleepers. `rail` colours
+// the rails, `middle` (if any) the strip between them: a powered rail's red line, a detector's plate.
+Image rail_tile(Rng& rng, Rgb rail, std::optional<Rgb> middle) {
+    Image img(TILE, TILE);
+    for (int y = 0; y < TILE; ++y)
+        for (int x = 1; x < 15; ++x)
+            if (y % 4 == 1 || y % 4 == 2) img.at(x, y) = shade({120, 85, 50}, (y % 4 == 2 ? 0.8 : 1.0) * rng.uniform(0.9, 1.1));
+    for (int y = 0; y < TILE; ++y) {
+        for (int x : {2, 3, 12, 13}) img.at(x, y) = shade(rail, (x == 3 || x == 13 ? 0.75 : 1.0) * rng.uniform(0.95, 1.05));
+        if (middle)
+            for (int x = 6; x < 10; ++x)
+                if (y > 1 && y < 14) img.at(x, y) = shade(*middle, (x == 6 || x == 9 ? 0.75 : 1.0) * rng.uniform(0.95, 1.05));
+    }
+    return img;
+}
+
+// A curve from the bottom of the picture round to its right side.
+Image rail_curve(Rng& rng) {
+    Image img(TILE, TILE);
+    for (int y = 0; y < TILE; ++y)
+        for (int x = 0; x < TILE; ++x) {
+            const double dx = 16 - (x + 0.5), dy = 16 - (y + 0.5);
+            const double r = std::hypot(dx, dy), a = std::atan2(dy, dx) * 180 / 3.14159265358979;
+            const int sleeper = static_cast<int>(a / 11.25);
+            if (r > 1 && r < 15 && sleeper % 2 == 1) img.at(x, y) = shade({120, 85, 50}, rng.uniform(0.85, 1.1));
+            if ((r >= 2 && r < 4) || (r >= 12 && r < 14))
+                img.at(x, y) = shade({170, 170, 175}, (r < 3 || (r >= 12 && r < 13) ? 1.0 : 0.75) * rng.uniform(0.95, 1.05));
+        }
+    return img;
+}
+
 std::function<Image(Rng&)> solid(Rgb c, double spread = 0.04) {
     return [=](Rng& rng) { return noise_tile(rng, c, spread); };
 }
@@ -731,6 +764,12 @@ std::map<int, Image> make_tiles(int seed) {
                                                                        {'s', {225, 215, 195, 255}}}); }},
         {T_CAKE_TOP, cake_top}, {T_CAKE_SIDE, [](Rng& rng) { return cake_side(rng, false); }},
         {T_CAKE_INSIDE, [](Rng& rng) { return cake_side(rng, true); }},
+        {T_RAIL, [](Rng& rng) { return rail_tile(rng, {170, 170, 175}, std::nullopt); }},
+        {T_RAIL_CURVE, rail_curve},
+        {T_POWERED_RAIL, [](Rng& rng) { return rail_tile(rng, {235, 200, 60}, Rgb{90, 20, 20}); }},
+        {T_POWERED_RAIL_ON, [](Rng& rng) { return rail_tile(rng, {235, 200, 60}, Rgb{240, 40, 30}); }},
+        {T_DETECTOR_RAIL, [](Rng& rng) { return rail_tile(rng, {170, 170, 175}, Rgb{140, 120, 110}); }},
+        {T_CART, solid({105, 105, 112}, 0.12)},
     };
     std::map<int, Image> tiles;
     for (int k = 0; k < 8; ++k) generators.emplace(T_WHEAT_0 + k, [k](Rng& rng) { return wheat(rng, k); });

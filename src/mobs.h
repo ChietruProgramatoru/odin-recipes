@@ -131,6 +131,7 @@ struct PlayerPose {
     double walk_phase = 0;       // advances with distance walked
     double walk_amount = 0;      // 0 standing still .. 1 walking
     bool sneaking = false;
+    bool sitting = false;        // riding a minecart or boat: legs out in front
     // Armor worn (helmet, chestplate, leggings, boots): the material, or nothing.
     std::array<std::optional<Material>, 4> armor{};
 };

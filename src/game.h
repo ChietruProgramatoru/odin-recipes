@@ -26,6 +26,7 @@
 #include "sky.h"
 #include "weather.h"
 #include "survival.h"
+#include "vehicles.h"
 #include "world.h"
 
 struct GLFWwindow;
@@ -96,6 +97,14 @@ public:
     std::vector<std::unique_ptr<Arrow>> arrows;
     std::vector<std::unique_ptr<PrimedTnt>> tnts;
     std::vector<Puff> puffs;
+    // Minecarts and boats (M12): the one the player sits in, the one in the crosshair, the storage
+    // minecart whose chest is open, and the detector rails a minecart is pressing.
+    std::vector<std::unique_ptr<Vehicle>> vehicles;
+    Vehicle* riding = nullptr;
+    Vehicle* target_vehicle = nullptr;
+    Vehicle* chest_vehicle = nullptr;
+    std::vector<glm::ivec3> pressed_detectors;
+    double vehicle_ticks = 0;  // part of a game tick since vehicles last moved (they are drawn in between)
     // Sounds started this frame, for the app to play (then it clears them), and how many of each
     // kind were ever started (the autotest checks these).
     std::vector<SoundEvent> sounds;
@@ -126,8 +135,8 @@ public:
     double fps = 60;
 
     Inventory& active_inventory() { return creative ? creative_inventory : inventory; }
-    // The crosshair is on a cow or a monster (not a block).
-    bool targeting_mob() const { return target_cow || target_monster; }
+    // The crosshair is on a cow, a monster or a vehicle (not a block).
+    bool targeting_mob() const { return target_cow || target_monster || target_vehicle; }
     int difficulty() const { return options.difficulty; }
     glm::vec3 eye() const;
     glm::vec3 forward() const;
@@ -194,6 +203,20 @@ public:
     bool head_under_water();
     // Set the player alight for at least `ticks` (Beta adds to a fire already burning).
     void set_player_on_fire(int ticks);
+
+    // Minecarts and boats (game_vehicles.cpp). Vehicles move a game tick at a time.
+    void update_vehicles(double dt);
+    void tick_vehicles();
+    // Right click with a minecart on a rail, or a boat on water (or anything): put it there.
+    bool place_vehicle(ItemId item);
+    // Right click on a vehicle: get in, open its chest or give it coal.
+    void use_vehicle(Vehicle& v);
+    // Left click on a vehicle. It breaks after a few hits (at once in creative).
+    void hit_vehicle(Vehicle& v);
+    void mount(Vehicle& v);
+    void dismount();
+    // A rail is being placed at a cell (the block is already set): join it to the rails around it.
+    void lay_rail(glm::ivec3 pos);
     // Lightning strikes at a spot: hurts what is near it and flashes the sky.
     void strike(glm::dvec3 pos);
     void set_paused(bool p);
@@ -221,6 +244,8 @@ private:
     void move(double dt);
     void mine(double dt);
     void spawn_drop(ItemId item, double x, double y, double z);
+    // A broken vehicle's drops, and taking it out of the world.
+    void remove_vehicle(size_t index, bool drop_items);
     void on_death();
     void update_cows(double dt);
     void update_monsters(double dt);
