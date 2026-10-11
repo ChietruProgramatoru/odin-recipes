@@ -26,6 +26,7 @@ public:
     bool on_ground = false;
     bool in_water = false;
     bool in_lava = false;
+    bool in_web = false;    // in a cobweb (set by move): moves at 1/4 the speed sideways and 1/20 up and down
     glm::dvec3 current{0};  // which way the water it is in flows (normalised; set by check_water)
     // How high it walks up without jumping (Beta: half a block for the player, onto slabs and stairs).
     double step_height = 0;

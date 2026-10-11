@@ -896,6 +896,7 @@ ChunkMesh build_mesh(const Padded& P, const PaddedLight& L, int cx, int cz, int 
     const Rgb8 white{255, 255, 255};
     auto D = [&](int j) { return data ? static_cast<int>((*data)[j]) : 0; };
     static const std::array<float, 4> FARMLAND_WET_UV = tile_uv(T_FARMLAND_WET);
+    static const std::array<float, 4> GRASS_SNOW_SIDE_UV = tile_uv(T_GRASS_SNOW_SIDE);
     // Grass and leaf colours per column.
     std::array<Rgb8, CHUNK * CHUNK> grass, foliage;
     for (int i = 0; i < CHUNK * CHUNK; ++i) {
@@ -936,6 +937,15 @@ ChunkMesh build_mesh(const Padded& P, const PaddedLight& L, int cx, int cz, int 
                     add_cake(mesh.solid, wx, wy, wz, D(i), L[i]);
                     continue;
                 }
+                if (blk == CACTUS) {  // 1/16 in from each side, like Beta
+                    add_box(mesh.solid, {wx, wy, wz}, {1.0f / 16, 0, 1.0f / 16}, {15.0f / 16, 1, 15.0f / 16},
+                            block_info(CACTUS)->tiles, -1, L[i]);
+                    continue;
+                }
+                if (blk == SNOW_LAYER) {  // a sheet 2/16 thick
+                    add_box(mesh.solid, {wx, wy, wz}, {0, 0, 0}, {1, 2.0f / 16, 1}, block_info(SNOW_LAYER)->tiles, -1, L[i]);
+                    continue;
+                }
                 if (is_shaped(blk)) {
                     const ShapeCtx ctx{mesh.solid, P, L, i, {wx, wy, wz}, light_opacity(blk) > 0};
                     add_shaped(ctx, blk, D(i), extras, (y << 8) | (z << 4) | x);
@@ -971,6 +981,8 @@ ChunkMesh build_mesh(const Padded& P, const PaddedLight& L, int cx, int cz, int 
                 // Farmland is 15/16 tall, darker on top when wet.
                 const float h = blk == FARMLAND ? 15.0f / 16 : 1.0f;
                 const bool wet_farmland = blk == FARMLAND && D(i) > 0;
+                // Grass under snow has snowy sides, not coloured by the biome.
+                const bool snowy = blk == GRASS && P[i + off(0, 1, 0)] == SNOW_LAYER;
                 const bool furnace = is_furnace(blk);
                 const glm::ivec3 facing = furnace ? FACING_DIRS[furnace_dir(blk)] : glm::ivec3(0);
                 // Blocks whose faces come from their data value: wool's colour, a double slab's kind,
@@ -1017,6 +1029,7 @@ ChunkMesh build_mesh(const Padded& P, const PaddedLight& L, int cx, int cz, int 
                     std::array<float, 4> uv = furnace && f.def->normal == facing
                                                   ? (is_lit_furnace(blk) ? LIT_FURNACE_FRONT_UV : FURNACE_FRONT_UV)
                                               : (wet_farmland && f.def->slot == 0) ? FARMLAND_WET_UV
+                                              : (snowy && f.def->slot == 1)         ? GRASS_SNOW_SIDE_UV
                                                                                    : uvs[f.def->slot];
                     if (data_tiles) uv = tile_uv((*data_tiles)[f.def->slot]);
                     if (blk == CHEST && f.def->normal.y == 0) {
@@ -1034,7 +1047,8 @@ ChunkMesh build_mesh(const Padded& P, const PaddedLight& L, int cx, int cz, int 
                         }
                         uv = tile_uv(t);
                     }
-                    mesh.solid.quad(wx, wy, wz, f.def->corners, h, uv, shades, sky, block, tint);
+                    mesh.solid.quad(wx, wy, wz, f.def->corners, h, uv, shades, sky, block,
+                                    snowy && f.def->slot == 1 ? white : tint);
                 }
             }
         }

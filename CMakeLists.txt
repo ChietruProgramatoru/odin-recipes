@@ -87,6 +87,7 @@ add_library(petrutz_core STATIC
   src/blockupdate.cpp
   src/rails.cpp
   src/vehicles.cpp
+  src/nature.cpp
   src/streamer.cpp
   src/physics.cpp
   src/survival.cpp
@@ -158,6 +159,7 @@ add_executable(petrutz_tests
   tests/test_hand.cpp
   tests/test_blockupdate.cpp
   tests/test_building.cpp
-  tests/test_transport.cpp)
+  tests/test_transport.cpp
+  tests/test_nature.cpp)
 target_link_libraries(petrutz_tests PRIVATE petrutz_core doctest_header)
 add_test(NAME logic COMMAND petrutz_tests)

@@ -3,6 +3,7 @@
 #include <algorithm>
 
 #include "items.h"
+#include "nature.h"
 
 namespace {
 
@@ -55,6 +56,9 @@ bool can_stay(World& w, glm::ivec3 p, BlockId block) {
             return false;
         }
         case CAKE_BLOCK: return is_solid(under);
+        case SAPLING: case SPRUCE_SAPLING: case BIRCH_SAPLING:
+            return (under == GRASS || under == DIRT || under == FARMLAND) && lit_enough(w, p);
+        case CACTUS: return cactus_can_stay(w, p);
         default: return true;
     }
 }
@@ -124,6 +128,13 @@ void random_tick(World& w, glm::ivec3 p, Rng& rng, const TickContext& ctx, FarmE
             }
             return;
         }
+        case SAPLING: case SPRUCE_SAPLING: case BIRCH_SAPLING: {
+            // Beta: with light, 1 in 30 ticks gets it ready, and the next such tick grows the tree.
+            if (plant_light(w, above(p), ctx.sky_darkness) < SAPLING_LIGHT || rng.below(SAPLING_ODDS) != 0) return;
+            if (!(data & SAPLING_READY)) out.set(w, p, b, data | SAPLING_READY);
+            else grow_tree(w, p, rng, out.rebuild);
+            return;
+        }
         case BROWN_MUSHROOM: case RED_MUSHROOM: {
             // Now and then a mushroom spreads to a dark spot next to it.
             if (rng.below(100) != 0) return;
@@ -159,8 +170,11 @@ std::vector<ItemId> farm_drops(BlockId block, int data, Rng& rng) {
             break;
         case SUGAR_CANE_PLANT: items.push_back(SUGAR_CANE); break;
         case FARMLAND: items.push_back(DIRT); break;
-        case YELLOW_FLOWER: case RED_ROSE: case BROWN_MUSHROOM: case RED_MUSHROOM: items.push_back(block); break;
-        default: break;  // cake drops nothing, like Beta
+        case YELLOW_FLOWER: case RED_ROSE: case BROWN_MUSHROOM: case RED_MUSHROOM:
+        case SAPLING: case SPRUCE_SAPLING: case BIRCH_SAPLING:
+            items.push_back(block);
+            break;
+        default: break;  // cake and cobwebs drop nothing when knocked off, like Beta
     }
     return items;
 }
@@ -195,6 +209,10 @@ bool bone_meal(World& w, glm::ivec3 p, Rng& rng, FarmEvents& out) {
         out.set(w, p, WHEAT_CROP, WHEAT_RIPE);
         return true;
     }
+    if (is_sapling(b)) {
+        grow_tree(w, p, rng, out.rebuild);  // used up even when there is no room for the tree (Beta)
+        return true;
+    }
     if (b != GRASS) return false;
     // Beta: random walks out from the block, each step staying on grass; tall grass mostly, now and then a flower.
     for (int i = 0; i < BONE_MEAL_TRIES; ++i) {
@@ -216,7 +234,9 @@ BlockId planted_block(ItemId item) {
         case SEEDS: return WHEAT_CROP;
         case SUGAR_CANE: return SUGAR_CANE_PLANT;
         case CAKE: return CAKE_BLOCK;
-        case YELLOW_FLOWER: case RED_ROSE: case BROWN_MUSHROOM: case RED_MUSHROOM: return static_cast<BlockId>(item);
+        case YELLOW_FLOWER: case RED_ROSE: case BROWN_MUSHROOM: case RED_MUSHROOM:
+        case SAPLING: case SPRUCE_SAPLING: case BIRCH_SAPLING: case CACTUS:
+            return static_cast<BlockId>(item);
         default: return AIR;
     }
 }

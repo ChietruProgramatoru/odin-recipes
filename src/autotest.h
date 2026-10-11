@@ -50,6 +50,7 @@ private:
     void fluids_and_fire(App& app, Game& g);  // flowing water and lava, falling sand, fire, drowning, burning
     void farming(App& app, Game& g);   // tilling, planting, bone meal, harvesting, cake and the wild plants
     void building(App& app, Game& g);  // M11: building blocks, chests, doors, signs, paintings, note blocks
+    void nature(App& app, Game& g);    // saplings and trees, leaf decay, cactus, cobwebs, snow and ice melting
     void animals(App& app, Game& g);   // every animal, saddles and riding, shearing, dye, milk, taming wolves, eggs
     void transport(App& app, Game& g); // rails, riding a minecart, the chest and furnace minecarts, a boat
     void reload(App& app);      // quit to the title and load the world again
@@ -110,6 +111,10 @@ private:
     Weather build_weather_;
     int64_t build_time_ = 0;
     bool build_creative_ = false;
+    // Nature: a grass platform next to the fluids one.
+    glm::ivec3 garden_{0};
+    glm::dvec3 garden_return_{0};
+    bool garden_raining_ = false, garden_creative_ = false;
     // Animals: the cow, pig, white sheep, pink sheep, chicken, wolf and squid in the pen.
     std::array<Animal*, 7> pen_{};
     long chickens_ = 0;

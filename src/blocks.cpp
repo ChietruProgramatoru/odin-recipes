@@ -106,8 +106,16 @@ const BlockInfo BLOCKS[BLOCK_COUNT] = {
     {"Sign", {T_PLANKS, T_PLANKS, T_PLANKS}, 1.0f, std::nullopt},
     {"Sign", {T_PLANKS, T_PLANKS, T_PLANKS}, 1.0f, std::nullopt},
     {"Painting", {T_PAINTING_BACK, T_PAINTING_BACK, T_PAINTING_BACK}, 0.0f, std::nullopt},
+    // Nature (M6 part 2).
+    {"Oak Sapling", {T_SAPLING, T_SAPLING, T_SAPLING}, 0.0f, SAPLING},
+    {"Spruce Sapling", {T_SPRUCE_SAPLING, T_SPRUCE_SAPLING, T_SPRUCE_SAPLING}, 0.0f, SPRUCE_SAPLING},
+    {"Birch Sapling", {T_BIRCH_SAPLING, T_BIRCH_SAPLING, T_BIRCH_SAPLING}, 0.0f, BIRCH_SAPLING},
+    {"Cactus", {T_CACTUS_TOP, T_CACTUS_SIDE, T_CACTUS_BOTTOM}, 0.4f, CACTUS},
+    {"Cobweb", {T_COBWEB, T_COBWEB, T_COBWEB}, 4.0f, STRING},
+    {"Snow Layer", {IT_SNOW, IT_SNOW, IT_SNOW}, 0.1f, SNOWBALL},
 };
-static_assert(TILE_COUNT <= ITEM_TILE_BASE, "world tiles run into the item tiles in the atlas");
+
+static_assert(TILE_COUNT <= ITEM_TILE_BASE, "world tiles run into the item tiles");
 
 }  // namespace
 
@@ -122,7 +130,15 @@ bool is_cutout(BlockId id) { return id == SPAWNER || id == GLASS; }
 bool is_torch(BlockId id) { return id >= TORCH && id <= TORCH_WALL_SOUTH; }
 bool is_bed(BlockId id) { return id >= BED_FOOT_SOUTH && id <= BED_HEAD_EAST; }
 bool is_rail(BlockId id) { return id >= RAIL && id <= DETECTOR_RAIL; }
-bool is_plant(BlockId id) { return id == WHEAT_CROP || (id >= SUGAR_CANE_PLANT && id <= RED_MUSHROOM); }
+bool is_plant(BlockId id) {
+    return id == WHEAT_CROP || (id >= SUGAR_CANE_PLANT && id <= RED_MUSHROOM) || is_sapling(id) || id == COBWEB;
+}
+bool is_sapling(BlockId id) { return id >= SAPLING && id <= BIRCH_SAPLING; }
+BlockId sapling_for(BlockId leaves) {
+    if (leaves == SPRUCE_LEAVES) return SPRUCE_SAPLING;
+    if (leaves == BIRCH_LEAVES) return BIRCH_SAPLING;
+    return SAPLING;
+}
 bool is_furnace(BlockId id) { return id == FURNACE || (id >= FURNACE_WEST && id <= LIT_FURNACE_EAST); }
 bool is_lit_furnace(BlockId id) { return id >= LIT_FURNACE_SOUTH && id <= LIT_FURNACE_EAST; }
 int furnace_dir(BlockId id) {
@@ -137,7 +153,7 @@ BlockId furnace_block(int dir, bool lit) {
 }
 float block_height(BlockId id) {
     if (is_bed(id)) return 9.0f / 16;
-    if (id == FARMLAND) return 15.0f / 16;
+    if (id == FARMLAND || id == CACTUS) return 15.0f / 16;  // Beta's cactus box is 1/16 in from every side but the bottom
     if (id == CAKE_BLOCK) return 0.5f;
     if (id == SOUL_SAND) return 14.0f / 16;
     return 1.0f;
@@ -147,11 +163,11 @@ bool is_shaped(BlockId id) { return id == SLAB || (id >= WOOD_STAIRS && id <= PA
 bool is_door(BlockId id) { return id == WOOD_DOOR_BLOCK || id == IRON_DOOR_BLOCK; }
 // Signs and paintings have nothing to bump into (Beta); they are aimed at by their boxes.
 bool is_thin(BlockId id) { return is_torch(id) || id == FIRE || is_plant(id) || id == SIGN_POST || id == WALL_SIGN || id == PAINTING_BLOCK ||
-                                    is_rail(id); }
+                                    is_rail(id) || id == SNOW_LAYER; }
 bool is_solid(BlockId id) { return id != AIR && !is_fluid(id) && !is_thin(id); }
 bool is_opaque(BlockId id) {
     return id != AIR && !is_fluid(id) && id != ICE && !is_cutout(id) && !is_thin(id) && !is_bed(id) && id != CAKE_BLOCK &&
-           id != FARMLAND && !is_shaped(id);
+           id != FARMLAND && !is_shaped(id) && id != CACTUS;
 }
 bool is_block(ItemId id) { return block_info(id) != nullptr; }
 
@@ -167,7 +183,7 @@ BlockTint block_tint(BlockId id) {
 
 // Beta's values: leaves dim light by 1, water and ice by 3, solid blocks stop it.
 int light_opacity(BlockId id) {
-    if (id == AIR || is_thin(id) || is_bed(id) || id == SPAWNER || id == GLASS || id == CAKE_BLOCK) return 0;
+    if (id == AIR || is_thin(id) || is_bed(id) || id == SPAWNER || id == GLASS || id == CAKE_BLOCK || id == CACTUS) return 0;
     // Beta: slabs and stairs stop light like full blocks (the cell's own light is taken from above
     // when they are drawn); the other shaped blocks and soul sand let it through.
     if (id == SLAB || id == WOOD_STAIRS || id == COBBLE_STAIRS) return 15;

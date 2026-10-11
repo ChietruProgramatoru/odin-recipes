@@ -53,7 +53,7 @@ Table build() {
         if (b == WATER || b == LAVA || b == FIRE || is_torch(b) || is_bed(b) || (is_furnace(b) && b != FURNACE) ||
             is_plant(b) || b == FARMLAND || b == CAKE_BLOCK || b == WOOL || b == SLAB || b == DOUBLE_SLAB ||
             b == FENCE || b == LADDER || is_door(b) || b == TRAPDOOR || b == SIGN_POST || b == WALL_SIGN ||
-            b == PAINTING_BLOCK || is_rail(b))
+            b == PAINTING_BLOCK || is_rail(b) || b == SNOW_LAYER)
             continue;
         const BlockInfo* info = block_info(b);
         t.cube(b, info->name, info->tiles[0], info->tiles[1], info->tiles[1]);
@@ -98,6 +98,8 @@ Table build() {
     t.flat(RED_ROSE, "Rose");
     t.flat(BROWN_MUSHROOM, "Brown Mushroom");
     t.flat(RED_MUSHROOM, "Red Mushroom");
+    // Saplings and cobwebs show the picture they have in the world.
+    for (BlockId b : {SAPLING, SPRUCE_SAPLING, BIRCH_SAPLING, COBWEB}) t.add(b, block_info(b)->name, {ItemIcon::Flat, block_info(b)->tiles[1], 0, 0});
 
     // Tools, weapons and armor.
     for (int m = 0; m < 5; ++m)

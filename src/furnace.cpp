@@ -12,6 +12,7 @@ std::optional<Stack> smelt_result(ItemId input) {
         case RAW_PORKCHOP: return Stack{COOKED_PORKCHOP, 1};
         case RAW_FISH: return Stack{COOKED_FISH, 1};
         case BEEF: return Stack{STEAK, 1};
+        case CACTUS: return Stack{CACTUS_GREEN, 1};
         default: return std::nullopt;
     }
 }
@@ -23,7 +24,7 @@ int fuel_ticks(ItemId item) {
         case LOG: case BIRCH_LOG: case SPRUCE_LOG: case PLANKS: case CRAFTING_TABLE: case CHEST:
         case BOOKSHELF: case NOTE_BLOCK: case JUKEBOX: case WOOD_STAIRS: case FENCE: case TRAPDOOR: case WOOD_PLATE:
             return 300;
-        case STICK: return 100;
+        case STICK: case SAPLING: case SPRUCE_SAPLING: case BIRCH_SAPLING: return 100;
         case LAVA_BUCKET: return 20000;
         default: return 0;
     }

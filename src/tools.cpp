@@ -19,7 +19,7 @@ bool pickaxe_block(BlockId b) {
 }
 bool shovel_block(BlockId b) {
     return b == GRASS || b == DIRT || b == SAND || b == GRAVEL || b == CLAY_BLOCK || b == FARMLAND || b == SNOW_BLOCK ||
-           b == SOUL_SAND;
+           b == SOUL_SAND || b == SNOW_LAYER;
 }
 bool axe_block(BlockId b) {
     return b == PLANKS || b == LOG || b == BIRCH_LOG || b == SPRUCE_LOG || b == CHEST || b == BOOKSHELF;
@@ -79,7 +79,8 @@ bool can_harvest(ItemId held, BlockId block) {
 }
 
 float dig_speed(ItemId held, BlockId block) {
-    if (held == SHEARS && is_leaves(block)) return 15;
+    if (held == SHEARS && (is_leaves(block) || block == COBWEB)) return 15;
+    if (block == COBWEB && tool_kind(held) == ToolKind::Sword) return 15;  // Beta: swords cut through webs
     switch (tool_kind(held)) {
         case ToolKind::Sword: return 1.5f;
         case ToolKind::Pickaxe: return pickaxe_block(block) ? dig_efficiency(*tool_material(held)) : 1;
@@ -125,7 +126,7 @@ int attack_damage(ItemId held) {
 }
 
 int wear_from_breaking(ItemId held, BlockId block) {
-    if (held == SHEARS) return is_leaves(block) ? 1 : 0;
+    if (held == SHEARS) return is_leaves(block) || block == COBWEB ? 1 : 0;
     switch (tool_kind(held)) {
         case ToolKind::Sword: return 2;
         case ToolKind::Shovel: case ToolKind::Pickaxe: case ToolKind::Axe: return 1;
