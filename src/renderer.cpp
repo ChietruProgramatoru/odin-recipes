@@ -252,6 +252,18 @@ GLuint upload_texture(const Image& image, bool repeat) {
     return tex;
 }
 
+void WorldRenderer::update_atlas(int tile, const Image& image) {
+    // The atlas is upside down in OpenGL (see upload_texture), and so is each row of the image.
+    std::vector<Rgba> flipped(image.pixels.size());
+    for (int y = 0; y < image.height; ++y)
+        for (int x = 0; x < image.width; ++x) flipped[static_cast<size_t>(image.height - 1 - y) * image.width + x] = image.at(x, y);
+    const int x0 = (tile % ATLAS_COLS) * TILE, top = (tile / ATLAS_COLS) * TILE;
+    glBindTexture(GL_TEXTURE_2D, atlas_);
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+    glTexSubImage2D(GL_TEXTURE_2D, 0, x0, ATLAS_ROWS * TILE - top - image.height, image.width, image.height, GL_RGBA,
+                    GL_UNSIGNED_BYTE, flipped.data());
+}
+
 // --- Sky meshes -------------------------------------------------------------------------
 
 SkyMesh::SkyMesh() {

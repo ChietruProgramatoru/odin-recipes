@@ -119,6 +119,9 @@ extern PFN_glBindTexture pc_glBindTexture;
 typedef void(GL_APIENTRY* PFN_glTexImage2D)(GLenum target, GLint level, GLint internalformat, GLsizei width, GLsizei height, GLint border, GLenum format, GLenum type, const void* pixels);
 extern PFN_glTexImage2D pc_glTexImage2D;
 #define glTexImage2D pc_glTexImage2D
+typedef void(GL_APIENTRY* PFN_glTexSubImage2D)(GLenum target, GLint level, GLint xoffset, GLint yoffset, GLsizei width, GLsizei height, GLenum format, GLenum type, const void* pixels);
+extern PFN_glTexSubImage2D pc_glTexSubImage2D;
+#define glTexSubImage2D pc_glTexSubImage2D
 typedef void(GL_APIENTRY* PFN_glTexParameteri)(GLenum target, GLenum pname, GLint param);
 extern PFN_glTexParameteri pc_glTexParameteri;
 #define glTexParameteri pc_glTexParameteri

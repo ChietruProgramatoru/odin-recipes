@@ -98,6 +98,8 @@ add_library(petrutz_core STATIC
   src/tools.cpp
   src/mobs.cpp
   src/animals.cpp
+  src/fishing.cpp
+  src/navigation.cpp
   src/hand.cpp
   src/combat.cpp
   src/monsters.cpp
@@ -128,6 +130,7 @@ add_executable(PetrutzCraft
   src/menu.cpp
   src/game.cpp
   src/game_vehicles.cpp
+  src/game_items.cpp
   src/game_redstone.cpp
   src/game_nether.cpp
   src/audio.cpp
@@ -167,6 +170,7 @@ add_executable(petrutz_tests
   tests/test_building.cpp
   tests/test_transport.cpp
   tests/test_nature.cpp
+  tests/test_navigation.cpp
   tests/test_redstone.cpp
   tests/test_nether.cpp)
 target_link_libraries(petrutz_tests PRIVATE petrutz_core doctest_header)

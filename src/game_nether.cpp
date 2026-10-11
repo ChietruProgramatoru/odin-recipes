@@ -119,6 +119,7 @@ void Game::change_dimension(Dimension to, std::optional<glm::dvec3> at) {
     world.reset(to);
     world.set_store(&saver->store(to));
     make_renderer();
+    shown_map_ = -1;  // the new atlas has no map picture yet
     if (at) {
         player.x = at->x;
         player.y = at->y;

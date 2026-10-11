@@ -156,11 +156,12 @@ void Game::dispense(glm::ivec3 pos) {
     if (--slot->count == 0) slot.reset();
     const glm::dvec3 dir(facing_dir(world.get_data(pos.x, pos.y, pos.z) & 3));
     const glm::dvec3 from = mid + dir * 0.6;
-    if (one.item == ARROW) {
-        // Arrows are shot, a little slower than from a bow and a little up.
+    if (one.item == ARROW || one.item == SNOWBALL || one.item == EGG) {
+        // Arrows are shot, a little slower than from a bow and a little up; snowballs and eggs are thrown the same way.
         glm::dvec3 v = glm::normalize(dir + glm::dvec3(0, 0.1, 0) +
                                       glm::dvec3(rng.uniform(-1, 1), rng.uniform(-1, 1), rng.uniform(-1, 1)) * 0.0075);
         auto arrow = std::make_unique<Arrow>(from, v * (Arrow::SPEED * 0.73));
+        arrow->item = one.item;
         arrows.push_back(std::move(arrow));
     } else {
         auto drop = std::make_unique<ItemDrop>(world, one, from.x, from.y - 0.15, from.z, rng);

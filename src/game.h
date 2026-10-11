@@ -2,6 +2,7 @@
 #pragma once
 #include <array>
 #include <filesystem>
+#include <map>
 #include <memory>
 #include <optional>
 #include <set>
@@ -14,10 +15,12 @@
 #include "hand.h"
 #include "blockupdate.h"
 #include "farming.h"
+#include "fishing.h"
 #include "hud.h"
 #include "inventory_screen.h"
 #include "mobs.h"
 #include "monsters.h"
+#include "navigation.h"
 #include "nether.h"
 #include "options.h"
 #include "physics.h"
@@ -112,6 +115,13 @@ public:
     Vehicle* target_vehicle = nullptr;
     Vehicle* chest_vehicle = nullptr;
     std::vector<glm::ivec3> pressed_detectors;
+    // Finding the way (M15, game_items.cpp): the compass and clock needles, and the maps of this
+    // world loaded so far, by number.
+    Needle compass_needle, clock_needle;
+    std::map<int, MapData> maps;
+    // Fishing: the bobber the rod cast, while it is out, and how many fish were reeled in.
+    std::unique_ptr<Bobber> bobber;
+    int fish_caught = 0;
     double vehicle_ticks = 0;  // part of a game tick since vehicles last moved (they are drawn in between)
     // Sounds started this frame, for the app to play (then it clears them), and how many of each
     // kind were ever started (the autotest checks these).
@@ -171,8 +181,8 @@ public:
     void try_attack();
     // Right click on an animal: milk, saddle, ride, shear, dye, tame, feed or sit. False if nothing happened.
     bool interact(Animal& a);
-    // Throw the egg in hand (right click with an egg).
-    void throw_egg();
+    // Throw the egg or snowball in hand (right click with one).
+    void throw_item(ItemId item);
     // Get off the pig (sneak), standing on top of it or next to it.
     void dismount();
     // The player was hit by, or hit, this monster or animal: their tamed wolves go for it (Beta).
@@ -253,6 +263,19 @@ public:
     bool head_under_water();
     // Set the player alight for at least `ticks` (Beta adds to a fire already burning).
     void set_player_on_fire(int ticks);
+
+    // The map with this number, loaded from the world's folder (or started where the player is if
+    // it has no file), and the map in hand (a blank one becomes a new map centred on the player).
+    MapData& map_data(int id);
+    MapData* held_map();
+    // Each tick: the compass and clock icons move and the map in hand fills in.
+    void tick_navigation();
+    void save_maps();  // the maps changed since the last save
+    // Right click with a fishing rod: cast the bobber, or reel it in (with a fish if one bites).
+    void use_fishing_rod();
+    void tick_bobber();
+    // The bobber and its line, to draw.
+    std::vector<ModelPart> fishing_parts();
 
     // Minecarts and boats (game_vehicles.cpp). Vehicles move a game tick at a time.
     void update_vehicles(double dt);
@@ -366,6 +389,9 @@ private:
     // The mouse in framebuffer pixels from the top left, for the inventory screens.
     void gui_mouse(double& x, double& y) const;
     void draw_player_preview(int x, int y, int w, int h, float look_x, float look_y);
+    // The map in hand, held up in front of the view (instead of the hand).
+    void draw_held_map(int w, int h);
+    glm::dvec3 rod_tip() const;  // where the fishing line starts
 
     Painter& painter_;
     GLuint atlas_;
@@ -380,4 +406,7 @@ private:
     Rng animal_rng_;    // and for animals, so they don't change what the rest does
     Rng monster_rng_;   // and its own for monsters, so they don't change what the rest does
     Rng farm_rng_;      // and for random block ticks (crops growing, farmland drying)
+    Rng fishing_rng_;   // and for fishing
+    int shown_map_ = -1;          // the map whose picture is in the atlas now
+    long shown_map_version_ = -1;
 };
