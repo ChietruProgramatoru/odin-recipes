@@ -135,6 +135,7 @@ std::string level_to_json(const LevelData& level) {
     j["rainTime"] = level.weather.rain_time;
     j["thundering"] = level.weather.thundering;
     j["thunderTime"] = level.weather.thunder_time;
+    j["nextMap"] = level.next_map;
     if (level.player) {
         const PlayerData& p = *level.player;
         Json& pj = j["player"];
@@ -182,6 +183,7 @@ std::optional<LevelData> level_from_json(const std::string& text) {
     level.weather.rain_time = static_cast<int>(std::clamp(j.number("rainTime", 0), 0.0, 1e9));
     level.weather.thundering = j.boolean("thundering", false);
     level.weather.thunder_time = static_cast<int>(std::clamp(j.number("thunderTime", 0), 0.0, 1e9));
+    level.next_map = static_cast<int>(std::clamp(j.number("nextMap", 1), 1.0, 1e9));
     if (const Json* pj = j.get("player"); pj && pj->is_object()) {
         auto pos = read_vec3(pj->get("pos"));
         if (pos) {
@@ -204,7 +206,7 @@ std::optional<LevelData> level_from_json(const std::string& text) {
                     int slot = static_cast<int>(s.number("slot", -1));
                     int item = current_item_id(static_cast<int>(s.number("item", 0)));
                     int count = static_cast<int>(s.number("count", 0));
-                    int damage = std::clamp(static_cast<int>(s.number("damage", 0)), 0, std::max(0, max_damage(item)));
+                    int damage = std::clamp(static_cast<int>(s.number("damage", 0)), 0, std::max(0, max_saved_damage(item)));
                     if (!valid_item(item) || count < 1) continue;
                     Stack stack{item, std::min(count, max_stack(item)), damage};
                     if (slot >= 0 && slot < Inventory::SIZE)
@@ -356,7 +358,7 @@ std::unique_ptr<Chunk> decode_chunk(const std::vector<uint8_t>& bytes, int cx, i
                 const int item = current_item_id(r.i32()), count = r.i32(), damage = r.i32();
                 if (index >= CHEST_SLOTS || !valid_item(item) || count < 1) continue;
                 if (static_cast<int>(e.chest.size()) <= index) e.chest.resize(index + 1);
-                e.chest[index] = Stack{item, std::min(count, max_stack(item)), std::clamp(damage, 0, max_damage(item))};
+                e.chest[index] = Stack{item, std::min(count, max_stack(item)), std::clamp(damage, 0, max_saved_damage(item))};
             }
         }
         bool finite = std::isfinite(e.x) && std::isfinite(e.y) && std::isfinite(e.z);
@@ -376,7 +378,7 @@ std::unique_ptr<Chunk> decode_chunk(const std::vector<uint8_t>& bytes, int cx, i
             c->entities.push_back(e);
         } else if (kind == EntityRecord::ITEM && finite && valid_item(e.item) && e.count >= 1) {
             e.count = std::min(e.count, max_stack(e.item));
-            e.damage = std::clamp(e.damage, 0, max_damage(e.item));
+            e.damage = std::clamp(e.damage, 0, max_saved_damage(e.item));
             e.kind = EntityRecord::ITEM;
             c->entities.push_back(e);
         }
@@ -385,7 +387,7 @@ std::unique_ptr<Chunk> decode_chunk(const std::vector<uint8_t>& bytes, int cx, i
         auto slot = [&]() -> std::optional<Stack> {
             int item = current_item_id(r.i32()), count = r.i32(), damage = r.i32();
             if (!valid_item(item) || count < 1) return std::nullopt;
-            return Stack{item, std::min(count, max_stack(item)), std::clamp(damage, 0, max_damage(item))};
+            return Stack{item, std::min(count, max_stack(item)), std::clamp(damage, 0, max_saved_damage(item))};
         };
         int furnaces = r.u16();
         for (int i = 0; i < furnaces && r.ok(); ++i) {
@@ -415,7 +417,7 @@ std::unique_ptr<Chunk> decode_chunk(const std::vector<uint8_t>& bytes, int cx, i
         auto slot = [&]() -> std::optional<Stack> {
             int item = current_item_id(r.i32()), count = r.i32(), damage = r.i32();
             if (!valid_item(item) || count < 1) return std::nullopt;
-            return Stack{item, std::min(count, max_stack(item)), std::clamp(damage, 0, max_damage(item))};
+            return Stack{item, std::min(count, max_stack(item)), std::clamp(damage, 0, max_saved_damage(item))};
         };
         const int chests = r.u16();
         for (int i = 0; i < chests && r.ok(); ++i) {

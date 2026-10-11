@@ -211,6 +211,8 @@ int max_damage(ItemId id) {
     return info ? info->max_damage : 0;
 }
 
+int max_saved_damage(ItemId id) { return id == MAP ? 1 << 30 : max_damage(id); }
+
 int armor_slot(ItemId id) {
     const ItemInfo* info = item_info(id);
     return info ? info->armor_slot : -1;

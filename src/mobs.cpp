@@ -6,6 +6,7 @@
 #include <glm/gtc/matrix_transform.hpp>
 
 #include "animals.h"
+#include "fishing.h"
 #include "monsters.h"
 #include "textures.h"
 #include "vehicles.h"
@@ -245,6 +246,7 @@ std::map<int, MeshData> build_models() {
     add_monster_models(models);
     add_animal_models(models);
     add_vehicle_models(models);
+    add_fishing_models(models);
 
     for (ItemId item : all_items()) {
         glm::vec3 size = looks_like_block(item) ? glm::vec3(0.25f) : glm::vec3(0.4f, 0.4f, 0.03f);

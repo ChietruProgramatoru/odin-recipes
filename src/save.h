@@ -50,6 +50,7 @@ struct LevelData {
     int64_t last_played = 0;  // milliseconds since 1970
     std::optional<glm::dvec3> spawn;
     WeatherState weather;
+    int next_map = 1;  // the number the next map started gets (M15; maps are in data/, see navigation.h)
     std::optional<PlayerData> player;  // missing until the world is first saved from the game
 };
 

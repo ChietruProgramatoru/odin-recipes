@@ -162,6 +162,12 @@ void Painter::tile_quad(int tile, const float xy[4][2], const float uv[4][2], Co
     quads_.push_back(q);
 }
 
+void Painter::tiles(int tile, int cols, int rows, float x, float y, float w, float h, Color tint) {
+    use_texture(block_atlas_);
+    const auto top_left = tile_uv(tile), bottom_right = tile_uv(tile + (rows - 1) * ATLAS_COLS + cols - 1);
+    quads_.push_back(Quad::box(x, y, x + w, y + h, top_left[0], bottom_right[1], bottom_right[2], top_left[3], tint));
+}
+
 void Painter::cube_icon(const ItemIcon& icon, float x, float y, float size) {
     // Isometric view of boxes inside a unit cube: x runs to the lower right, z to the lower left, y up.
     const float s = size * 0.94f, cx = x + size / 2, by = y + (size - s) / 2;

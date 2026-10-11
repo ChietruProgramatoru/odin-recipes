@@ -129,6 +129,9 @@ public:
     // The first-person hand over the world: parts in camera space (x right, y up, looking down -z),
     // with a depth buffer of their own, no fog, and the sky darkened by `darkness` levels like the world.
     void draw_hand(const std::vector<ModelPart>& parts, int width, int height, float darkness);
+    // Draw over atlas tiles from `tile` on (its top-left corner), for the pictures that move: the
+    // compass and clock icons and the map being held. The image is a whole number of tiles.
+    void update_atlas(int tile, const Image& image);
 
 private:
     void draw_sky(const glm::mat4& proj_rot, const SkyState& sky, float far_dist);

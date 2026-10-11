@@ -309,12 +309,13 @@ void AutoTest::play(App& app, Game& g) {
     if (f >= 1450 && f < 1650) animals(app, g);
     if (f >= 1650 && f < 1720) transport(app, g);
     if (f >= 1720 && f < 1770) nature(app, g);
-    if (f == 1770) {
+    if (f >= 1770 && f < 1900) finding_and_fishing(app, g);
+    if (f == 1900) {
         app.pause();
         check("Escape menu pauses the game", g.paused && app.screen());
         shot(app, "7_pause.png");
     }
-    if (f == 1780) {
+    if (f == 1910) {
         // Change something, then save and quit to the title.
         marker_ = {static_cast<int>(std::floor(p.x)) + 2, static_cast<int>(std::floor(p.y)) + 1, static_cast<int>(std::floor(p.z))};
         g.renderer->rebuild(g.world.set_block(marker_.x, marker_.y, marker_.z, BRICK));
@@ -1199,7 +1200,7 @@ void AutoTest::animals(App& app, Game& g) {
         hold(EGG, 16);
         for (int i = 0; i < 64; ++i) {
             if (!held()) hold(EGG, 16);
-            g.throw_egg();
+            g.throw_item(EGG);
         }
         check("throwing eggs uses them up", !held() || held()->count < 16);
     }
@@ -2194,6 +2195,10 @@ void AutoTest::reload(App& app) {
         Chunk* jc = g.world.chunk_at(jukebox_pos_);
         check("a jukebox keeps its disc", jc && jc->records.count(cell_index(jukebox_pos_)) &&
                                               jc->records[cell_index(jukebox_pos_)] == RECORD_CAT);
+        check("the map is saved with the world and loads again",
+              std::filesystem::exists(map_path(g.saver->dir(), map_id_)) && g.level.next_map == map_id_ + 1 &&
+                  std::count_if(g.map_data(map_id_).colors.begin(), g.map_data(map_id_).colors.end(),
+                                [](uint8_t c) { return c != 0; }) > 400);
         shot(app, "9_reloaded.png");
         finish(app);
     }
@@ -2627,5 +2632,192 @@ void AutoTest::nature(App& app, Game& g) {
         p.vx = p.vy = p.vz = 0;
         g.fall_peak = p.y;
         if (garden_raining_) g.weather = Weather(WeatherState{true, false, 100000, 100000});
+    }
+}
+
+void AutoTest::finding_and_fishing(App& app, Game& g) {
+    const long f = g.frame - 1770;  // runs after the garden
+    Body& p = g.player;
+    World& w = g.world;
+    Inventory& inv = g.inventory;
+    auto set = [&](glm::ivec3 c, BlockId b) { g.renderer->rebuild(w.set_block(c.x, c.y, c.z, b)); };
+    auto stand = [&](glm::dvec3 q) {
+        p.x = q.x;
+        p.y = q.y;
+        p.z = q.z;
+        p.vx = p.vy = p.vz = 0;
+        g.fall_peak = p.y;
+    };
+    auto look_at = [&](glm::dvec3 q) {
+        glm::vec3 d = glm::vec3(q) - g.eye();
+        g.yaw = degrees(std::atan2(d.x, d.z));
+        g.pitch = -degrees(std::asin(d.y / glm::length(d)));
+        g.update_target();
+    };
+    // The hand comes up with what is selected now (it takes a while at the autotest's frame times).
+    auto settle_hand = [&] {
+        for (int i = 0; i < 40; ++i) g.hand.update(0.05, inv.selected_item(), inv.selected);
+    };
+    // A stone platform in the sky with a pond in the middle (x, floor top y, z of the pond's near edge).
+    if (f == 0) pond_ = {static_cast<int>(std::floor(p.x)) + 40, 98, static_cast<int>(std::floor(p.z)) + 40};
+    const glm::ivec3 o = pond_;
+    const glm::dvec3 shore = glm::dvec3(o) + glm::dvec3(0.5, 0, -1.5);
+
+    if (f == 0) {
+        items_return_ = {p.x, p.y, p.z};
+        items_raining_ = g.weather.state.raining;
+        items_creative_ = g.creative;
+        g.monsters.clear();
+        g.target_monster = nullptr;
+        g.drops.clear();
+        g.arrows.clear();
+        g.weather.clear();
+        g.creative = false;
+        g.flying = false;
+        g.vitals.reset();
+        g.level.time = 6000 + (g.level.time / DAY_TICKS) * DAY_TICKS;  // noon
+        for (int dx = -10; dx <= 10; ++dx)
+            for (int dz = -6; dz <= 14; ++dz) {
+                const bool water = dx >= -3 && dx <= 3 && dz >= 0 && dz <= 7;
+                set(o + glm::ivec3(dx, -3, dz), STONE);
+                set(o + glm::ivec3(dx, -2, dz), water ? WATER : STONE);
+                set(o + glm::ivec3(dx, -1, dz), water ? WATER : GRASS);
+                for (int dy = 0; dy <= 6; ++dy) set(o + glm::ivec3(dx, dy, dz), AIR);
+            }
+        // The compass in hand and the clock next to it. Looking along +z with the spawn far off to
+        // the +x side (the player's left), the needle swings round to the left.
+        stand(shore);
+        inv.slots[0] = Stack{COMPASS, 1};
+        inv.slots[1] = Stack{CLOCK, 1};
+        inv.slots[2] = Stack{MAP, 1};
+        inv.slots[3] = Stack{FISHING_ROD, 1};
+        inv.slots[4] = Stack{SNOWBALL, 16};
+        inv.selected = 0;
+        const glm::dvec3 spawn_was = g.spawn;
+        g.spawn = glm::dvec3(p.x + 200, p.y, p.z);  // far to the +x side
+        g.yaw = 0;
+        g.pitch = 20;
+        for (int i = 0; i < 100; ++i) g.tick_navigation();
+        check("the compass needle swings round to point at the spawn (" + std::to_string(g.compass_needle.angle) + ")",
+              std::abs(g.compass_needle.angle - 3.14159265 / 2) < 0.05);
+        g.yaw = 90;  // facing it
+        for (int i = 0; i < 100; ++i) g.tick_navigation();
+        check("facing the spawn the needle points straight ahead", std::abs(g.compass_needle.angle) < 0.05);
+        g.spawn = spawn_was;
+        check("at noon the clock shows the sun at the top", std::abs(g.clock_needle.angle) < 0.05);
+        g.level.time += DAY_TICKS / 2;
+        for (int i = 0; i < 200; ++i) g.tick_navigation();
+        check("at midnight the clock has turned half way round", std::abs(std::abs(g.clock_needle.angle) - 3.14159265) < 0.05);
+        g.level.time -= DAY_TICKS / 2;
+        for (int i = 0; i < 200; ++i) g.tick_navigation();
+        g.yaw = 30;
+        g.pitch = 10;
+    }
+    if (f == 7) settle_hand();
+    if (f == 8) shot(app, "m15_compass.png");
+    if (f == 9) {
+        // A blank map in hand gets a number and fills in around the player.
+        inv.selected = 2;
+        const int next = g.level.next_map;
+        for (int i = 0; i < 16; ++i) {
+            ++g.level.time;  // the map draws a sixteenth of its columns each tick
+            g.tick_navigation();
+        }
+        map_id_ = inv.slots[2] ? inv.slots[2]->damage : 0;
+        check("a blank map in hand becomes map #" + std::to_string(map_id_), map_id_ == next && g.level.next_map == next + 1);
+        const MapData* m = g.maps.count(map_id_) ? &g.maps.at(map_id_) : nullptr;
+        int seen = 0, water = 0;
+        if (m)
+            for (uint8_t c : m->colors) {
+                seen += c != 0;
+                water += c / MAP_SHADES == MAP_WATER;
+            }
+        check("the map draws the land around the player (" + std::to_string(seen) + " pixels, " + std::to_string(water) +
+                  " water)",
+              m && seen > 400 && water > 0);
+        g.yaw = 0;
+        g.pitch = 30;
+    }
+    if (f == 19) settle_hand();
+    if (f == 20) shot(app, "m15_map.png");
+    if (f == 21) {
+        // Fishing: cast into the pond from its edge.
+        inv.selected = 3;
+        stand(shore);
+        look_at(glm::dvec3(o) + glm::dvec3(0.5, -0.5, 4.5));
+        g.use_item();
+        check("right click with a fishing rod casts the bobber", g.bobber != nullptr);
+        for (int i = 0; i < 60 && g.bobber; ++i) g.tick_bobber();
+        check("the bobber lands in the pond and floats", g.bobber && g.bobber->water_fraction() > 0 &&
+                                                             g.bobber->water_fraction() < 1 && g.bobber->body.z > o.z + 1);
+        g.yaw = 0;
+        g.pitch = 25;
+    }
+    if (f == 26) settle_hand();
+    if (f == 27) shot(app, "m15_fishing.png");
+    if (f == 28) g.third_person = true;
+    if (f == 30) {
+        shot(app, "m15_fishing_third_person.png");
+        g.third_person = false;
+        // Wait for a bite, then reel in: a raw fish flies to the player.
+        int ticks = 0;
+        while (g.bobber && g.bobber->bite_ticks == 0 && ticks < 50000) {
+            g.tick_bobber();
+            ++ticks;
+        }
+        check("a fish bites (after " + std::to_string(ticks) + " ticks)", g.bobber && g.bobber->bite_ticks > 0);
+        g.drops.clear();
+        g.use_item();
+        check("reeling in while it bites catches a raw fish",
+              !g.bobber && g.drops.size() == 1 && g.drops[0]->stack.item == RAW_FISH && g.fish_caught == 1);
+        check("catching a fish wears the rod by one", inv.slots[3] && inv.slots[3]->damage == 1);
+        fish_before_ = inv.count(RAW_FISH);
+    }
+    if (f == 70) {
+        check("the fish lands at the player's feet and is picked up", inv.count(RAW_FISH) == fish_before_ + 1);
+        // Cast onto the grass: the bobber lies there, and pulling it out wears the rod by two.
+        stand(shore);
+        look_at(glm::dvec3(o) + glm::dvec3(-6.5, -0.9, 3.5));
+        g.use_item();
+        for (int i = 0; i < 80 && g.bobber; ++i) g.tick_bobber();
+        check("a bobber cast onto land lies there", g.bobber && g.bobber->in_ground);
+        g.use_item();
+        check("pulling it out of the ground wears the rod by two", !g.bobber && inv.slots[3] && inv.slots[3]->damage == 3);
+        // Hook a pig and pull it in.
+        Animal* pig = g.spawn_animal(AnimalKind::Pig, o.x + 6.5, o.y, o.z + 2.5);
+        pig->state = Animal::State::Idle;
+        pig->state_timer = 1000;
+        pig_start_ = std::hypot(pig->body.x - p.x, pig->body.z - p.z);
+        look_at(glm::dvec3(pig->body.x, pig->body.y + 0.5, pig->body.z));
+        g.target_animal = nullptr;  // casting, not using it
+        g.use_item();
+        for (int i = 0; i < 20 && g.bobber && !g.bobber->hooked; ++i) g.tick_bobber();
+        check("a bobber cast at a pig hooks it", g.bobber && g.bobber->hooked == pig);
+        g.use_item();
+        check("reeling in a hooked mob wears the rod by three", !g.bobber && inv.slots[3] && inv.slots[3]->damage == 6);
+        pig_ = pig;
+    }
+    if (f == 80) {
+        const bool alive = std::any_of(g.animals.begin(), g.animals.end(), [&](const auto& a) { return a.get() == pig_; });
+        const double now = alive ? std::hypot(pig_->body.x - p.x, pig_->body.z - p.z) : 0;
+        check("the hooked pig is pulled towards the player (" + std::to_string(pig_start_) + " -> " + std::to_string(now) + ")",
+              alive && now < pig_start_ - 1);
+        // Snowballs: thrown, and they break where they land.
+        inv.selected = 4;
+        stand(shore);
+        g.yaw = 0;
+        g.pitch = 30;
+        g.arrows.clear();
+        g.use_item();
+        check("right click throws a snowball", g.arrows.size() == 1 && g.arrows[0]->item == SNOWBALL && inv.slots[4]->count == 15);
+    }
+    if (f == 120) {
+        check("the snowball broke where it landed", g.arrows.empty());
+        // Back where the garden left off, for the save check.
+        inv.selected = 2;  // the map in hand when saving
+        g.vitals.reset();
+        g.creative = items_creative_;
+        stand(items_return_);
+        if (items_raining_) g.weather = Weather(WeatherState{true, false, 100000, 100000});
     }
 }

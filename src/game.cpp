@@ -38,7 +38,8 @@ Game::Game(GLFWwindow* win, GLuint atlas, Painter& painter, const Options& opts,
       weather_rng_(setup.scripted ? 1 : std::random_device{}()),
       animal_rng_(setup.scripted ? 4 : std::random_device{}()),
       monster_rng_(setup.scripted ? 2 : std::random_device{}()),
-      farm_rng_(setup.scripted ? 3 : std::random_device{}()) {
+      farm_rng_(setup.scripted ? 3 : std::random_device{}()),
+      fishing_rng_(setup.scripted ? 5 : std::random_device{}()) {
     weather = Weather(level.weather);
     world.set_store(&saver->store());
     renderer = std::make_unique<WorldRenderer>(world, atlas, view_distance_chunks(options.view_distance));
@@ -333,6 +334,7 @@ bool Game::save(bool wait) {
         c->saved_entities = !copy->entities.empty();
         copies.push_back(std::move(copy));
     }
+    save_maps();
     LevelData data = level;
     data.last_played = now_ms();
     data.spawn = spawn;
@@ -665,6 +667,7 @@ void Game::update(double dt) {
             parts.push_back(part);
         }
     }
+    if (bobber) add_lit(fishing_parts(), bobber->body);
     if (third_person && !dead) {
         PlayerPose pose{player.x, player.y, player.z, yaw, pitch, walk_phase, walk_amount, sneaking};
         pose.sitting = in_vehicle != nullptr;
@@ -741,7 +744,8 @@ void Game::draw(int w, int h) {
                           (static_cast<double>(level.time % 72000) + ticks_) / 20);
     renderer->set_view_bob(third_person ? glm::mat4(1.0f) : hand.bob());
     renderer->draw(w, h, cam, forward(), sky);
-    if (!third_person && !hud_hidden && !sleeping_in && !vitals.dead()) {
+    const bool map_in_hand = hand.shown() == MAP && maps.count(shown_map_);
+    if (!third_person && !hud_hidden && !sleeping_in && !vitals.dead() && !map_in_hand) {
         // The hand is lit by the light where the eyes are.
         std::vector<ModelPart> held = hand.parts();
         glm::vec3 e = eye();
@@ -752,6 +756,7 @@ void Game::draw(int w, int h) {
         }
         renderer->draw_hand(held, w, h, sky.darkness);
     }
+    if (!third_person && !hud_hidden && !sleeping_in && !vitals.dead() && map_in_hand) draw_held_map(w, h);
     if (sleeping_in) {
         // The screen fades to dark while falling asleep.
         float a = std::min(1.0f, (sleep_ticks + static_cast<float>(ticks_)) / SLEEP_TICKS) * 0.85f;
@@ -1210,8 +1215,12 @@ void Game::use_item() {
         place_vehicle(*item);
         return;
     }
-    if (*item == EGG) {
-        throw_egg();
+    if (*item == EGG || *item == SNOWBALL) {
+        throw_item(*item);
+        return;
+    }
+    if (*item == FISHING_ROD) {
+        use_fishing_rod();
         return;
     }
     if (*item == FLINT_AND_STEEL) {
@@ -1367,18 +1376,6 @@ bool Game::light_fire(glm::ivec3 pos) {
     if (world.get_block(pos.x, pos.y, pos.z) != AIR || !fire_can_stay(world, pos)) return false;
     renderer->rebuild(world.set_block(pos.x, pos.y, pos.z, FIRE));
     return true;
-}
-
-void Game::throw_egg() {
-    // Thrown like Beta's eggs and snowballs: as fast as an arrow, a little less accurate.
-    if (!creative) active_inventory().take_selected();
-    glm::dvec3 dir(forward());
-    dir += glm::dvec3(animal_rng_.uniform(-1, 1), animal_rng_.uniform(-1, 1), animal_rng_.uniform(-1, 1)) * 0.0075;
-    dir = glm::normalize(dir);
-    auto egg = std::make_unique<Arrow>(glm::dvec3(eye()) + dir * 0.3, dir * Arrow::SPEED);
-    egg->item = EGG;
-    arrows.push_back(std::move(egg));
-    hand.swing();
 }
 
 bool Game::interact(Animal& a) {
@@ -1578,6 +1575,8 @@ void Game::tick_world() {
     tick_furnaces();
     tick_blocks();
     tick_player_fire_and_air();
+    tick_navigation();
+    tick_bobber();
     if (sleeping_in && !vitals.dead() && ++sleep_ticks >= SLEEP_TICKS) {
         // Asleep long enough: skip to the next morning and clear the sky, like Beta.
         level.time = next_morning(level.time);
@@ -1986,6 +1985,8 @@ void Game::update_arrows(double dt) {
             const double fx = a.pos.x - a.vel.x, fz = a.pos.z - a.vel.z;
             if (a.item == EGG) {
                 hatch(a);
+            } else if (a.item == SNOWBALL) {
+                add_puffs(puffs, a.pos, 4, 0.1, 1.0, 0.1, animal_rng_);  // breaks: no harm done (Beta)
             } else if (hit->kind == 0) {
                 Animal& hit_animal = *animals[hit->index];
                 hit_animal.hurt(ARROW_DAMAGE, fx, fz);
@@ -2003,6 +2004,9 @@ void Game::update_arrows(double dt) {
             remove = true;
         } else if (a.item == EGG && a.stuck) {
             hatch(a);
+            remove = true;
+        } else if (a.item == SNOWBALL && a.stuck) {
+            add_puffs(puffs, a.pos, 4, 0.1, 1.0, 0.1, animal_rng_);
             remove = true;
         } else if (a.expired() || a.age > 120 || a.pos.y < -16 ||
                    std::hypot(a.pos.x - player.x, a.pos.z - player.z) > far_away) {

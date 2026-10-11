@@ -101,6 +101,8 @@ const ItemInfo* item_info(ItemId id);
 inline bool valid_item(ItemId id) { return item_info(id) != nullptr; }
 int max_stack(ItemId id);
 int max_damage(ItemId id);
+// The biggest damage value a saved stack may have: the wear of a tool, or a map's number (M15).
+int max_saved_damage(ItemId id);
 int armor_slot(ItemId id);
 // Blocks that can't be placed yet (FUTURE_BLOCKS and up) are still drawn as blocks.
 bool looks_like_block(ItemId id);

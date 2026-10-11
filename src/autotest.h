@@ -2,7 +2,7 @@
 // Drives the real program for a few hundred frames: the menus, creating a world, mining, building,
 // cows, eating, fall damage, furnaces, tools, armor, the bow, fire and buckets, a tour of the biomes and caves, the F3 and F5 views,
 // monsters, explosions and dying, the first-person hand, flowing water and lava, falling sand and fire, farming, animals,
-// rails, minecarts and boats,
+// rails, minecarts and boats, the compass, clock, maps, fishing and snowballs,
 // the pause menu,
 // then saving, quitting to the
 // title and loading the world again. Saves screenshots to OUT_DIR and writes OUT_DIR/report.txt.
@@ -53,6 +53,7 @@ private:
     void nature(App& app, Game& g);    // saplings and trees, leaf decay, cactus, cobwebs, snow and ice melting
     void animals(App& app, Game& g);   // every animal, saddles and riding, shearing, dye, milk, taming wolves, eggs
     void transport(App& app, Game& g); // rails, riding a minecart, the chest and furnace minecarts, a boat
+    void finding_and_fishing(App& app, Game& g);  // M15: compass, clock, a map, fishing, snowballs
     void reload(App& app);      // quit to the title and load the world again
 
     std::string out_;
@@ -123,4 +124,12 @@ private:
     glm::ivec3 track_{0};
     glm::dvec3 before_track_{0};
     bool rode_over_hump_ = false, pressed_detector_ = false;
+    // Compass, clock, maps and fishing: the pond on a sky platform (x, floor top y, z of its near
+    // edge), the map started there, and the pig pulled in with the rod.
+    glm::ivec3 pond_{0};
+    glm::dvec3 items_return_{0};
+    bool items_raining_ = false, items_creative_ = false;
+    int map_id_ = 0, fish_before_ = 0;
+    Animal* pig_ = nullptr;
+    double pig_start_ = 0;
 };

@@ -38,6 +38,8 @@ public:
     void stack(const Stack& stack, float x, float y, float size, int count_scale);
     // Any four-cornered piece of an atlas tile; corners go counter-clockwise, uv in 0..1 of the tile.
     void tile_quad(int tile, const float xy[4][2], const float uv[4][2], Color tint);
+    // A block of cols x rows atlas tiles from `tile` (its top-left one), stretched over a rectangle.
+    void tiles(int tile, int cols, int rows, float x, float y, float w, float h, Color tint);
     // anchor_x: 0 left, 0.5 centre, 1 right; anchor_y: 0 bottom, 0.5 centre, 1 top. Drawn with a drop shadow unless `shadow` is false.
     void text(const std::string& s, float x, float y, int scale, float anchor_x = 0, float anchor_y = 0,
               bool centre_lines = false, Color color = {}, bool shadow = true);
