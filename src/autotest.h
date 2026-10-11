@@ -48,6 +48,7 @@ private:
     void hand(App& app, Game& g);      // the first-person hand, held items and the swing
     void fluids_and_fire(App& app, Game& g);  // flowing water and lava, falling sand, fire, drowning, burning
     void farming(App& app, Game& g);   // tilling, planting, bone meal, harvesting, cake and the wild plants
+    void nature(App& app, Game& g);    // saplings and trees, leaf decay, cactus, cobwebs, snow and ice melting
     void reload(App& app);      // quit to the title and load the world again
 
     std::string out_;
@@ -98,4 +99,6 @@ private:
     // Fluids and fire: a stone platform high in the sky (x, top y, z of its middle).
     glm::ivec3 pad_{0};
     double current_start_x_ = 0;
+    // Nature: a grass platform next to the fluids one.
+    glm::ivec3 garden_{0};
 };

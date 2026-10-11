@@ -10,6 +10,7 @@
 
 namespace {
 constexpr double E = 1e-7;
+constexpr double WEB_FALL_SPEED = 1.6;  // Beta: gravity for one tick, then all motion stops
 }
 
 Body::Body(World& w, double x_, double y_, double z_, double half_width, double height_)
@@ -54,6 +55,15 @@ bool Body::move_axis(int axis, double delta) {
 }
 
 HitAxes Body::move(double dx, double dy, double dz) {
+    // Beta's Entity.setInWeb: a web holds everything in it back, and stops any fall.
+    in_web = world->box_in(COBWEB, x - half + 0.001, y + 0.001, z - half + 0.001, x + half - 0.001, y + height - 0.001,
+                           z + half - 0.001);
+    if (in_web) {
+        dx *= 0.25;
+        dy *= 0.05;
+        dz *= 0.25;
+        vy = std::max(vy, -WEB_FALL_SPEED);
+    }
     int steps = std::max(1, static_cast<int>(std::ceil(std::max({std::abs(dx), std::abs(dy), std::abs(dz)}) / 0.4)));
     HitAxes hit;
     bool grounded = false;

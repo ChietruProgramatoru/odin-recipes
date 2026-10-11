@@ -8,6 +8,7 @@
 #include "blocks.h"
 #include "icons.h"
 #include "items.h"
+#include "nature.h"
 #include "survival.h"
 #include "textures.h"
 
@@ -134,6 +135,7 @@ void Monster::per_tick(World& world, const MonsterSenses& s, Rng& rng, MonsterAc
                     burning = std::max(burning, 8.0);
                 }
             }
+    if (touches_cactus(world, body)) hurt(1, body.x, body.z, false);
     if (body.in_water || (s.raining && sky_above)) burning = 0;
     if (!alive()) return;
 

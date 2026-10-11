@@ -1174,7 +1174,7 @@ std::map<int, Image> make_item_tiles() {
     add(IT_GLASS, glass);
     for (ItemId id : all_items()) {
         const ItemInfo* info = item_info(id);
-        if (info->icon.shape == ItemIcon::Flat) tiles[info->icon.top] = flat_icon(id);
+        if (info->icon.shape == ItemIcon::Flat && info->icon.top >= ITEM_TILE_BASE) tiles[info->icon.top] = flat_icon(id);
     }
     return tiles;
 }

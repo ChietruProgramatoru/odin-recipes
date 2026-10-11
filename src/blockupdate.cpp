@@ -5,6 +5,8 @@
 
 #include <glm/geometric.hpp>
 
+#include "items.h"
+#include "nature.h"
 #include "torch.h"
 
 namespace {
@@ -136,8 +138,29 @@ void BlockUpdater::random_ticks(ChunkPos center, int radius, Rng& rng, const Rai
             for (int i = 0; i < RANDOM_TICKS_PER_CHUNK; ++i) {
                 const uint64_t r = rng.next();
                 const int x = r & 15, z = (r >> 4) & 15, y = static_cast<int>((r >> 8) % HEIGHT);
-                const BlockId b = c->blocks[Chunk::index(x, y, z)];
-                if (b == LAVA || b == FIRE) random_tick({cx * CHUNK + x, y, cz * CHUNK + z}, rng, rain, out);
+                const int at = Chunk::index(x, y, z);
+                const BlockId b = c->blocks[at];
+                if (b == LAVA || b == FIRE || b == ICE || b == SNOW_LAYER || b == CACTUS ||
+                    (is_leaves(b) && (c->data[at] & LEAVES_CHECK)))
+                    random_tick({cx * CHUNK + x, y, cz * CHUNK + z}, rng, rain, out);
+            }
+        }
+}
+
+void BlockUpdater::snow_ticks(ChunkPos center, int radius, bool snowing, BlockEvents& out) {
+    for (int cx = center.cx - radius; cx <= center.cx + radius; ++cx)
+        for (int cz = center.cz - radius; cz <= center.cz + radius; ++cz) {
+            if (!world_.find(cx, cz) || snow_rng_.below(SNOW_ODDS) != 0) continue;
+            const int x = cx * CHUNK + snow_rng_.below(CHUNK), z = cz * CHUNK + snow_rng_.below(CHUNK);
+            const auto top = world_.rain_height(x, z);
+            const auto biome = world_.biome_at(x, z);
+            if (!top || !biome || !is_cold(*biome) || *top <= 0 || *top >= HEIGHT) continue;
+            const glm::ivec3 p(x, *top, z), below = p - UP;
+            if (world_.block_light(p.x, p.y, p.z) >= FREEZE_LIGHT) continue;
+            if (block_at(world_, below) == WATER && world_.get_data(below.x, below.y, below.z) == 0) {
+                set(below, ICE, 0, out);
+            } else if (snowing && block_at(world_, p) == AIR && snow_can_stay(world_, p)) {
+                set(p, SNOW_LAYER, 0, out);
             }
         }
 }
@@ -171,7 +194,12 @@ void BlockUpdater::changed(glm::ivec3 p, BlockEvents& out) {
     } else if (b == FIRE) {
         if (!fire_can_stay(world_, p)) set(p, AIR, 0, out);
         else schedule(p, FIRE_TICKS);
+    } else if (b == CACTUS && !cactus_can_stay(world_, p)) {
+        set(p, AIR, 0, out);
+        out.drops.push_back({p, CACTUS});
     }
+    // A block went (a log chopped, burnt or blown up): the leaves around look for another log.
+    if (block_at(world_, p) == AIR || block_at(world_, p) == FIRE) mark_leaves(world_, p);
     for (glm::ivec3 d : NEIGHBOURS) neighbour_changed(p + d, out);
 }
 
@@ -184,6 +212,14 @@ void BlockUpdater::neighbour_changed(glm::ivec3 p, BlockEvents& out) {
         schedule(p, FALL_TICKS);
     } else if (b == FIRE) {
         if (!fire_can_stay(world_, p)) set(p, AIR, 0, out);
+    } else if (b == CACTUS) {
+        // Cactus breaks off when something solid goes next to it or the sand under it goes (Beta).
+        if (!cactus_can_stay(world_, p)) {
+            set(p, AIR, 0, out);
+            out.drops.push_back({p, CACTUS});
+        }
+    } else if (b == SNOW_LAYER) {
+        if (!snow_can_stay(world_, p)) set(p, AIR, 0, out);
     } else if (is_torch(b)) {
         // A torch whose block went (sand falling away under it, say) drops off.
         const glm::ivec3 s = p + torch_support(b);
@@ -207,8 +243,22 @@ void BlockUpdater::run(glm::ivec3 p, Rng& rng, const RainCheck& rain, BlockEvent
 
 void BlockUpdater::random_tick(glm::ivec3 p, Rng& rng, const RainCheck& rain, BlockEvents& out) {
     if (!area_loaded(p)) return;
-    if (block_at(world_, p) == FIRE) {
+    const BlockId here = block_at(world_, p);
+    if (here == FIRE) {
         tick_fire(p, rng, rain, out);
+        return;
+    }
+    if (here == ICE || here == SNOW_LAYER) {
+        // Ice melts back into water, snow just goes (Beta).
+        if (melts(world_, p)) set(p, here == ICE ? WATER : AIR, 0, out);
+        return;
+    }
+    if (is_leaves(here)) {
+        decay(p, rng, out);
+        return;
+    }
+    if (here == CACTUS) {
+        grow_cactus(p, out);
         return;
     }
     // Lava sets fire to air next to something that burns, up to two blocks above it (Beta's
@@ -227,6 +277,35 @@ void BlockUpdater::random_tick(glm::ivec3 p, Rng& rng, const RainCheck& rain, Bl
         } else if (is_solid(b)) {
             return;
         }
+    }
+}
+
+// --- Leaves and cactus (nature.h) ------------------------------------------------------------------
+
+void BlockUpdater::decay(glm::ivec3 p, Rng& rng, BlockEvents& out) {
+    const int data = world_.get_data(p.x, p.y, p.z);
+    if (!(data & LEAVES_CHECK)) return;
+    if ((data & LEAVES_PLAYER) || log_near(world_, p)) {
+        world_.set_data(p.x, p.y, p.z, data & ~LEAVES_CHECK, false);
+        return;
+    }
+    const BlockId leaves = block_at(world_, p);
+    set(p, AIR, 0, out);
+    for (ItemId item : leaf_drops(leaves, rng)) out.drops.push_back({p, item});
+}
+
+// Beta's BlockCactus.updateTick: the top of a stalk shorter than 3 ages, and grows one more at 15.
+void BlockUpdater::grow_cactus(glm::ivec3 p, BlockEvents& out) {
+    if (p.y + 1 >= HEIGHT || block_at(world_, p + UP) != AIR) return;
+    int height = 1;
+    while (block_at(world_, p - glm::ivec3(0, height, 0)) == CACTUS) ++height;
+    if (height >= CACTUS_MAX) return;
+    const int age = world_.get_data(p.x, p.y, p.z);
+    if (age >= CACTUS_AGE) {
+        world_.set_data(p.x, p.y, p.z, 0, false);
+        set(p + UP, CACTUS, 0, out);
+    } else {
+        world_.set_data(p.x, p.y, p.z, age + 1, false);
     }
 }
 

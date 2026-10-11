@@ -49,7 +49,7 @@ Table build() {
         // The torch is a flat icon, added below; beds are placed from the BED item.
         // Farmland, crops, sugar cane and cake come from other items; flowers are flat icons below.
         if (b == WATER || b == LAVA || b == FIRE || is_torch(b) || is_bed(b) || (is_furnace(b) && b != FURNACE) ||
-            is_plant(b) || b == FARMLAND || b == CAKE_BLOCK)
+            is_plant(b) || b == FARMLAND || b == CAKE_BLOCK || b == SNOW_LAYER)
             continue;
         const BlockInfo* info = block_info(b);
         t.cube(b, info->name, info->tiles[0], info->tiles[1], info->tiles[1]);
@@ -101,6 +101,8 @@ Table build() {
     t.flat(RED_ROSE, "Rose");
     t.flat(BROWN_MUSHROOM, "Brown Mushroom");
     t.flat(RED_MUSHROOM, "Red Mushroom");
+    // Saplings and cobwebs show the picture they have in the world.
+    for (BlockId b : {SAPLING, SPRUCE_SAPLING, BIRCH_SAPLING, COBWEB}) t.add(b, block_info(b)->name, {ItemIcon::Flat, block_info(b)->tiles[1], 0, 0});
 
     // Tools, weapons and armor.
     for (int m = 0; m < 5; ++m)

@@ -46,8 +46,8 @@ bool water_near_farmland(World& world, glm::ivec3 pos);
 // each farmland around it, halved when wheat grows on two sides or a diagonal. Chance per tick is 1 in 100/rate.
 float wheat_growth_rate(World& world, glm::ivec3 pos);
 
-// One random tick of the block at `pos`: wheat and sugar cane grow, farmland wets or dries out,
-// mushrooms spread, and plants that can't stay there any more pop off.
+// One random tick of the block at `pos`: wheat, sugar cane and saplings grow, farmland wets or
+// dries out, mushrooms spread, and plants that can't stay there any more pop off.
 void random_tick(World& world, glm::ivec3 pos, Rng& rng, const TickContext& ctx, FarmEvents& out);
 // Beta's random ticks for one chunk: RANDOM_TICKS_PER_CHUNK blocks picked at random.
 void tick_chunk(World& world, const Chunk& chunk, Rng& rng, const TickContext& ctx, FarmEvents& out);
@@ -64,8 +64,9 @@ bool till(World& world, glm::ivec3 pos, FarmEvents& out);
 // Something lands on farmland after falling `fall` blocks: with a chance of fall - 0.5 (Minecraft 1.0's
 // rule; walking over it is safe) it turns back to dirt and the crop on it pops off. Returns true if it did.
 bool trample(World& world, glm::ivec3 pos, double fall, Rng& rng, FarmEvents& out);
-// Use bone meal on a block: wheat ripens, grass sprouts tall grass and flowers around it.
+// Use bone meal on a block: wheat ripens, a sapling grows into its tree, grass sprouts tall grass
+// and flowers around it.
 // Returns false if it does nothing there (and isn't used up).
 bool bone_meal(World& world, glm::ivec3 pos, Rng& rng, FarmEvents& out);
-// The block an item places as a plant or cake (seeds, sugar cane, flowers...), or AIR.
+// The block an item places as a plant or cake (seeds, sugar cane, flowers, saplings, cactus...), or AIR.
 BlockId planted_block(ItemId item);

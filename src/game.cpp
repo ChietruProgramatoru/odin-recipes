@@ -10,6 +10,7 @@
 #include <glm/gtc/matrix_transform.hpp>
 
 #include "bed.h"
+#include "nature.h"
 #include "textures.h"
 #include "tools.h"
 #include "torch.h"
@@ -775,7 +776,7 @@ void Game::move(double dt) {
     }
 
     // Fall damage
-    if (p.in_liquid() || flying || creative) {
+    if (p.in_liquid() || p.in_web || flying || creative) {
         fall_peak = p.y;
     } else if (!p.on_ground) {
         fall_peak = std::max(fall_peak, p.y);
@@ -918,8 +919,14 @@ void Game::break_block(glm::ivec3 pos, BlockId blk) {
     vitals.exhaust(EXHAUST_BREAK);
     const ItemId held = inventory.selected_item().value_or(AIR);
     wear_selected(wear_from_breaking(held, blk));
-    if (blk == LEAVES && held != SHEARS && rng.random() < 0.1) {
-        spawn_drop(APPLE, pos.x + 0.5, pos.y + 0.3, pos.z + 0.5);
+    if (is_leaves(blk) && held != SHEARS) {
+        for (ItemId item : leaf_drops(blk, rng)) spawn_drop(item, pos.x + 0.5, pos.y + 0.3, pos.z + 0.5);
+        return;
+    }
+    if (blk == ICE) {
+        // Beta: ice broken over something solid or a liquid leaves water behind (and drops nothing).
+        const BlockId under = world.get_block(pos.x, pos.y - 1, pos.z);
+        if (is_solid(under) || is_fluid(under)) renderer->rebuild(world.set_block(pos.x, pos.y, pos.z, WATER));
         return;
     }
     if (blk == WHEAT_CROP || blk == TALL_GRASS || blk == FERN) {
@@ -1069,6 +1076,7 @@ void Game::use_item() {
     }
     if (!is_block(*item) || !target || targeting_mob() || !target->before) return;
     glm::ivec3 c = *target->before;
+    if (world.get_block(target->block.x, target->block.y, target->block.z) == SNOW_LAYER) c = target->block;  // snow gets covered
     BlockId place = static_cast<BlockId>(*item);
     if (place == FURNACE) place = furnace_block(facing_from_yaw(yaw) + 2, false);  // its front towards the player
     if (place == TORCH) {
@@ -1085,8 +1093,8 @@ void Game::use_item() {
             c.y + 1 > b->y && c.y < b->y + b->height)
             return;  // don't build inside someone
     BlockId here = world.get_block(c.x, c.y, c.z);
-    if (here != AIR && !is_fluid(here)) return;
-    renderer->rebuild(world.set_block(c.x, c.y, c.z, place));
+    if (here != AIR && here != SNOW_LAYER && !is_fluid(here)) return;
+    renderer->rebuild(world.set_block(c.x, c.y, c.z, place, is_leaves(place) ? LEAVES_PLAYER : 0));
     if (is_solid(place) && world.get_block(c.x, c.y - 1, c.z) == FARMLAND)
         renderer->rebuild(world.set_block(c.x, c.y - 1, c.z, DIRT));  // Beta: farmland under a block turns to dirt
     if (!creative) inv.take_selected();
@@ -1336,7 +1344,7 @@ bool Game::plant(BlockId block) {
     if (!target || targeting_mob() || !target->before) return false;
     const glm::ivec3 c = *target->before;
     if (world.get_block(c.x, c.y, c.z) != AIR || !can_stay(world, c, block)) return false;
-    if (block == CAKE_BLOCK) {  // a cake is solid: not on top of the player
+    if (is_solid(block)) {  // cake and cactus are solid: not on top of the player
         const Body& b = player;
         if (c.x + 1 > b.x - b.half && c.x < b.x + b.half && c.z + 1 > b.z - b.half && c.z < b.z + b.half &&
             c.y + 1 > b.y && c.y < b.y + b.height)
@@ -1392,6 +1400,7 @@ void Game::tick_blocks() {
     blocks.tick(rng, rain, events);
     const ChunkPos here = chunk_at(player.x, player.z);
     blocks.random_ticks(here, std::min(9, renderer->render_distance), rng, rain, events);
+    blocks.snow_ticks(here, std::min(9, renderer->render_distance), weather.is_raining(), events);
     apply_block_events(events);
 }
 
@@ -1424,6 +1433,7 @@ void Game::tick_player_fire_and_air() {
         hurt_player(1);
         if (!wet) set_player_on_fire(FIRE_BURN_TICKS);
     }
+    if (touches_cactus(world, p)) hurt_player(1);
     if (wet) burn_ticks = 0;
     if (burn_ticks > 0) {
         if (burn_ticks % 20 == 0) hurt_player(1);
@@ -1499,6 +1509,7 @@ void Game::update_cows(double dt) {
         bool remove = false;
         // Lava burns cows too (4 at a time, like everything else).
         if (cow.alive() && cow.body.in_lava && cow.flash <= 0) cow.hurt(LAVA_DAMAGE, cow.body.x, cow.body.z);
+        if (cow.alive() && cow.flash <= 0 && touches_cactus(world, cow.body)) cow.hurt(1, cow.body.x, cow.body.z);
         if (cow.tick(dt, player.x, player.z, rng)) {
             int n = drop_beef_count(rng);
             for (int i = 0; i < n; ++i) spawn_drop(BEEF, cow.body.x, cow.body.y + 0.5, cow.body.z);
@@ -1534,8 +1545,9 @@ void Game::update_drops(double dt) {
             continue;
         }
         drop.tick(dt);
-        // Items that fall in lava or fire burn up.
-        if (b.in_lava || world.box_in(FIRE, b.x - b.half, b.y, b.z - b.half, b.x + b.half, b.y + b.height, b.z + b.half)) {
+        // Items that fall in lava or fire burn up, and cactus destroys them (Beta).
+        if (b.in_lava || world.box_in(FIRE, b.x - b.half, b.y, b.z - b.half, b.x + b.half, b.y + b.height, b.z + b.half) ||
+            touches_cactus(world, b)) {
             add_puffs(puffs, {b.x, b.y + 0.2, b.z}, 3, 0.2, 0.8, 0.15, rng);
             it = drops.erase(it);
             continue;

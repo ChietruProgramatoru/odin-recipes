@@ -13,6 +13,7 @@
 
 #include "app.h"
 #include "farming.h"
+#include "nature.h"
 #include "bed.h"
 #include "game.h"
 #include "inventory_screen.h"
@@ -302,12 +303,13 @@ void AutoTest::play(App& app, Game& g) {
     if (f >= 1194 && f < 1200) hand(app, g);
     if (f >= 1200 && f < 1350) fluids_and_fire(app, g);
     if (f >= 1350 && f < 1450) farming(app, g);
-    if (f == 1450) {
+    if (f >= 1450 && f < 1500) nature(app, g);
+    if (f == 1500) {
         app.pause();
         check("Escape menu pauses the game", g.paused && app.screen());
         shot(app, "7_pause.png");
     }
-    if (f == 1460) {
+    if (f == 1510) {
         // Change something, then save and quit to the title.
         marker_ = {static_cast<int>(std::floor(p.x)) + 2, static_cast<int>(std::floor(p.y)) + 1, static_cast<int>(std::floor(p.z))};
         g.renderer->rebuild(g.world.set_block(marker_.x, marker_.y, marker_.z, BRICK));
@@ -556,7 +558,11 @@ void AutoTest::monsters(App& app, Game& g) {
     if (f == 702) {
         for (auto& m : g.monsters) m->burning = 0;
         shot(app, "m10_monsters.png");
-        check("zombie, skeleton, creeper, spider, slime and a spider jockey stand in the arena", g.monsters.size() == 7);
+        // Only the arena's: a monster may have spawned in some cave meanwhile.
+        const auto in_arena = std::count_if(g.monsters.begin(), g.monsters.end(), [&](const auto& m) {
+            return std::hypot(m->body.x - (arena_.x + 0.5), m->body.z - (arena_.z + 0.5)) < 16;
+        });
+        check("zombie, skeleton, creeper, spider, slime and a spider jockey stand in the arena", in_arena == 7);
         check("the jockey's skeleton rides on its spider",
               g.monsters[6]->mount == g.monsters[5].get() && g.monsters[6]->body.y > g.monsters[5]->body.y + 0.2);
     }
@@ -1683,5 +1689,160 @@ void AutoTest::reload(App& app) {
               }));
         shot(app, "9_reloaded.png");
         finish(app);
+    }
+}
+
+void AutoTest::nature(App& app, Game& g) {
+    const long f = g.frame;
+    Body& p = g.player;
+    World& w = g.world;
+    if (f == 1450) garden_ = pad_ + glm::ivec3(0, 0, 40);
+    const glm::ivec3& o = garden_;
+    auto set = [&](glm::ivec3 c, BlockId b, int data = 0) { g.renderer->rebuild(w.set_block(c.x, c.y, c.z, b, data)); };
+    auto at = [&](glm::ivec3 c) { return w.get_block(c.x, c.y, c.z); };
+    auto hold = [&](ItemId item, int count = 1) { g.inventory.slots[g.inventory.selected] = Stack{item, count}; };
+    auto aim = [&](glm::ivec3 b) {  // at the middle of a block's top
+        glm::vec3 d = glm::vec3(b) + glm::vec3(0.5f, 0.95f, 0.5f) - g.eye();
+        g.yaw = degrees(std::atan2(d.x, d.z));
+        g.pitch = -degrees(std::asin(d.y / glm::length(d)));
+        g.update_target();
+        return g.target && g.target->block == b;
+    };
+    auto stand = [&](double dx, double dz) {
+        p.x = o.x + 0.5 + dx;
+        p.y = o.y;
+        p.z = o.z + 0.5 + dz;
+        p.vx = p.vy = p.vz = 0;
+        g.fall_peak = p.y;
+    };
+    // The garden, relative to the middle of its near edge (the player looks along +z).
+    const glm::ivec3 oak = o + glm::ivec3(-3, 0, 6), birch = o + glm::ivec3(-7, 0, 5), spruce = o + glm::ivec3(-7, 0, 11);
+    const glm::ivec3 young = o + glm::ivec3(-1, 0, 3);    // a sapling left to grow
+    const glm::ivec3 chopped = o + glm::ivec3(7, 0, 13);  // a tree whose trunk is cut away
+    const glm::ivec3 cactus = o + glm::ivec3(4, 0, 6), web = o + glm::ivec3(1, 0, 8);
+    const glm::ivec3 ice = o + glm::ivec3(9, -1, 2), snow_lit = o + glm::ivec3(9, 0, 4);
+
+    if (f == 1450) {
+        g.monsters.clear();
+        g.target_monster = nullptr;
+        g.drops.clear();
+        g.weather.clear();
+        g.creative = false;
+        g.flying = false;
+        g.vitals.reset();
+        g.level.time = 6000 + (g.level.time / DAY_TICKS) * DAY_TICKS;
+        for (int dx = -11; dx <= 11; ++dx)
+            for (int dz = -5; dz <= 18; ++dz) {
+                const bool sand = dx >= 3 && dx <= 6 && dz >= 4 && dz <= 8;
+                set(o + glm::ivec3(dx, -1, dz), sand ? SAND : GRASS);
+                set(o + glm::ivec3(dx, -2, dz), STONE);
+                for (int dy = 0; dy <= 12; ++dy) set(o + glm::ivec3(dx, dy, dz), AIR);
+            }
+        // Saplings planted with a right click.
+        stand(-3, 3);
+        hold(SAPLING, 3);
+        check("aiming at the grass for a sapling", aim(oak - glm::ivec3(0, 1, 0)));
+        g.use_item();
+        check("a sapling is planted on grass", at(oak) == SAPLING && g.inventory.slots[g.inventory.selected]->count == 2);
+        set(young, SAPLING);
+        set(birch, BIRCH_SAPLING);
+        set(spruce, SPRUCE_SAPLING);
+        // Cactus goes on sand (only).
+        stand(4, 3);
+        hold(CACTUS, 4);
+        check("aiming at the sand for a cactus", aim(cactus - glm::ivec3(0, 1, 0)));
+        g.use_item();
+        check("a cactus is placed on sand", at(cactus) == CACTUS);
+        set(cactus + glm::ivec3(0, 1, 0), CACTUS);
+        set(cactus + glm::ivec3(0, 2, 0), CACTUS);
+        set(o + glm::ivec3(6, 0, 8), CACTUS);
+        set(web, COBWEB);
+        set(web + glm::ivec3(0, 1, 0), COBWEB);
+        // Snow on the ground at the back, ice and snow beside glowstone on the right.
+        for (int dx = -2; dx <= 2; ++dx)
+            for (int dz = 11; dz <= 14; ++dz) set(o + glm::ivec3(dx, 0, dz), SNOW_LAYER);
+        set(ice, ICE);
+        set(ice + glm::ivec3(1, 0, 0), GLOWSTONE);
+        set(snow_lit, SNOW_LAYER);
+        set(snow_lit + glm::ivec3(0, 1, 0), GLOWSTONE);
+        // A tree to chop down: four logs with two layers of leaves.
+        for (int dy = 0; dy < 4; ++dy) set(chopped + glm::ivec3(0, dy, 0), LOG);
+        for (int dx = -2; dx <= 2; ++dx)
+            for (int dz = -2; dz <= 2; ++dz) {
+                if (dx || dz) set(chopped + glm::ivec3(dx, 3, dz), LEAVES);
+                if (std::abs(dx) <= 1 && std::abs(dz) <= 1) set(chopped + glm::ivec3(dx, 4, dz), LEAVES);
+            }
+        stand(0, -3);
+        g.yaw = 0;
+        g.pitch = 20;
+        g.hud->show_message("", 0);
+    }
+    if (f == 1452) shot(app, "m6_garden.png");
+    if (f == 1454) {
+        // Bone meal grows the oak at once; the others grow too.
+        hold(BONE_MEAL, 3);
+        stand(-3, 3);
+        check("aiming at the sapling", aim(oak));
+        g.use_item();
+        check("bone meal grows a sapling into a tree", at(oak) == LOG && at(oak + glm::ivec3(0, 2, 0)) == LOG);
+        FarmEvents ev;
+        Rng rng(3);
+        bone_meal(w, birch, rng, ev);
+        bone_meal(w, spruce, rng, ev);
+        g.apply(ev);
+        check("birch and spruce saplings grow their own trees", at(birch) == BIRCH_LOG && at(spruce) == SPRUCE_LOG);
+        // Chop the trunk away, then let the random ticks run: the leaves decay, the ice and the
+        // snow by the glowstone melt.
+        for (int dy = 0; dy < 4; ++dy) g.break_block(chopped + glm::ivec3(0, dy, 0), LOG);
+        const ChunkPos here{chunk_of(o.x + 4), chunk_of(o.z + 8)};
+        RainCheck dry = [](glm::ivec3) { return false; };
+        for (int i = 0; i < 6000; ++i) {
+            BlockEvents events;
+            g.blocks.tick(g.rng, dry, events);
+            g.blocks.random_ticks(here, 1, g.rng, dry, events);
+            g.apply_block_events(events);
+        }
+        int leaves = 0;
+        for (int dx = -2; dx <= 2; ++dx)
+            for (int dz = -2; dz <= 2; ++dz)
+                for (int dy = 3; dy <= 4; ++dy) leaves += is_leaves(at(chopped + glm::ivec3(dx, dy, dz)));
+        check("leaves decay once their tree is chopped down (" + std::to_string(leaves) + " left)", leaves == 0);
+        int kept = 0;
+        for (int dx = -2; dx <= 2; ++dx)
+            for (int dz = -2; dz <= 2; ++dz)
+                for (int dy = 1; dy <= 6; ++dy) kept += is_leaves(at(oak + glm::ivec3(dx, dy, dz)));
+        check("a standing tree keeps its leaves", kept > 10);
+        check("ice by a light melts into water", at(ice) == WATER);
+        check("snow by a light melts away, and stays in daylight",
+              at(snow_lit) == AIR && at(o + glm::ivec3(0, 0, 12)) == SNOW_LAYER);
+        stand(1, -4);
+        g.yaw = 0;
+        g.pitch = 15;
+    }
+    if (f == 1456) shot(app, "m6_trees_cactus_snow.png");
+    if (f == 1458) {
+        // A survival player pressed against the cactus gets hurt.
+        g.vitals.reset();
+        g.vitals.hurt_timer = 0;
+        stand(4, 0);
+        p.z = cactus.z - 0.3;  // up against its -z side
+        g.tick_player_fire_and_air();
+        check("touching a cactus hurts (health " + std::to_string(g.vitals.health) + ")", g.vitals.health == MAX_HEALTH - 1);
+        // In a cobweb you creep along.
+        g.vitals.reset();
+        stand(1, 8);
+        const double x0 = p.x;
+        p.move(0.4, 0, 0);
+        check("a cobweb slows the player to a quarter", p.in_web && std::abs(p.x - x0 - 0.1) < 1e-6);
+        stand(1, 6.2);
+        g.yaw = 0;
+        g.pitch = 10;
+    }
+    if (f == 1480) shot(app, "m6_cobweb.png");  // once the red flash of the hurt has faded
+    if (f == 1482) {
+        g.vitals.reset();
+        g.creative = true;
+        stand(0, -3);
+        g.weather = Weather(WeatherState{true, false, 100000, 100000});  // the rain the save check looks for
     }
 }

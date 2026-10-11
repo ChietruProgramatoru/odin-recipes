@@ -11,6 +11,7 @@
 #include <cmath>
 #include <vector>
 
+#include "nature.h"
 #include "rng.h"
 #include "world.h"
 
@@ -300,17 +301,21 @@ void clay(Region& r, Rng& rng, int x, int z) {
 }
 
 // --- Trees ------------------------------------------------------------------------------------
+// Written for any grid with get and set, so saplings can grow the same trees in the World (grow_tree).
 
-void leaf(Region& r, int x, int y, int z, BlockId leaves) {
+template <class G>
+void leaf(G& r, int x, int y, int z, BlockId leaves) {
     if (r.get(x, y, z) == AIR) r.set(x, y, z, leaves);
 }
-void wood(Region& r, int x, int y, int z, BlockId log) {
+template <class G>
+void wood(G& r, int x, int y, int z, BlockId log) {
     BlockId b = r.get(x, y, z);
     if (b == AIR || is_leaves(b)) r.set(x, y, z, log);
 }
 
 // Room for a trunk of this height above the ground block?
-bool trunk_fits(const Region& r, int x, int ground, int z, int height) {
+template <class G>
+bool trunk_fits(G& r, int x, int ground, int z, int height) {
     if (ground + height + 2 >= HEIGHT) return false;
     for (int y = ground + 1; y <= ground + height; ++y)
         if (r.get(x, y, z) != AIR && !is_leaves(r.get(x, y, z))) return false;
@@ -318,8 +323,9 @@ bool trunk_fits(const Region& r, int x, int ground, int z, int height) {
 }
 
 // Oak and birch: Beta's small round tree.
-void small_tree(Region& r, Rng& rng, int x, int ground, int z, int height, BlockId log, BlockId leaves) {
-    if (!trunk_fits(r, x, ground, z, height)) return;
+template <class G>
+bool small_tree(G& r, Rng& rng, int x, int ground, int z, int height, BlockId log, BlockId leaves) {
+    if (!trunk_fits(r, x, ground, z, height)) return false;
     int top = ground + height;
     for (int y = top - 3; y <= top; ++y) {
         int radius = 1 - (y - top) / 2;
@@ -331,12 +337,14 @@ void small_tree(Region& r, Rng& rng, int x, int ground, int z, int height, Block
     }
     for (int y = ground + 1; y < top; ++y) wood(r, x, y, z, log);
     r.set(x, ground, z, DIRT);
+    return true;
 }
 
 // Spruce: layered cone of leaves.
-void spruce(Region& r, Rng& rng, int x, int ground, int z) {
+template <class G>
+bool spruce(G& r, Rng& rng, int x, int ground, int z) {
     int height = rng.below(4) + 6, bare = 1 + rng.below(2), widest = 2 + rng.below(2);
-    if (!trunk_fits(r, x, ground, z, height)) return;
+    if (!trunk_fits(r, x, ground, z, height)) return false;
     int top = ground + height + 1;
     int radius = rng.below(2), limit = 1, restart = 0;
     for (int y = top; y >= ground + 1 + bare; --y) {
@@ -354,12 +362,14 @@ void spruce(Region& r, Rng& rng, int x, int ground, int z) {
     int trunk_top = top - rng.below(3);
     for (int y = ground + 1; y < trunk_top; ++y) wood(r, x, y, z, SPRUCE_LOG);
     r.set(x, ground, z, DIRT);
+    return true;
 }
 
 // Pine: tall bare trunk with a small tuft of leaves at the top.
-void pine(Region& r, Rng& rng, int x, int ground, int z) {
+template <class G>
+bool pine(G& r, Rng& rng, int x, int ground, int z) {
     int height = rng.below(5) + 7, leafy = 2 + rng.below(2), widest = 1 + rng.below(2);
-    if (!trunk_fits(r, x, ground, z, height)) return;
+    if (!trunk_fits(r, x, ground, z, height)) return false;
     int top = ground + height;
     for (int i = 0; i <= leafy; ++i) {
         int y = top + 1 - i;
@@ -370,9 +380,11 @@ void pine(Region& r, Rng& rng, int x, int ground, int z) {
     }
     for (int y = ground + 1; y <= top; ++y) wood(r, x, y, z, SPRUCE_LOG);
     r.set(x, ground, z, DIRT);
+    return true;
 }
 
-void leaf_ball(Region& r, double cx, double cy, double cz, double radius) {
+template <class G>
+void leaf_ball(G& r, double cx, double cy, double cz, double radius) {
     for (int x = ifloor(cx - radius); x <= ifloor(cx + radius); ++x)
         for (int y = ifloor(cy - radius / 2); y <= ifloor(cy + radius / 2); ++y)
             for (int z = ifloor(cz - radius); z <= ifloor(cz + radius); ++z) {
@@ -382,9 +394,10 @@ void leaf_ball(Region& r, double cx, double cy, double cz, double radius) {
 }
 
 // Big oak: a tall trunk with branches ending in clusters of leaves.
-void big_oak(Region& r, Rng& rng, int x, int ground, int z) {
+template <class G>
+bool big_oak(G& r, Rng& rng, int x, int ground, int z) {
     int height = 8 + rng.below(6);
-    if (!trunk_fits(r, x, ground, z, height)) return;
+    if (!trunk_fits(r, x, ground, z, height)) return false;
     int top = ground + height;
     int branches = 2 + rng.below(3);
     for (int i = 0; i < branches; ++i) {
@@ -400,6 +413,7 @@ void big_oak(Region& r, Rng& rng, int x, int ground, int z) {
     leaf_ball(r, x + 0.5, top + 0.5, z + 0.5, 3.0);
     for (int y = ground + 1; y <= top; ++y) wood(r, x, y, z, LOG);
     r.set(x, ground, z, DIRT);
+    return true;
 }
 
 // Beta's extra trees per chunk by biome (on top of 0 to 3 from noise).
@@ -482,6 +496,21 @@ void sugar_cane(Region& r, Rng& rng, int x, int y, int z) {
             continue;
         int height = 1 + rng.below(rng.below(3) + 1);
         for (int k = 0; k < height && r.get(px, y + k, pz) == AIR; ++k) r.set(px, y + k, pz, SUGAR_CANE_PLANT);
+    }
+}
+
+// Cactus (M6): 10 tries around the anchor, 1 to 3 tall, on sand with nothing solid beside it.
+void cactus(Region& r, Rng& rng, int x, int y, int z) {
+    auto can_stay = [&](int px, int py, int pz) {
+        const BlockId under = r.get(px, py - 1, pz);
+        return py > 0 && (under == SAND || under == CACTUS) && !is_solid(r.get(px - 1, py, pz)) &&
+               !is_solid(r.get(px + 1, py, pz)) && !is_solid(r.get(px, py, pz - 1)) && !is_solid(r.get(px, py, pz + 1));
+    };
+    for (int i = 0; i < 10; ++i) {
+        int px = x + rng.below(8) - rng.below(8), py = y + rng.below(4) - rng.below(4), pz = z + rng.below(8) - rng.below(8);
+        if (r.get(px, py, pz) != AIR) continue;
+        int height = 1 + rng.below(rng.below(3) + 1);
+        for (int k = 0; k < height && r.get(px, py + k, pz) == AIR && can_stay(px, py + k, pz); ++k) r.set(px, py + k, pz, CACTUS);
     }
 }
 
@@ -721,6 +750,11 @@ std::unique_ptr<Chunk> TerrainGenerator::generate(int cx, int cz) const {
             glm::ivec3 p = at();
             sugar_cane(r, rng, p.x, p.y, p.z);
         }
+        if (b == Biome::DESERT)  // last, so the plants above land where they did before cactus
+            for (int i = 0; i < 10; ++i) {
+                glm::ivec3 p = at();
+                cactus(r, rng, p.x, p.y, p.z);
+            }
     });
 
     // Ores last: they only replace stone, so nothing above depends on them.
@@ -730,7 +764,7 @@ std::unique_ptr<Chunk> TerrainGenerator::generate(int cx, int cz) const {
         vein(r, rng, x + rng.below(16), rng.below(16) + rng.below(16), z + rng.below(16), 6, LAPIS_ORE);
     });
 
-    // 5. Keep the chunk in the middle, freezing still water in cold biomes.
+    // 5. Keep the chunk in the middle, freezing still water and laying snow in cold biomes.
     auto chunk = std::make_unique<Chunk>(cx, cz);
     chunk->climate = climate(cx, cz);
     for (int lz = 0; lz < CHUNK; ++lz)
@@ -742,9 +776,49 @@ std::unique_ptr<Chunk> TerrainGenerator::generate(int cx, int cz) const {
                     BlockId& b = chunk->blocks[Chunk::index(lx, y, lz)];
                     if (b == AIR) continue;
                     if (b == WATER) b = ICE;
+                    else if ((is_opaque(b) || is_leaves(b)) && y + 1 < HEIGHT) chunk->blocks[Chunk::index(lx, y + 1, lz)] = SNOW_LAYER;
                     break;
                 }
         }
     chunk->recompute_max_y();
     return chunk;
+}
+
+// --- Saplings (M6) ----------------------------------------------------------------------------
+
+namespace {
+
+// The World as a grid for the tree generators, remembering the chunks to mesh again.
+struct WorldGrid {
+    World& world;
+    std::vector<ChunkPos>& rebuild;
+    BlockId get(int x, int y, int z) { return y < 0 || y >= HEIGHT ? BlockId{AIR} : world.get_block(x, y, z); }
+    void set(int x, int y, int z, BlockId b, int data = 0) {
+        if (y < 0 || y >= HEIGHT || !world.is_loaded(x, z)) return;
+        for (ChunkPos c : world.set_block(x, y, z, b, data))
+            if (std::find(rebuild.begin(), rebuild.end(), c) == rebuild.end()) rebuild.push_back(c);
+    }
+};
+
+}  // namespace
+
+bool grow_tree(World& world, glm::ivec3 p, Rng& rng, std::vector<ChunkPos>& rebuild) {
+    if (p.y < 1 || p.y >= HEIGHT) return false;
+    const BlockId sapling = world.get_block(p.x, p.y, p.z);
+    if (!is_sapling(sapling)) return false;
+    // A tree reaches up to 8 blocks sideways: the chunks there must be loaded.
+    for (int dx : {-8, 8})
+        for (int dz : {-8, 8})
+            if (!world.is_loaded(p.x + dx, p.z + dz)) return false;
+    const int data = world.get_data(p.x, p.y, p.z);
+    WorldGrid g{world, rebuild};
+    g.set(p.x, p.y, p.z, AIR);  // the trunk takes the sapling's place
+    const int ground = p.y - 1;
+    bool grown;
+    if (sapling == SPRUCE_SAPLING) grown = spruce(g, rng, p.x, ground, p.z);
+    else if (sapling == BIRCH_SAPLING) grown = small_tree(g, rng, p.x, ground, p.z, 5 + rng.below(3), BIRCH_LOG, BIRCH_LEAVES);
+    else if (rng.below(10) == 0) grown = big_oak(g, rng, p.x, ground, p.z);
+    else grown = small_tree(g, rng, p.x, ground, p.z, 4 + rng.below(3), LOG, LEAVES);
+    if (!grown) g.set(p.x, p.y, p.z, sapling, data);
+    return grown;
 }

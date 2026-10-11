@@ -38,6 +38,11 @@ enum Block : BlockId {
     // the top of a sugar cane (0 .. 15). Plants are drawn as crossed sheets (is_plant).
     FARMLAND, WHEAT_CROP, CAKE_BLOCK, SUGAR_CANE_PLANT, TALL_GRASS, FERN,
     YELLOW_FLOWER, RED_ROSE, BROWN_MUSHROOM, RED_MUSHROOM,
+    // Nature (M6 part 2). Saplings are plants that grow into their tree (the data value's 8 bit says
+    // the next growth tick grows it). Cactus grows on sand like sugar cane (data: age 0 .. 15).
+    // Cobwebs slow anything in them. Snow layers lie on the ground in cold biomes and melt in light.
+    // Leaves use their data value too: LEAVES_PLAYER (never decay), LEAVES_CHECK (see nature.h).
+    SAPLING, SPRUCE_SAPLING, BIRCH_SAPLING, CACTUS, COBWEB, SNOW_LAYER,
     BLOCK_COUNT
 };
 
@@ -74,6 +79,9 @@ enum Tile : int {
     // Farming (M8): farmland, wheat in its 8 stages, plants (drawn as crossed sheets) and cake.
     T_FARMLAND_DRY, T_FARMLAND_WET, T_WHEAT_0, T_WHEAT_7 = T_WHEAT_0 + 7, T_SUGAR_CANE, T_TALL_GRASS, T_FERN,
     T_DANDELION, T_ROSE, T_BROWN_MUSHROOM, T_RED_MUSHROOM, T_CAKE_TOP, T_CAKE_SIDE, T_CAKE_INSIDE,
+    // Nature (M6 part 2). The snow layer uses the snow block's tile (IT_SNOW, icons.h).
+    T_SAPLING, T_SPRUCE_SAPLING, T_BIRCH_SAPLING, T_CACTUS_TOP, T_CACTUS_SIDE, T_CACTUS_BOTTOM, T_COBWEB,
+    T_GRASS_SNOW_SIDE,
     TILE_COUNT
 };
 
@@ -113,8 +121,12 @@ bool is_torch(BlockId id);  // floor or wall torch (drawn as a thin stick, not a
 // Not a cube and nothing to bump into: torches and fire. Faces next to them are drawn.
 bool is_thin(BlockId id);
 bool is_bed(BlockId id);    // either half of a bed
-// Drawn as crossed sheets and nothing to bump into: wheat, sugar cane, tall grass, ferns, flowers, mushrooms.
+// Drawn as crossed sheets and nothing to bump into: wheat, sugar cane, tall grass, ferns, flowers,
+// mushrooms, saplings and cobwebs.
 bool is_plant(BlockId id);
+bool is_sapling(BlockId id);
+// The sapling a kind of leaves drops, and the leaves (and log) a sapling grows.
+BlockId sapling_for(BlockId leaves);
 // Furnaces: any facing, lit or not. The facing is Beta's (0 south, 1 west, 2 north, 3 east, see
 // FACING_DIRS in bed.h) and says which way the front points.
 bool is_furnace(BlockId id);
@@ -122,7 +134,7 @@ bool is_lit_furnace(BlockId id);
 int furnace_dir(BlockId furnace);
 BlockId furnace_block(int dir, bool lit);
 bool falls(BlockId id);     // sand and gravel fall when nothing holds them up
-// How tall a solid block is for walking on it: 1, 9/16 for a bed, 15/16 for farmland, 1/2 for cake.
+// How tall a solid block is for walking on it: 1, 9/16 for a bed, 15/16 for farmland and cactus, 1/2 for cake.
 float block_height(BlockId id);
 // Light (0-15): how much a block dims light passing into it, and how much it gives off.
 int light_opacity(BlockId id);

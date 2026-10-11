@@ -550,6 +550,65 @@ const std::vector<const char*> MUSHROOM_ROWS = {
     ".hhhh.", "hhchch", "hhhhhh", "..ss..", "..ss..", "..ss..",
 };
 
+// A sapling: a thin trunk from the bottom row with a ragged clump of leaves on it.
+Image sapling(Rng& rng, Rgb leaf, Rgb trunk) {
+    Image img(TILE, TILE);
+    for (int y = 9; y < TILE; ++y) img.at(7 + (y < 12 ? 1 : 0), y) = shade(trunk, rng.uniform(0.85, 1.05));
+    for (int y = 1; y < 11; ++y) {
+        const int half = 5 - std::abs(y - 5) / 2 - (y > 8 ? 2 : 0);
+        for (int x = 8 - half; x < 8 + half; ++x)
+            if (rng.below(5) != 0) img.at(x, y) = shade(leaf, rng.uniform(0.7, 1.15));
+    }
+    return img;
+}
+
+// Cactus: dark green ribs with pale spines (sides), a rounded top with a lighter centre.
+Image cactus_side(Rng& rng) {
+    Image img = noise_tile(rng, {16, 112, 32}, 0.06);
+    for (int x : {1, 4, 7, 10, 13})
+        for (int y = 0; y < TILE; ++y) img.at(x, y) = shade({10, 80, 22}, rng.uniform(0.9, 1.05));
+    for (int i = 0; i < 12; ++i) img.at(2 + 3 * rng.below(4), rng.below(TILE)) = shade({220, 230, 190}, 1.0);
+    return img;
+}
+
+Image cactus_top(Rng& rng, bool top) {
+    Image img = noise_tile(rng, {16, 112, 32}, 0.05);
+    for (int y = 0; y < TILE; ++y)
+        for (int x = 0; x < TILE; ++x) {
+            const double d = std::hypot(x - 7.5, y - 7.5);
+            if (d < 3.5 && top) img.at(x, y) = shade({70, 150, 60}, rng.uniform(0.9, 1.05));
+            else if (d > 6.5 && d < 7.5) img.at(x, y) = shade({10, 80, 22}, 1.0);
+        }
+    return img;
+}
+
+// Cobweb: threads from the middle out to the edges, and rings across them.
+Image cobweb(Rng&) {
+    Image img(TILE, TILE);
+    const Rgba thread{235, 235, 240, 220};
+    for (int k = 0; k < TILE; ++k) {
+        img.at(k, k) = thread;
+        img.at(TILE - 1 - k, k) = thread;
+        img.at(k, 7) = thread;
+        img.at(8, k) = thread;
+    }
+    for (int r : {3, 6})
+        for (int k = -r; k <= r; ++k)
+            for (auto [x, y] : {std::pair{8 + k, 7 - r}, std::pair{8 + k, 7 + r}, std::pair{8 - r, 7 + k}, std::pair{8 + r, 7 + k}})
+                if (x >= 0 && x < TILE && y >= 0 && y < TILE && (k + r) % 2 == 0) img.at(x, y) = thread;
+    return img;
+}
+
+// The side of grass with snow on it: dirt with a white top (not coloured by the biome).
+Image grass_snow_side(Rng& rng) {
+    Image img = dirt(rng);
+    for (int x = 0; x < TILE; ++x) {
+        int depth = 3 + rng.choice({0, 0, 1, 1, 2});
+        for (int y = 0; y < depth; ++y) img.at(x, y) = shade({240, 248, 250}, rng.uniform(0.95, 1.02));
+    }
+    return img;
+}
+
 // Cake: white icing on top with red dots, a sponge side with icing dripping over its top.
 Image cake_top(Rng& rng) {
     Image img(TILE, TILE);
@@ -731,6 +790,12 @@ std::map<int, Image> make_tiles(int seed) {
                                                                        {'s', {225, 215, 195, 255}}}); }},
         {T_CAKE_TOP, cake_top}, {T_CAKE_SIDE, [](Rng& rng) { return cake_side(rng, false); }},
         {T_CAKE_INSIDE, [](Rng& rng) { return cake_side(rng, true); }},
+        {T_SAPLING, [](Rng& rng) { return sapling(rng, {72, 140, 40}, {105, 80, 45}); }},
+        {T_SPRUCE_SAPLING, [](Rng& rng) { return sapling(rng, {45, 85, 50}, {70, 50, 30}); }},
+        {T_BIRCH_SAPLING, [](Rng& rng) { return sapling(rng, {120, 165, 75}, {215, 215, 205}); }},
+        {T_CACTUS_SIDE, cactus_side}, {T_CACTUS_TOP, [](Rng& rng) { return cactus_top(rng, true); }},
+        {T_CACTUS_BOTTOM, [](Rng& rng) { return cactus_top(rng, false); }}, {T_COBWEB, cobweb},
+        {T_GRASS_SNOW_SIDE, grass_snow_side},
     };
     std::map<int, Image> tiles;
     for (int k = 0; k < 8; ++k) generators.emplace(T_WHEAT_0 + k, [k](Rng& rng) { return wheat(rng, k); });

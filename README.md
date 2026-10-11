@@ -46,11 +46,18 @@ It runs on Windows (the main target) and Linux.
 
   ![Water falling off a pillar, obsidian where it met lava, and a burning hut](screenshots/fluids_fire.png)
 
+- **Leaves decay** like Beta's: chop down a tree's trunk and the leaves more than 4 leaves away from any other log fall away over the next minutes. Leaves you place yourself never decay. Leaves (broken or decaying) drop a **sapling** 1 time in 20, and oak leaves an apple now and then.
+- **Saplings** (oak, birch and spruce) go on grass or dirt and grow into their tree in light 9 or more, after about 20 minutes on average; an oak sapling sometimes makes a big oak. Bone meal grows one at once. A sapling with no room above it waits.
+- **Snow and ice**: cold biomes are covered in a thin layer of snow (grass under it turns white at the sides), and while it snows more settles and still water freezes over. Snow layers are walked through, and a shovel (or anything) breaks one into a snowball. Ice and snow melt next to bright light like torches, glowstone or lava, but not in daylight; broken ice turns into water.
+- **Cactus** grows in deserts, on sand, up to 3 tall. Nothing solid can stand next to it: it breaks off (and drops) if you build against it. It hurts half a heart when you, a mob or a cow touches it, standing on it included, and it destroys dropped items.
+- **Cobwebs** slow anything in them to a crawl and stop a fall. Swords and shears cut them quickly; they drop string. Like Beta 1.7.3, the world doesn't make any, so they come from the creative item picker.
+
+  ![Saplings, a cactus on sand, cobwebs and snow](screenshots/garden.png)
+
 - **Health and hunger**: you have 10 hearts and 10 drumsticks. Walking, sprinting, jumping, mining and fighting use up hunger. When you are well fed you slowly heal. When you are starving you slowly lose health, down to half a heart. Falls of more than 3 blocks hurt, and a big enough fall kills you.
 - **Cows** wander, graze and hop up ledges. Punch one and it panics and runs away. Each cow drops 1 to 3 beef, which you eat with a right click to restore 6 hunger.
-- Apples sometimes drop from leaves.
 - **Farming** like Beta 1.7.3: right-click grass or dirt with a **hoe** to make farmland. Farmland within 4 blocks of water (or out in the rain) turns dark and wet; dry farmland with nothing planted turns back to dirt. **Seeds** (one in eight bits of tall grass drops one) plant wheat, which grows through 8 stages in light 9 or more, fastest on wet farmland with more farmland around it and slower when crops crowd it on two sides. In the best spot it ripens in about 25 minutes of daylight. Ripe wheat drops wheat and 0 to 3 seeds; three wheat in a row make **bread**. Jumping or falling onto farmland can trample it back to dirt; walking over it is safe.
-- **Bone meal** (from bones) ripens a crop at once, or sprouts tall grass and flowers around the grass you use it on.
+- **Bone meal** (from bones) ripens a crop or grows a sapling into a tree at once, or sprouts tall grass and flowers around the grass you use it on.
 - **Wild plants**: tall grass (on plains and in forests), ferns (in rainforests), dandelions, roses, brown and red mushrooms (in dark places, where they slowly spread) and **sugar cane** by water, which grows up to 3 tall. Plants pop off when the block under them goes. Sugar cane makes sugar and paper; the mushrooms make mushroom stew.
 - **Food**: apples, golden apples, bread, mushroom stew (gives back the bowl), raw and cooked porkchops, raw and cooked fish, cookies, beef and **cake**. Each fills hunger and saturation (Minecraft 1.0's values, since hunger is kept). A cake is placed as a block and eaten a slice at a time with a right click: six slices of 1 drumstick each.
 
@@ -80,8 +87,8 @@ It runs on Windows (the main target) and Linux.
 - **Stacks**: most items stack to 64; snowballs, eggs, signs and empty buckets to 16; tools, armor, cake and mushroom stew don't stack. Food stacks to 64 because hunger is kept. Tools and armor have Beta's durability, shown as a bar once they are worn.
 - Every Beta item exists with an icon drawn by the code (blocks show as little 3D cubes). Items whose use comes in a later milestone (tools mining faster, torches, doors, wool...) can be crafted and carried but not used or placed yet. The crafting table, chest and furnace can be placed; chests open in a later milestone.
 - **Furnaces** like Beta 1.7.3: place one (its front faces you) and right-click it. Put something to smelt in the top slot and fuel in the bottom one; the flame shows how much fuel is left and the arrow how far the item is cooked (10 seconds each). A burning furnace lights up and gives off light 13, and keeps smelting when you close it or walk away, as long as it is within your render distance (further away it waits, like Beta). Breaking it drops what is inside. Its contents are saved with the world.
-  - Smelting: iron ore to iron ingots, gold ore to gold ingots, diamond ore to diamonds, sand to glass, cobblestone to stone, clay to bricks, any log to charcoal, raw porkchop and fish to cooked, and beef to **steak** (not in Beta, which had no beef; steak fills 8 hunger like a cooked porkchop).
-  - Fuel: coal and charcoal (80 s, 8 items), logs, planks and other wooden blocks (15 s), sticks (5 s), and a lava bucket (1000 s, and the empty bucket stays in the fuel slot, unlike Beta which lost it).
+  - Smelting: iron ore to iron ingots, gold ore to gold ingots, diamond ore to diamonds, sand to glass, cobblestone to stone, clay to bricks, any log to charcoal, raw porkchop and fish to cooked, cactus to cactus green, and beef to **steak** (not in Beta, which had no beef; steak fills 8 hunger like a cooked porkchop).
+  - Fuel: coal and charcoal (80 s, 8 items), logs, planks and other wooden blocks (15 s), sticks and saplings (5 s), and a lava bucket (1000 s, and the empty bucket stays in the fuel slot, unlike Beta which lost it).
 - **Glass** comes out of a furnace and can be placed. It is see-through and breaks into nothing, like Beta.
 
   ![Furnace](screenshots/furnace.png)
@@ -258,6 +265,7 @@ src/
   weather.cpp      rain and thunder timers, where rain and snow fall, lightning, when you can sleep
   bed.cpp          placing beds and finding a free spot next to one
   blockupdate.cpp  blocks that change by themselves: flowing water and lava, falling sand and gravel, fire; block ticks
+  nature.cpp       leaf decay, saplings, ice and snow, cactus and cobweb rules
   streamer.cpp     background threads that generate and mesh chunks
   renderer.cpp     OpenGL shaders and drawing the sky, sun, moon, stars, clouds, rain, snow, lightning, chunks, cows, items and the block outline
   hud.cpp          crosshair, hotbar, hearts, hunger, text and overlays

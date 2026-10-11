@@ -1,5 +1,6 @@
-// Blocks that change by themselves (M6): flowing water and lava, falling sand and gravel, and
-// fire spreading. Beta's block ticks: a block that changes tells its six neighbours, which can ask
+// Blocks that change by themselves (M6): flowing water and lava, falling sand and gravel, fire
+// spreading, and (part 2, rules in nature.h) leaves decaying, ice and snow melting, snow settling,
+// water freezing and cactus growing. Beta's block ticks: a block that changes tells its six neighbours, which can ask
 // for a tick a few game ticks later; chunks near the player also get random ticks (lava starting
 // fires, fire burning on). Pure logic on the World, no graphics.
 #pragma once
@@ -70,8 +71,12 @@ public:
     // One game tick: blocks around every cell set since the last tick react to it, then the block
     // ticks that are due run.
     void tick(Rng& rng, const RainCheck& rain, BlockEvents& out);
-    // Random ticks in the chunks within `radius` of a chunk (lava lighting fires, fire burning).
+    // Random ticks in the chunks within `radius` of a chunk (lava lighting fires, fire burning,
+    // leaves decaying, ice and snow melting, cactus growing).
     void random_ticks(ChunkPos center, int radius, Rng& rng, const RainCheck& rain, BlockEvents& out);
+    // Cold biomes within `radius` (Beta's World.tickBlocks): now and then still water at the top of a
+    // column freezes, and while it snows (`snowing`: it is raining) a snow layer settles there.
+    void snow_ticks(ChunkPos center, int radius, bool snowing, BlockEvents& out);
     // Start up the blocks of a chunk that were busy when it was saved: fires, and water or lava
     // that was flowing (block ticks aren't saved).
     void wake_chunk(const Chunk& c);
@@ -87,6 +92,8 @@ private:
     void tick_fire(glm::ivec3 p, Rng& rng, const RainCheck& rain, BlockEvents& out);
     void tick_falling(glm::ivec3 p, BlockEvents& out);
     void random_tick(glm::ivec3 p, Rng& rng, const RainCheck& rain, BlockEvents& out);
+    void decay(glm::ivec3 p, Rng& rng, BlockEvents& out);  // leaves marked LEAVES_CHECK
+    void grow_cactus(glm::ivec3 p, BlockEvents& out);
 
     // Fluid helpers (Beta's BlockFlowing).
     bool harden(glm::ivec3 p, BlockEvents& out);  // lava next to water turns to obsidian or cobblestone
@@ -102,6 +109,7 @@ private:
     bool area_loaded(glm::ivec3 p);
 
     World& world_;
+    Rng snow_rng_{0x5A0F};  // its own, so snow doesn't change what the other random numbers do
     long now_ = 0;
     std::set<std::tuple<long, int, int, int>> queue_;  // (due tick, x, y, z), in the order they run
     std::map<Key, std::pair<long, BlockId>> waiting_;   // cell -> (due tick, block it was for)
