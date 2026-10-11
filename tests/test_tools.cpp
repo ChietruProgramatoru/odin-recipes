@@ -57,7 +57,7 @@ TEST_CASE("stone and ores need a pickaxe of the right tier to drop anything") {
     // Everything else drops by hand.
     CHECK(harvest_drop(AIR, DIRT) == DIRT);
     CHECK(harvest_drop(AIR, LOG) == LOG);
-    CHECK(harvest_drop(AIR, GLOWSTONE) == GLOWSTONE);
+    CHECK(harvest_drop(AIR, GLOWSTONE) == GLOWSTONE_DUST);  // Beta: 2-4 dust
     CHECK_FALSE(harvest_drop(AIR, LEAVES));
 }
 

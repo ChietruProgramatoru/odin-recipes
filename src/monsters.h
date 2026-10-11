@@ -35,6 +35,8 @@ struct MonsterActions {
     glm::dvec3 arrow_vel{0};               // ...at this velocity
     bool explode = false;                  // a creeper's fuse ran out
     bool hiss = false;                     // a creeper started to hiss
+    std::optional<glm::dvec3> fireball_from;  // a ghast's fireball leaves from here...
+    glm::dvec3 fireball_dir{0};               // ...heading this way (normalised)
 };
 
 class Monster {
@@ -62,6 +64,10 @@ public:
     // Spider jockeys: the skeleton rides the spider. Both pointers are cleared when one goes.
     Monster* mount = nullptr;
     Monster* rider = nullptr;
+    // Zombie pigmen: ticks it stays angry (0: leaves the player alone). Ghasts: Beta's attack
+    // counter (shoots at GHAST_SHOOT_TICKS; the face shows it charging above GHAST_CHARGE_TICKS).
+    int anger = 0;
+    int attack_counter = 0;
 
     bool alive() const { return health > 0; }
     MobInfo info() const { return mob_info(kind, size); }
@@ -71,6 +77,9 @@ public:
     ArrowTarget target(int kind_tag, int index) const;
     std::optional<float> ray_hit(glm::vec3 origin, glm::vec3 direction, float max_dist) const;
     double eye_height() const;
+    // Make a zombie pigman angry (Beta's becomeAngryAt).
+    void enrage(Rng& rng) { anger = pigman_anger_ticks(rng); targeting = true; }
+    bool charging() const { return kind == MobKind::Ghast && attack_counter > GHAST_CHARGE_TICKS; }
     // Creepers: how far the fuse has burnt, 0..1.
     double fuse_progress() const { return std::min(1.0, fuse / static_cast<double>(CREEPER_FUSE_TICKS)); }
 
@@ -80,6 +89,10 @@ public:
 
 private:
     void face(double x, double z);
+    // Ghasts fly (Beta's EntityGhast): drift to a random point nearby, shoot at the player in sight.
+    void ghast_tick(World& world, const MonsterSenses& senses, Rng& rng, MonsterActions& out);
+    bool ghast_fly(double dt);
+    bool course_clear(World& world, glm::dvec3 to) const;
     void per_tick(World& world, const MonsterSenses& senses, Rng& rng, MonsterActions& out);
     bool sees(World& world, const MonsterSenses& senses) const;
 
@@ -91,6 +104,32 @@ private:
     double fire_timer_ = 0;    // seconds until the fire hurts again
     double fall_peak_;
     double want_speed_ = 0;
+    glm::dvec3 waypoint_{0};   // ghasts: where it is flying to
+    int course_timer_ = 0;     // ghasts: ticks until it steers again
+    bool has_waypoint_ = false;
+};
+
+// A ghast's fireball (Beta's EntityFireball): speeds up towards where it was aimed and bursts into
+// a small blast that sets fires when it hits anything. Hitting it sends it back the way you look.
+class Fireball {
+public:
+    Fireball(glm::dvec3 pos, glm::dvec3 dir, const void* owner);
+    glm::dvec3 pos;
+    glm::dvec3 vel{0};    // blocks per tick
+    glm::dvec3 accel;     // blocks per tick, added each tick
+    const void* owner;    // what shot it (it never hits its owner)
+    bool deflected = false;
+    double age = 0;
+
+    // Sent back along `dir` by the player's hit; it can hurt its ghast now.
+    void deflect(glm::dvec3 dir);
+    // Move for `dt` seconds. Returns where it hit a block (it stops there), if it did.
+    std::optional<glm::dvec3> tick(double dt, World& world);
+    std::optional<float> ray_hit(glm::vec3 origin, glm::vec3 direction, float max_dist) const;
+    std::vector<ModelPart> parts() const;
+
+private:
+    double tick_time_ = 0;
 };
 
 // A monster's parts at a root transform (feet centre, facing +z). `walk` is how much it walks

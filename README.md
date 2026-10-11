@@ -151,6 +151,18 @@ It runs on Windows (the main target) and Linux.
 - **Boats** float on water and steer with W A S D the way you look. A boat that hits something too fast breaks into 3 planks and 2 sticks (so does one you punch, like Beta).
 
   ![A boat on the sea](screenshots/boat.png)
+- **The Nether** like Beta 1.7.3:
+  - **Portals**: build an obsidian frame 4 wide and 5 tall (the corners can be left out), so the inside is 2 by 3, and light it with flint and steel. It fills with a purple, glowing portal. Stand in it for 4 seconds while the screen swirls purple and it takes you across. Break any block of the frame and the whole portal goes out; explosions break it too.
+  - **8 to 1**: every block you go in the Nether is 8 in the overworld. A portal leads to the portal nearest its matching spot on the other side (within 128 blocks), and if there isn't one it builds one there, on flat ground if it finds some, or on an obsidian ledge if not. So walk 100 blocks in the Nether, build a portal and you come out 800 blocks away.
+  - **The world down there**: netherrack between a bedrock floor and roof, a sea of lava, soul sand (it slows you down) and gravel along its shores, glowstone hanging from the roof (it drops 2 to 4 glowstone dust; four make a block), fires that never go out on netherrack, and a few mushrooms. A dark red fog closes in from all sides; there is no sun, no day or night and no weather. Water boils away when you pour it, and a bed blows up if you try to sleep in one.
+  - **Ghasts** float about, wail-faced, and shoot fireballs at you from far away (their face turns angry just before). A fireball bursts into a small blast that sets fires. Hit one back with a left click and it flies the way you look, so it can hit its ghast. Ghasts drop gunpowder.
+  - **Zombie pigmen** wander about with gold swords and leave you alone, until you hit one: then every pigman nearby comes for you for half a minute or so, running. They drop cooked porkchops. Lightning turns a pig into a zombie pigman.
+  - Each dimension is saved in its own folder, and you load back into the one you left. Dying in the Nether brings you back at your bed or the world spawn in the overworld.
+
+  ![Lighting a portal](screenshots/portal.png)
+  ![The Nether](screenshots/nether.png)
+  ![A ghast shooting a fireball](screenshots/ghast.png)
+  ![Zombie pigmen](screenshots/pigmen.png)
 - **Clouds** drift slowly over the world at height 108: 3D boxes with Fancy graphics, a flat layer with Fast graphics. They can be turned off in Video Settings.
 - **Debug screen** (F3) with your position, chunk, facing, biome, light level (sky and block), time of day, weather, seed and frame rate. F1 hides the HUD and F2 saves a screenshot.
 - All textures and the font are drawn by the code itself (no image files), with smooth lighting (ambient occlusion plus light levels blended across each face) and distance fog.
@@ -193,6 +205,7 @@ Everything lives in the folder the program is in (for example `build\Release\`):
 | --- | --- |
 | `saves/<world>/level.json` | The world's name, seed, play time, spawn point and the player (position, health, hunger, inventory slots 0-35 and armor slots 100-103 like Beta) |
 | `saves/<world>/region/r.X.Z.pcr` | The world's chunks, 32 x 32 chunks per file, each one compressed. Animals, monsters and dropped items are stored with the chunk they are in |
+| `saves/<world>/DIM-1/region/` | The Nether's chunks, the same way (Beta's folder name) |
 | `options.txt` | Your settings, one `name:value` per line like Beta's |
 | `screenshots/` | Pictures taken with F2 |
 
@@ -308,6 +321,9 @@ src/
   game_vehicles.cpp  placing, riding, hitting and filling minecarts and boats in the game
   blockupdate.cpp  blocks that change by themselves: flowing water and lava, falling sand and gravel, fire; block ticks
   nature.cpp       leaf decay, saplings, ice and snow, cactus and cobweb rules
+  nether.cpp       Nether generation, and the rules of portals: frames, lighting, breaking, linking, building one
+  nether_art.cpp   pixel art for the portal, ghasts, fireballs and zombie pigmen
+  game_nether.cpp  going through portals and swapping dimensions, fireballs and angry pigmen in the game
   streamer.cpp     background threads that generate and mesh chunks
   renderer.cpp     OpenGL shaders and drawing the sky, sun, moon, stars, clouds, rain, snow, lightning, chunks, animals, items and the block outline
   hud.cpp          crosshair, hotbar, hearts, hunger, text and overlays
@@ -351,10 +367,11 @@ tests/             doctest logic tests (no window needed)
 - Powered rails are always on until redstone arrives in M13 (detector rails already switch on, but power nothing yet). Mobs don't ride minecarts, explosions don't hurt vehicles and lava doesn't burn boats. Riding isn't saved: after loading you stand where your seat was.
 - Snow doesn't pile up on the ground yet, and leaves don't decay, saplings don't exist and ice doesn't melt: those come in the second part of M6.
 - Iron doors stay shut until redstone arrives (M13).
-- Animals have no pathfinding either, and monsters don't fight back against wolves. Snowballs can't be thrown yet. Pigs struck by lightning stay pigs until zombie pigmen arrive with the Nether (M14).
+- Animals have no pathfinding either, and monsters don't fight back against wolves. Snowballs can't be thrown yet.
+- Only the player goes through portals: animals, monsters, items and minecarts stay behind. Ghasts make no sound yet (M16). The Nether has no lava springs in its walls, and lava there flows as slowly as in the overworld.
 - Cactus (to cactus green) and saplings (as fuel) go into the furnace once they exist (M6).
 - Iron and gold need smelting (M7), and string, feathers, bones and gunpowder now come from monsters.
-- Glowstone drops itself when broken (Beta drops glowstone dust, which comes with the Nether in M14). Jack-o'-lanterns will give off light once they can be placed; lava, fire and lit furnaces already do.
+- Jack-o'-lanterns will give off light once they can be placed; lava, fire and lit furnaces already do.
 - Light levels are not stored in the save files: they are worked out again when a chunk is loaded.
 - The menus and text use only plain ASCII letters, numbers and symbols.
 - Worlds saved by this version can't be read by the Python version (or by Minecraft).

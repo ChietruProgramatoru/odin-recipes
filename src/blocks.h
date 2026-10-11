@@ -53,6 +53,9 @@ enum Block : BlockId {
     // Cobwebs slow anything in them. Snow layers lie on the ground in cold biomes and melt in light.
     // Leaves use their data value too: LEAVES_PLAYER (never decay), LEAVES_CHECK (see nature.h).
     SAPLING, SPRUCE_SAPLING, BIRCH_SAPLING, CACTUS, COBWEB, SNOW_LAYER,
+    // The Nether (M14): the purple sheet inside a lit obsidian frame. Its data value says which way
+    // the frame runs (0 along x, 1 along z). Nothing to bump into; standing in it takes you across.
+    PORTAL,
     BLOCK_COUNT
 };
 
@@ -101,6 +104,9 @@ enum Tile : int {
     // Nature (M6 part 2). The snow layer uses the snow block's tile (IT_SNOW, icons.h).
     T_SAPLING, T_SPRUCE_SAPLING, T_BIRCH_SAPLING, T_CACTUS_TOP, T_CACTUS_SIDE, T_CACTUS_BOTTOM, T_COBWEB,
     T_GRASS_SNOW_SIDE,
+    // The Nether (M14): the portal, the ghast (skin, face, face while shooting), its fireball, and
+    // the zombie pigman's pink skin and rotten green.
+    T_PORTAL, T_GHAST, T_GHAST_FACE, T_GHAST_FACE_FIRING, T_FIREBALL, T_PIGMAN_SKIN, T_PIGMAN_ROT,
     TILE_COUNT
 };
 
@@ -158,6 +164,7 @@ bool falls(BlockId id);     // sand and gravel fall when nothing holds them up
 // boxes (for bumping into, aiming at and drawing) depend on the data value; see building.h.
 bool is_shaped(BlockId id);
 bool is_door(BlockId id);  // either half of a wooden or iron door
+bool is_portal(BlockId id);
 // How tall a solid block is for walking on it: 1, 9/16 for a bed, 15/16 for farmland and cactus,
 // 1/2 for cake, 14/16 for soul sand. Shaped blocks have their own boxes (building.h).
 float block_height(BlockId id);

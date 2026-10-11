@@ -3,6 +3,7 @@
 // Each world is a folder in saves/:
 //   level.json        name, seed, play time, spawn point, weather and the player (see level_to_json)
 //   region/r.X.Z.pcr  32x32 chunks per file, each chunk zlib-compressed (see encode_chunk)
+//   DIM-1/region/     the Nether's chunks, the same way (Beta's folder name)
 // Chunks carry their blocks plus the cows, monsters, minecarts, boats and dropped items standing in them, and what is in their furnaces.
 #pragma once
 #include <condition_variable>
@@ -40,6 +41,7 @@ struct PlayerData {
     bool creative = false, flying = false;
     Inventory inventory;
     std::optional<glm::ivec3> bed;  // head of the bed last slept in: where the player respawns
+    Dimension dimension = Dimension::Overworld;  // the world the player is in
     bool operator==(const PlayerData&) const;
 };
 
@@ -51,6 +53,14 @@ struct LevelData {
     std::optional<glm::dvec3> spawn;
     WeatherState weather;
     std::optional<PlayerData> player;  // missing until the world is first saved from the game
+    // Every lit portal in both dimensions (the bottom inside cell with the lowest x or z), so going
+    // through one finds the portal it links to on the other side without searching the world.
+    struct Portal {
+        Dimension dimension;
+        glm::ivec3 pos;
+        bool operator==(const Portal&) const = default;
+    };
+    std::vector<Portal> portals;
 };
 
 std::string level_to_json(const LevelData& level);
@@ -88,10 +98,13 @@ public:
     WorldSaver(const WorldSaver&) = delete;
     WorldSaver& operator=(const WorldSaver&) = delete;
 
-    RegionStore& store() { return store_; }
+    // The region files of the overworld or the Nether.
+    RegionStore& store(Dimension dimension = Dimension::Overworld) {
+        return dimension == Dimension::Nether ? nether_store_ : store_;
+    }
     const std::filesystem::path& dir() const { return dir_; }
-    // Queue a save of the level file plus copies of the chunks that changed.
-    void save(LevelData level, std::vector<std::unique_ptr<Chunk>> chunks);
+    // Queue a save of the level file plus copies of the chunks of one dimension that changed.
+    void save(LevelData level, std::vector<std::unique_ptr<Chunk>> chunks, Dimension dimension = Dimension::Overworld);
     // Block until every queued save is on disk. Returns false if any of them failed.
     bool wait();
     // A save is queued or being written.
@@ -101,11 +114,12 @@ private:
     struct Job {
         LevelData level;
         std::vector<std::unique_ptr<Chunk>> chunks;
+        Dimension dimension = Dimension::Overworld;
     };
     void run();
 
     std::filesystem::path dir_;
-    RegionStore store_;
+    RegionStore store_, nether_store_;
     std::mutex mutex_;
     std::condition_variable cv_;
     std::deque<Job> jobs_;

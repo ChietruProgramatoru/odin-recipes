@@ -34,22 +34,23 @@ Game::Game(GLFWwindow* win, GLuint atlas, Painter& painter, const Options& opts,
       rng(setup.scripted ? 0 : std::random_device{}()),
       player(world, 0, 0, 0, 0.3, 1.8),
       painter_(painter),
+      atlas_(atlas),
       scripted_(setup.scripted),
       weather_rng_(setup.scripted ? 1 : std::random_device{}()),
       animal_rng_(setup.scripted ? 4 : std::random_device{}()),
       monster_rng_(setup.scripted ? 2 : std::random_device{}()),
       farm_rng_(setup.scripted ? 3 : std::random_device{}()) {
     weather = Weather(level.weather);
-    world.set_store(&saver->store());
-    renderer = std::make_unique<WorldRenderer>(world, atlas, view_distance_chunks(options.view_distance));
-    renderer->set_mesh_options({options.smooth_lighting, options.fancy_graphics});
-    renderer->on_chunk_shown = [this](ChunkPos pos) { on_chunk_shown(pos); };
+    // The player may have saved in the Nether.
+    if (level.player && level.player->dimension == Dimension::Nether) world.reset(Dimension::Nether);
+    world.set_store(&saver->store(world.dimension()));
+    make_renderer();
     hud = std::make_unique<Hud>(painter);
 
     for (ItemId item : creative_items()) creative_inventory.add(item, 1);
     player.step_height = 0.5;  // walk up slabs and stairs (Beta)
 
-    spawn = level.spawn ? *level.spawn : find_spawn();
+    spawn = level.spawn ? *level.spawn : world.nether() ? glm::dvec3(0.5, SEA_LEVEL, 0.5) : find_spawn();
     level.spawn = spawn;
     const bool new_world = !level.player;
     if (level.player) {
@@ -72,6 +73,12 @@ Game::Game(GLFWwindow* win, GLuint atlas, Painter& painter, const Options& opts,
         hud->show_message("Welcome back to " + level.name, 3);
     }
     set_mouse_captured(!vitals.dead());
+}
+
+void Game::make_renderer() {
+    renderer = std::make_unique<WorldRenderer>(world, atlas_, view_distance_chunks(options.view_distance));
+    renderer->set_mesh_options({options.smooth_lighting, options.fancy_graphics});
+    renderer->on_chunk_shown = [this](ChunkPos pos) { on_chunk_shown(pos); };
 }
 
 Game::~Game() {
@@ -123,6 +130,7 @@ PlayerData Game::player_data() const {
     p.flying = flying;
     p.inventory = inventory;
     p.bed = bed_spawn;
+    p.dimension = world.dimension();
     return p;
 }
 
@@ -216,6 +224,7 @@ void Game::spawn_entity(const EntityRecord& e) {
         m->yaw = m->target_yaw = e.yaw;
         m->health = std::clamp(e.health, 1, m->info().health);
         m->powered = e.flags & EntityRecord::POWERED;
+        if (e.flags & EntityRecord::ENRAGED) m->anger = pigman_anger_ticks(monster_rng_);
         Monster* spider = m.get();
         monsters.push_back(std::move(m));
         if (e.flags & EntityRecord::JOCKEY) {
@@ -282,7 +291,7 @@ EntityRecord monster_record(const Monster& m) {
     e.health = m.health;
     e.mob = static_cast<int>(m.kind);
     e.size = m.size;
-    e.flags = (m.powered ? EntityRecord::POWERED : 0) | (m.rider ? EntityRecord::JOCKEY : 0);
+    e.flags = (m.powered ? EntityRecord::POWERED : 0) | (m.rider ? EntityRecord::JOCKEY : 0) | (m.anger > 0 ? EntityRecord::ENRAGED : 0);
     return e;
 }
 EntityRecord falling_record(const FallingBlock& f) {
@@ -339,7 +348,7 @@ bool Game::save(bool wait) {
     data.weather = weather.state;
     data.player = player_data();
     level.last_played = data.last_played;
-    saver->save(std::move(data), std::move(copies));
+    saver->save(std::move(data), std::move(copies), world.dimension());
     autosave_timer = 0;
     return wait ? saver->wait() : true;
 }
@@ -519,6 +528,10 @@ void Game::on_mouse_button(int button, int action) {
     if (button == GLFW_MOUSE_BUTTON_LEFT) {
         break_cooldown = 0.0;
         update_target();
+        if (hit_fireball()) {
+            hand.swing();
+            return;
+        }
         try_attack();
         hand.swing();  // Beta swings at anything, even thin air
         if (target && !targeting_mob() && world.get_block(target->block.x, target->block.y, target->block.z) == NOTE_BLOCK)
@@ -583,6 +596,7 @@ void Game::update(double dt) {
         update_drops(dt);
         update_arrows(dt);
         update_tnts(dt);
+        update_fireballs(dt);
         update_falling(dt);
         for (size_t i = 0; i < puffs.size();) {
             if (puffs[i].tick(dt)) {
@@ -620,8 +634,13 @@ void Game::update(double dt) {
     };
     for (const auto& a : animals)
         if (in_view(a->body)) add_lit(a->parts(), a->body);
-    for (const auto& m : monsters)
-        if (in_view(m->body)) add_lit(m->parts(), m->body);
+    for (const auto& m : monsters) {
+        if (!in_view(m->body)) continue;
+        // A ghast is lit at its middle, not its tentacles' tips (Beta takes 2/3 of the way up).
+        Body lit = m->body;
+        if (m->kind == MobKind::Ghast) lit.y += lit.height * 0.66 - 0.2;
+        add_lit(m->parts(), lit);
+    }
     for (const auto& tnt : tnts) add_lit(tnt->parts(), tnt->body);
     for (const auto& v : vehicles)
         if (in_view(v->body)) add_lit(v->parts(vehicle_ticks), v->body);
@@ -633,6 +652,11 @@ void Game::update(double dt) {
     }
     for (const Puff& puff : puffs)
         for (ModelPart part : puff.parts()) parts.push_back(part);
+    for (const auto& fb : fireballs)
+        for (ModelPart part : fb->parts()) {
+            part.block = 1;  // it glows
+            parts.push_back(part);
+        }
     // A little monster spins inside each mob spawner near the player.
     const double spin = (static_cast<double>(level.time % 7200) + ticks_) * 9;
     for (const Spawner& s : spawners) {
@@ -708,7 +732,7 @@ std::string Game::debug_text() {
     int dimmed = std::max(0, sky - static_cast<int>(current_sky().darkness));
     int minutes = clock_minutes(level.time);
     std::snprintf(buf, sizeof buf,
-                  "PetrutzCraft M11 (%.0f fps, %d chunk updates)\n"
+                  "PetrutzCraft M14 (%.0f fps, %d chunk updates)\n"
                   "x: %.3f (block %d)\ny: %.3f (feet, block %d)\nz: %.3f (block %d)\n"
                   "Chunk: %d %d (at %d %d in it)\n"
                   "Facing: %s (f: %d)\n"
@@ -720,7 +744,7 @@ std::string Game::debug_text() {
                   "Difficulty: %s\n"
                   "Chunks loaded: %zu   animals: %zu   monsters: %zu   items: %zu",
                   fps, renderer->jobs_in_flight(), player.x, bx, player.y, by, player.z, bz, chunk_of(bx), chunk_of(bz),
-                  bx & 15, bz & 15, FACING[f], f, biome_name(world.generator().biome_at(bx, bz)), std::max(dimmed, blk),
+                  bx & 15, bz & 15, FACING[f], f, world.nether() ? "Nether" : biome_name(world.generator().biome_at(bx, bz)), std::max(dimmed, blk),
                   sky, blk, static_cast<long long>(level.time / DAY_TICKS + 1), minutes / 60, minutes % 60,
                   weather.is_thundering() ? "thunderstorm" : weather.is_raining() ? "rain" : "clear",
                   weather.rain_strength(), weather.thunder_strength(),
@@ -752,6 +776,13 @@ void Game::draw(int w, int h) {
         }
         renderer->draw_hand(held, w, h, sky.darkness);
     }
+    if (portal_ticks > 0) {
+        // Purple swirls in while standing in a portal (Beta's portal overlay).
+        const float a = std::min(1.0f, (portal_ticks + static_cast<float>(ticks_)) / PORTAL_TICKS);
+        painter_.begin(w, h);
+        painter_.rect(0, 0, static_cast<float>(w), static_cast<float>(h), 0.45f, 0.1f, 0.75f, a * a * 0.8f);
+        painter_.end();
+    }
     if (sleeping_in) {
         // The screen fades to dark while falling asleep.
         float a = std::min(1.0f, (sleep_ticks + static_cast<float>(ticks_)) / SLEEP_TICKS) * 0.85f;
@@ -762,7 +793,7 @@ void Game::draw(int w, int h) {
 
     if (hud_hidden && !vitals.dead()) return;
     const bool underwater = under_fluid(world, cam, WATER);
-    std::string info = debug_screen ? debug_text() : "PetrutzCraft M11";
+    std::string info = debug_screen ? debug_text() : "PetrutzCraft M14";
     if (!debug_screen && creative) info += flying ? "\nCreative (flying)" : "\nCreative";
     HudState hs{&active_inventory(), &vitals, armor_value(inventory), creative, info, help_text(), underwater, vitals.dead()};
     hs.burning = burn_ticks > 0 && !creative;
@@ -968,6 +999,7 @@ void Game::try_attack() {
     } else {
         target_monster->hurt(damage, player.x, player.z);
         target_monster->targeting = true;  // monsters turn on whoever hits them
+        if (target_monster->kind == MobKind::PigZombie) anger_pigmen(*target_monster);
         alert_wolves(target_monster);
     }
     if (creative) return;
@@ -1063,7 +1095,7 @@ void Game::break_block(glm::ivec3 pos, BlockId blk) {
     if (blk == ICE) {
         // Beta: ice broken over something solid or a liquid leaves water behind (and drops nothing).
         const BlockId under = world.get_block(pos.x, pos.y - 1, pos.z);
-        if (is_solid(under) || is_fluid(under)) renderer->rebuild(world.set_block(pos.x, pos.y, pos.z, WATER));
+        if ((is_solid(under) || is_fluid(under)) && !world.nether()) renderer->rebuild(world.set_block(pos.x, pos.y, pos.z, WATER));
         return;
     }
     if (blk == WHEAT_CROP || blk == TALL_GRASS || blk == FERN) {
@@ -1357,6 +1389,11 @@ bool Game::use_bucket(ItemId held) {
     glm::ivec3 c = *target->before;
     BlockId here = world.get_block(c.x, c.y, c.z);
     if (here != AIR && !is_fluid(here) && here != FIRE) return false;
+    if (held == WATER_BUCKET && world.nether()) {
+        evaporate(c);
+        if (!creative) swap_selected(BUCKET);
+        return true;
+    }
     renderer->rebuild(world.set_block(c.x, c.y, c.z, held == WATER_BUCKET ? WATER : LAVA));
     if (!creative) swap_selected(BUCKET);
     return true;
@@ -1366,6 +1403,7 @@ bool Game::light_fire(glm::ivec3 pos) {
     // Fire needs an empty cell, and solid ground under it or something next to it that burns.
     if (world.get_block(pos.x, pos.y, pos.z) != AIR || !fire_can_stay(world, pos)) return false;
     renderer->rebuild(world.set_block(pos.x, pos.y, pos.z, FIRE));
+    try_light_portal(pos);
     return true;
 }
 
@@ -1517,6 +1555,8 @@ void Game::on_death() {
 }
 
 void Game::respawn() {
+    // You always come back in the overworld (Beta).
+    if (world.nether()) change_dimension(Dimension::Overworld, spawn);
     vitals.reset();
     armor_remainder = 0;
     glm::dvec3 at = spawn;
@@ -1540,6 +1580,7 @@ void Game::respawn() {
 // --- weather and beds ----------------------------------------------------------------------------
 
 SkyState Game::current_sky() const {
+    if (world.nether()) return nether_sky();
     const float partial = static_cast<float>(ticks_);
     float flash = lightning_flash > 0 ? std::min(1.0f, lightning_flash - partial) : 0.0f;
     SkyState sky = sky_state(static_cast<double>(level.time) + ticks_, weather.rain_strength(partial),
@@ -1561,7 +1602,7 @@ void Game::tick_world() {
         if (reflash) strike(bolts[i].pos);
         ++i;
     }
-    if (weather.is_thundering()) {
+    if (weather.is_thundering() && !world.nether()) {
         // Beta rolls for lightning in every loaded chunk within 9 chunks of the player.
         const int pcx = chunk_of(ifloor(player.x)), pcz = chunk_of(ifloor(player.z));
         for (int cz = pcz - 9; cz <= pcz + 9; ++cz)
@@ -1578,6 +1619,7 @@ void Game::tick_world() {
     tick_furnaces();
     tick_blocks();
     tick_player_fire_and_air();
+    tick_portal();
     if (sleeping_in && !vitals.dead() && ++sleep_ticks >= SLEEP_TICKS) {
         // Asleep long enough: skip to the next morning and clear the sky, like Beta.
         level.time = next_morning(level.time);
@@ -1629,7 +1671,7 @@ void Game::drop_furnace_contents(glm::ivec3 pos) {
 }
 
 void Game::random_ticks() {
-    const TickContext ctx{static_cast<int>(current_sky().darkness), weather.is_raining()};
+    const TickContext ctx{static_cast<int>(current_sky().darkness), raining()};
     FarmEvents ev;
     const int pcx = chunk_of(ifloor(player.x)), pcz = chunk_of(ifloor(player.z));
     for (int cz = pcz - RANDOM_TICK_RADIUS; cz <= pcz + RANDOM_TICK_RADIUS; ++cz)
@@ -1662,6 +1704,20 @@ void Game::strike(glm::dvec3 pos) {
     lightning_flash = LIGHTNING_FLASH_TICKS;
     auto near = [&](const Body& b) { return b.distance_to(pos.x, pos.y, pos.z) <= LIGHTNING_REACH + 1; };
     if (!creative && !vitals.dead() && near(player)) hurt_player(LIGHTNING_DAMAGE);
+    // A pig struck by lightning turns into a zombie pigman (Beta).
+    for (size_t i = 0; i < animals.size();) {
+        Animal& a = *animals[i];
+        if (a.kind != AnimalKind::Pig || !a.alive() || !near(a.body)) {
+            ++i;
+            continue;
+        }
+        spawn_monster(MobKind::PigZombie, a.body.x, a.body.y, a.body.z)->yaw = a.yaw;
+        if (target_animal == &a) target_animal = nullptr;
+        if (riding == &a) dismount();
+        for (const auto& o : animals)
+            if (o->prey == &a) o->prey = nullptr;
+        animals.erase(animals.begin() + static_cast<std::ptrdiff_t>(i));
+    }
     for (const auto& a : animals)
         if (a->alive() && near(a->body)) {
             a->hurt(LIGHTNING_DAMAGE, pos.x, pos.z);
@@ -1687,7 +1743,7 @@ void Game::strike(glm::dvec3 pos) {
 }
 
 bool Game::rain_at(glm::ivec3 p) {
-    if (!weather.is_raining()) return false;
+    if (!raining()) return false;
     const auto top = world.rain_height(p.x, p.z);
     const auto biome = world.biome_at(p.x, p.z);
     return top && biome && *top <= p.y && precipitation(*biome) == Precipitation::RAIN;
@@ -1706,7 +1762,7 @@ void Game::tick_blocks() {
     blocks.tick(rng, rain, events);
     const ChunkPos here = chunk_at(player.x, player.z);
     blocks.random_ticks(here, std::min(9, renderer->render_distance), rng, rain, events);
-    blocks.snow_ticks(here, std::min(9, renderer->render_distance), weather.is_raining(), events);
+    if (!world.nether()) blocks.snow_ticks(here, std::min(9, renderer->render_distance), raining(), events);
     apply_block_events(events);
 }
 
@@ -1755,6 +1811,14 @@ void Game::try_sleep(glm::ivec3 pos) {
         pos = bed_other_half(pos, b);
         b = world.get_block(pos.x, pos.y, pos.z);
         if (!is_bed(b) || !bed_is_head(b)) return;
+    }
+    if (world.nether()) {
+        // Beds blow up in the Nether (Beta): the bed goes and a fiery blast takes its place.
+        const glm::ivec3 foot = bed_other_half(pos, b);
+        renderer->rebuild(world.set_block(foot.x, foot.y, foot.z, AIR));
+        renderer->rebuild(world.set_block(pos.x, pos.y, pos.z, AIR));
+        explode(glm::dvec3(pos) + 0.5, 5.0, false, true);
+        return;
     }
     if (!can_sleep(current_sky().darkness)) {
         hud->show_message("You can only sleep at night", 2.5f);
@@ -1995,6 +2059,7 @@ void Game::update_arrows(double dt) {
                 m.hurt(ARROW_DAMAGE, fx, fz);
                 if (a.from_player) {
                     m.targeting = true;
+                    if (m.kind == MobKind::PigZombie) anger_pigmen(m);
                     alert_wolves(&m);
                 }
             } else {
@@ -2049,9 +2114,11 @@ bool Game::can_spawn_monster(MobKind kind, double x, double y, double z, int siz
         }
         const glm::dvec3 at(x, y, z);
         if (glm::length(at - glm::dvec3(player.x, player.y, player.z)) < SPAWN_MIN_DISTANCE) return false;
-        if (glm::length(at - spawn) < SPAWN_MIN_DISTANCE) return false;
+        if (!world.nether() && glm::length(at - spawn) < SPAWN_MIN_DISTANCE) return false;
     }
-    if (kind == MobKind::Slime) {
+    if (kind == MobKind::Ghast || kind == MobKind::PigZombie) {
+        // The Nether's monsters don't care how light it is (Beta).
+    } else if (kind == MobKind::Slime) {
         if (natural && (!is_slime_chunk(level.seed, chunk_of(bx), chunk_of(bz)) || by >= SLIME_MAX_Y)) return false;
     } else {
         // Thunderstorms make it dark enough for monsters to spawn in the day (Beta).
@@ -2090,7 +2157,8 @@ void Game::spawn_monsters() {
             if (!chunk) continue;
             int x = cx * CHUNK + R.below(CHUNK), z = cz * CHUNK + R.below(CHUNK), y = R.below(std::min(HEIGHT - 2, chunk->max_y + 2));
             if (world.get_block(x, y, z) != AIR) continue;
-            const MobKind kind = random_monster(R);
+            const MobKind kind = world.nether() ? random_nether_monster(R) : random_monster(R);
+            if (kind == MobKind::Ghast && R.below(GHAST_SPAWN_ODDS) != 0) continue;
             // A small group, each a few steps from the last.
             for (int i = 0; i < 4; ++i) {
                 x += R.below(6) - R.below(6);
@@ -2182,7 +2250,7 @@ void Game::update_monsters(double dt) {
     senses.player_height = player.height;
     senses.player_targetable = !creative && !vitals.dead();
     senses.sky_darkness = static_cast<int>(current_sky().darkness);
-    senses.raining = weather.is_raining();
+    senses.raining = raining();
     const double far_away = (renderer->render_distance + 3) * CHUNK;
     std::vector<std::unique_ptr<Monster>> born;
     for (size_t i = 0; i < monsters.size();) {
@@ -2223,6 +2291,7 @@ void Game::update_monsters(double dt) {
             arrows.push_back(std::move(arrow));
         }
         if (act.hiss) play_sound(Sound::Fuse, {m.body.x, m.body.y + 1, m.body.z});
+        if (act.fireball_from) fireballs.push_back(std::make_unique<Fireball>(*act.fireball_from, act.fireball_dir, &m));
         if (act.explode) {
             // The creeper is gone in its own blast.
             m.exploded = true;
@@ -2269,7 +2338,7 @@ void Game::update_tnts(double dt) {
     }
 }
 
-void Game::explode(glm::dvec3 center, double power, bool from_monster) {
+void Game::explode(glm::dvec3 center, double power, bool from_monster, bool fiery) {
     // Beta pitches each blast a little differently (picked from the frame number, so random
     // numbers the rest of the game uses stay the same).
     play_sound(Sound::Explosion, center, static_cast<float>(0.75 + std::fmod(frame * 0.618034, 1.0) * 0.25));
@@ -2311,9 +2380,10 @@ void Game::explode(glm::dvec3 center, double power, bool from_monster) {
         const int dmg = hit({b.x, b.y, b.z}, {b.x - b.half, b.y, b.z - b.half}, {b.x + b.half, b.y + b.height, b.z + b.half}, push);
         if (dmg <= 0) continue;
         m->hurt(dmg, center.x, center.z, false);
-        m->knock_x += push.x;
-        m->knock_z += push.z;
-        b.vy += push.y;
+        const double unit = m->kind == MobKind::Ghast ? 0.05 : 1.0;  // a ghast flies in blocks per tick
+        m->knock_x += push.x * unit;
+        m->knock_z += push.z * unit;
+        b.vy += push.y * unit;
     }
     for (const auto& t : tnts) {
         Body& b = t->body;
@@ -2379,6 +2449,12 @@ void Game::explode(glm::dvec3 center, double power, bool from_monster) {
                 spawn_drop(TORCH, n.x + 0.5, n.y + 0.3, n.z + 0.5);
             }
         }
+    // A fiery blast sets fire to a third of the cells it emptied that have ground under them (Beta).
+    if (fiery)
+        for (glm::ivec3 c : cells)
+            if (world.get_block(c.x, c.y, c.z) == AIR && is_opaque(world.get_block(c.x, c.y - 1, c.z)) && rng.below(3) == 0)
+                for (ChunkPos p : world.set_block(c.x, c.y, c.z, FIRE))
+                    if (std::find(dirty.begin(), dirty.end(), p) == dirty.end()) dirty.push_back(p);
     if (!dirty.empty()) renderer->rebuild(dirty);
     drop_unsupported(cells);
     for (glm::ivec3 c : tnt_cells) prime_tnt(c, rng.below(TNT_FUSE_TICKS / 4) + TNT_FUSE_TICKS / 8);

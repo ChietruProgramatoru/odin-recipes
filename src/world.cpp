@@ -110,6 +110,13 @@ const std::array<FaceDef, 6>& face_defs() { return FACE_DEFS; }
 
 World::World(uint64_t seed) : generator_(seed) {}
 
+void World::reset(Dimension dimension) {
+    chunks_.clear();
+    last_ = nullptr;
+    changes_.clear();
+    generator_ = TerrainGenerator(generator_.seed(), dimension);
+}
+
 Chunk* World::find(int cx, int cz) {
     if (last_ && last_->cx == cx && last_->cz == cz) return last_;
     auto it = chunks_.find({cx, cz});
@@ -344,7 +351,8 @@ bool World::box_in(BlockId block, double x0, double y0, double z0, double x1, do
 
 std::optional<RayHit> World::raycast(glm::vec3 origin, glm::vec3 direction, float max_dist, bool (*stops)(BlockId)) {
     if (stops) return raycast(origin, direction, max_dist, [stops](glm::ivec3, BlockId b) { return stops(b); });
-    return raycast(origin, direction, max_dist, [](glm::ivec3, BlockId b) { return b != AIR && !is_fluid(b); });
+    // Portals can't be aimed at: you click through them (to the frame or whatever is behind).
+    return raycast(origin, direction, max_dist, [](glm::ivec3, BlockId b) { return b != AIR && !is_fluid(b) && b != PORTAL; });
 }
 
 std::optional<RayHit> World::raycast(glm::vec3 origin, glm::vec3 direction, float max_dist,
@@ -557,6 +565,26 @@ void add_box(MeshData& mesh, glm::vec3 o, glm::vec3 lo, glm::vec3 hi, const int 
         }
         const int tile = (n.x < 0 && cut >= 0) ? cut : tiles[f.slot];
         mesh.quad_points(pts, sub_uv(tile, u0 * 16, v0 * 16, u1 * 16, v1 * 16), f.light, sky_of(light), block_of(light));
+    }
+}
+
+// A portal: a see-through sheet 4/16 thick across the middle of its cell (Beta), drawn with the
+// water. Faces against more portal or against solid blocks are left out.
+void add_portal(MeshData& mesh, const Padded& P, int i, float wx, float wy, float wz, int data, uint8_t light) {
+    const glm::vec3 lo = (data & 1) ? glm::vec3(6.0f / 16, 0, 0) : glm::vec3(0, 0, 6.0f / 16);
+    const glm::vec3 hi = (data & 1) ? glm::vec3(10.0f / 16, 1, 1) : glm::vec3(1, 1, 10.0f / 16);
+    const glm::vec3 o(wx, wy, wz);
+    const auto uv = tile_uv(T_PORTAL);
+    for (const FaceDef& f : face_defs()) {
+        const glm::ivec3 n = f.normal;
+        const bool across = (data & 1) ? n.x != 0 : n.z != 0;  // the two big faces
+        if (!across) {
+            const BlockId nb = P[i + n.x + n.z * PW + n.y * LAYER];
+            if (nb == PORTAL || is_opaque(nb)) continue;
+        }
+        std::array<glm::vec3, 4> pts;
+        for (int c = 0; c < 4; ++c) pts[c] = o + lo + glm::vec3(f.corners[c]) * (hi - lo);
+        mesh.quad_points(pts, uv, 1.0f, sky_of(light), 1.0f);
     }
 }
 
@@ -944,6 +972,10 @@ ChunkMesh build_mesh(const Padded& P, const PaddedLight& L, int cx, int cz, int 
                 }
                 if (blk == SNOW_LAYER) {  // a sheet 2/16 thick
                     add_box(mesh.solid, {wx, wy, wz}, {0, 0, 0}, {1, 2.0f / 16, 1}, block_info(SNOW_LAYER)->tiles, -1, L[i]);
+                    continue;
+                }
+                if (blk == PORTAL) {
+                    add_portal(mesh.water, P, i, wx, wy, wz, D(i), L[i]);
                     continue;
                 }
                 if (is_shaped(blk)) {

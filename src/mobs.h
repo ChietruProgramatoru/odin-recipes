@@ -27,6 +27,10 @@ enum Model : int {
     MODEL_SPIDER_HEAD, MODEL_SPIDER_BODY, MODEL_SPIDER_LEG,
     MODEL_SLIME,
     MODEL_TNT, MODEL_PUFF, MODEL_FLAMES,
+    // The Nether (M14): the ghast (its body with the calm and the shooting face, a tentacle), its
+    // fireball and the zombie pigman (head, body, arm, leg like the zombie).
+    MODEL_GHAST_BODY, MODEL_GHAST_BODY_FIRING, MODEL_GHAST_TENTACLE, MODEL_FIREBALL,
+    MODEL_PIGMAN_HEAD, MODEL_PIGMAN_BODY, MODEL_PIGMAN_ARM, MODEL_PIGMAN_LEG,
     // Armor on the player, one model per material (leather, chain, iron, gold, diamond) from each base.
     MODEL_ARMOR_HELMET = 100, MODEL_ARMOR_CHEST = 105, MODEL_ARMOR_SLEEVE = 110, MODEL_ARMOR_WAIST = 115,
     MODEL_ARMOR_LEG = 120, MODEL_ARMOR_BOOT = 125,

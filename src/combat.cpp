@@ -43,7 +43,7 @@ int HurtCooldown::take(int amount, bool& fresh) {
 // --- Monsters -----------------------------------------------------------------------------------
 
 const char* mob_name(MobKind kind) {
-    static const char* NAMES[MOB_KIND_COUNT] = {"Zombie", "Skeleton", "Creeper", "Spider", "Slime"};
+    static const char* NAMES[MOB_KIND_COUNT] = {"Zombie", "Skeleton", "Creeper", "Spider", "Slime", "Ghast", "Zombie Pigman"};
     return NAMES[static_cast<int>(kind)];
 }
 
@@ -59,6 +59,10 @@ MobInfo mob_info(MobKind kind, int size) {
             // Only slimes bigger than the smallest hurt you, by their size.
             return {size * size, 1.0 + size * 0.5, half, half * 2, size > 1 ? size : 0, false};
         }
+        // Beta: a 4 x 4 x 4 ghast with 10 health that never touches you itself; a pigman is a zombie
+        // with a gold sword (5 damage). Neither burns.
+        case MobKind::Ghast: return {10, 2.0, 2.0, 4.0, 0, false, true};
+        case MobKind::PigZombie: return {20, 2.15, 0.3, 1.8, 5, false, true};
     }
     return {20, 3.0, 0.3, 1.8, 0, false};
 }
@@ -74,6 +78,8 @@ std::vector<ItemId> mob_drops(MobKind kind, int size, Rng& rng) {
         case MobKind::Creeper: some(GUNPOWDER); break;
         case MobKind::Spider: some(STRING); break;
         case MobKind::Slime: if (size == 1) some(SLIMEBALL); break;
+        case MobKind::Ghast: some(GUNPOWDER); break;
+        case MobKind::PigZombie: some(COOKED_PORKCHOP); break;  // Beta 1.7.3 (gold nuggets came later)
     }
     return out;
 }
@@ -102,7 +108,11 @@ bool monster_spawn_light_ok(int raw_sky, int light, Rng& rng) {
 
 int monster_cap(int chunks) { return 70 * chunks / 256; }
 
-MobKind random_monster(Rng& rng) { return static_cast<MobKind>(rng.below(MOB_KIND_COUNT)); }
+MobKind random_monster(Rng& rng) { return static_cast<MobKind>(rng.below(OVERWORLD_MOB_KINDS)); }
+
+MobKind random_nether_monster(Rng& rng) { return rng.below(2) == 0 ? MobKind::Ghast : MobKind::PigZombie; }
+
+int pigman_anger_ticks(Rng& rng) { return 400 + rng.below(400); }
 
 bool is_slime_chunk(uint64_t seed, int cx, int cz) {
     Rng rng(seed ^ (static_cast<uint64_t>(static_cast<uint32_t>(cx)) * 0x9E3779B97F4A7C15ull) ^
@@ -127,7 +137,7 @@ int spawner_delay(Rng& rng) { return 200 + rng.below(600); }
 
 float explosion_resistance(uint8_t block) {
     switch (block) {
-        case AIR: return 0;
+        case AIR: case PORTAL: return 0;
         case GLASS: return 0.3f;
         case STONE: case COBBLE: case BRICK: case MOSSY_COBBLE: return 6;
         case PLANKS: return 3;

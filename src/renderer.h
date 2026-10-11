@@ -141,6 +141,7 @@ private:
     void upload(ReadyMesh& ready);
 
     ChunkStreamer streamer_;
+    float ambient_ = 0.05f;  // the sky's brightness of light level 0 (higher in the Nether)
     GLuint atlas_;
     ShaderProgram program_;
     std::unordered_map<ChunkPos, ChunkGpu, ChunkPosHash> meshes_;

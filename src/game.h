@@ -18,6 +18,7 @@
 #include "inventory_screen.h"
 #include "mobs.h"
 #include "monsters.h"
+#include "nether.h"
 #include "options.h"
 #include "physics.h"
 #include "renderer.h"
@@ -129,6 +130,12 @@ public:
     std::vector<std::unique_ptr<FallingBlock>> falling;
     int burn_ticks = 0;  // the player is on fire for this many more ticks
     int armor_remainder = 0;  // fraction of a damage point armor carries to the next hit (in 25ths)
+    // The Nether (M14): game ticks the player has stood in a portal (it takes them across at
+    // PORTAL_TICKS), whether they came out of one and haven't stepped out of it yet, and the
+    // ghasts' fireballs flying about.
+    int portal_ticks = 0;
+    bool portal_cooldown = false;
+    std::vector<std::unique_ptr<Fireball>> fireballs;
     std::optional<glm::ivec3> mining_pos;
     double mining_progress = 0;
     double attack_cooldown = 0, break_cooldown = 0, use_cooldown = 0;
@@ -142,6 +149,9 @@ public:
     double fps = 60;
 
     Inventory& active_inventory() { return creative ? creative_inventory : inventory; }
+    Dimension dimension() const { return world.dimension(); }
+    // Rain and snow are falling (never in the Nether, whatever the overworld's weather is doing).
+    bool raining() const { return !world.nether() && weather.is_raining(); }
     // The crosshair is on an animal, a monster or a vehicle (not a block).
     bool targeting_mob() const { return target_animal || target_monster || target_vehicle; }
     int difficulty() const { return options.difficulty; }
@@ -186,7 +196,8 @@ public:
     // and to be 24 blocks from the player and the world spawn; spawners only need room and darkness.
     bool can_spawn_monster(MobKind kind, double x, double y, double z, int size, bool natural);
     // A blast of `power` (creeper 3, TNT 4): hurts and pushes everything near, then destroys blocks.
-    void explode(glm::dvec3 center, double power, bool from_monster);
+    // A fiery one (a ghast's fireball, a bed in the Nether) also sets fires where blocks went.
+    void explode(glm::dvec3 center, double power, bool from_monster, bool fiery = false);
     // Light TNT at a block (taking the block away) with a fuse in ticks.
     void prime_tnt(glm::ivec3 pos, int fuse_ticks);
     // Monsters spawning at random in the dark (each tick), and mob spawners near the player.
@@ -257,6 +268,25 @@ public:
     void get_out();
     // A rail is being placed at a cell (the block is already set): join it to the rails around it.
     void lay_rail(glm::ivec3 pos);
+    // The Nether (game_nether.cpp). Go to the other dimension through the portal the player stands
+    // in: to the portal linked to it there, or a new one built near the matching spot (8 to 1).
+    void travel_through_portal();
+    // Swap the world for the other dimension's with the player at `at` (saving this one first).
+    // Without `at` the player stays where they are, with nothing around them loaded yet.
+    void change_dimension(Dimension to, std::optional<glm::dvec3> at = std::nullopt);
+    // Each game tick: count the time spent standing in a portal, and go when it is long enough.
+    void tick_portal();
+    // Fire was lit at a cell: if it is inside an obsidian frame, the frame fills with portal.
+    bool try_light_portal(glm::ivec3 pos);
+    // Remember a lit portal for linking (LevelData::portals), forgetting ones that are gone.
+    void remember_portal(const PortalShape& shape);
+    // Ghasts' fireballs fly and burst; a left click hits one back if it is in reach.
+    void update_fireballs(double dt);
+    bool hit_fireball();
+    // A zombie pigman was hurt by the player: it and every pigman near it get angry (Beta).
+    void anger_pigmen(const Monster& hit);
+    // Water poured in the Nether boils away in a puff of steam (Beta).
+    void evaporate(glm::ivec3 pos);
     // Lightning strikes at a spot: hurts what is near it and flashes the sky.
     void strike(glm::dvec3 pos);
     void set_paused(bool p);
@@ -275,6 +305,8 @@ public:
     void on_scroll(double dy);
 
 private:
+    // The renderer for the current world (made again when the dimension changes).
+    void make_renderer();
     glm::dvec3 find_spawn();
     void restore_player(const PlayerData& p);
     void on_chunk_shown(ChunkPos pos);
@@ -320,6 +352,7 @@ private:
     void draw_player_preview(int x, int y, int w, int h, float look_x, float look_y);
 
     Painter& painter_;
+    GLuint atlas_;
     bool scripted_;
     std::set<int> mouse_buttons_;
     double last_space_ = -1.0;
