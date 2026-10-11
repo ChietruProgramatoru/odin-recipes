@@ -1,6 +1,7 @@
 // What the mouse does in the inventory, crafting table and furnace screens, without any drawing:
 // picking up, placing, splitting and shift-clicking stacks, and taking crafted or smelted items.
 #pragma once
+#include <array>
 #include <optional>
 #include <vector>
 
@@ -8,6 +9,8 @@
 #include "furnace.h"
 #include "survival.h"
 #include "tiles.h"
+
+// A chest's 27 slots (ChestSlots, tiles.h) are a chest block's or a storage minecart's.
 
 struct Slot {
     enum Kind { Result, Grid, Armor, Inv, Furnace, Chest } kind;
@@ -27,7 +30,7 @@ public:
     // A furnace's screen: its three slots and the inventory, no crafting grid.
     CraftingMenu(Inventory& inventory, Furnace& furnace);
     // A chest's screen: its slots (a double chest's two halves, top first) and the inventory.
-    CraftingMenu(Inventory& inventory, ChestSlots& top, ChestSlots* bottom);
+    CraftingMenu(Inventory& inventory, ChestSlots& top, ChestSlots* bottom = nullptr);
 
     Inventory& inv;
     const int grid_size;

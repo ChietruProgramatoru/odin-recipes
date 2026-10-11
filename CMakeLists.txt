@@ -85,6 +85,8 @@ add_library(petrutz_core STATIC
   src/chest.cpp
   src/painting.cpp
   src/blockupdate.cpp
+  src/rails.cpp
+  src/vehicles.cpp
   src/streamer.cpp
   src/physics.cpp
   src/survival.cpp
@@ -120,6 +122,7 @@ add_executable(PetrutzCraft
   src/hud.cpp
   src/menu.cpp
   src/game.cpp
+  src/game_vehicles.cpp
   src/audio.cpp
   src/autotest.cpp)
 target_link_libraries(PetrutzCraft PRIVATE petrutz_core glfw miniaudio_header ${CMAKE_DL_LIBS})
@@ -154,6 +157,7 @@ add_executable(petrutz_tests
   tests/test_furnace.cpp
   tests/test_hand.cpp
   tests/test_blockupdate.cpp
-  tests/test_building.cpp)
+  tests/test_building.cpp
+  tests/test_transport.cpp)
 target_link_libraries(petrutz_tests PRIVATE petrutz_core doctest_header)
 add_test(NAME logic COMMAND petrutz_tests)

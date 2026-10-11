@@ -5,6 +5,7 @@
 
 #include <glm/geometric.hpp>
 
+#include "rails.h"
 #include "torch.h"
 
 namespace {
@@ -190,6 +191,12 @@ void BlockUpdater::neighbour_changed(glm::ivec3 p, BlockEvents& out) {
         if (!is_opaque(block_at(world_, s))) {
             set(p, AIR, 0, out);
             out.drops.push_back({p, TORCH});
+        }
+    } else if (is_rail(b)) {
+        // A rail with nothing under it (or a slope with nothing on its high side) pops off.
+        if (!rail_can_stay(world_, p)) {
+            set(p, AIR, 0, out);
+            out.drops.push_back({p, b});
         }
     }
 }

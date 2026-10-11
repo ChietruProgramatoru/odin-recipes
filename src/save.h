@@ -3,7 +3,7 @@
 // Each world is a folder in saves/:
 //   level.json        name, seed, play time, spawn point, weather and the player (see level_to_json)
 //   region/r.X.Z.pcr  32x32 chunks per file, each chunk zlib-compressed (see encode_chunk)
-// Chunks carry their blocks plus the cows, monsters and dropped items standing in them, and what is in their furnaces.
+// Chunks carry their blocks plus the cows, monsters, minecarts, boats and dropped items standing in them, and what is in their furnaces.
 #pragma once
 #include <condition_variable>
 #include <cstdint>
@@ -26,8 +26,8 @@
 
 constexpr int LEVEL_FORMAT = 1;
 // 2 added stack size and wear to dropped items, 3 monsters, 4 furnaces, 5 block data values and
-// falling blocks, 6 chests, signs, paintings, note blocks and jukeboxes
-constexpr int CHUNK_FORMAT = 6;
+// falling blocks, 6 minecarts and boats, 7 chests, signs, paintings, note blocks and jukeboxes
+constexpr int CHUNK_FORMAT = 7;
 constexpr int ARMOR_SLOT_BASE = 100;  // armor slot numbers in level.json, like Beta
 constexpr int REGION_SIZE = 32;  // chunks per side of a region file
 constexpr double AUTOSAVE_INTERVAL = 60.0;  // seconds

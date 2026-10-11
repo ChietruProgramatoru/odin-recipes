@@ -1,8 +1,9 @@
-// The inventory (E), crafting table, furnace and creative item picker screens, drawn Beta-style by the code
+// The inventory (E), crafting table, furnace, chest and creative item picker screens, drawn Beta-style by the code
 // over the running game. The rules for moving stacks are in container.h.
 #pragma once
 #include <functional>
 #include <optional>
+#include <string>
 #include <vector>
 
 #include "container.h"
@@ -16,12 +17,14 @@ public:
     InventoryScreen(Kind kind, Inventory& inventory);
     // A furnace's screen.
     InventoryScreen(Inventory& inventory, Furnace& furnace);
-    // A chest's screen (bottom: the lower half of a double chest).
-    InventoryScreen(Inventory& inventory, ChestSlots& top, ChestSlots* bottom);
+    // A chest's screen with its title ("Chest", "Large chest", "Minecart"); bottom: the lower half
+    // of a double chest.
+    InventoryScreen(Inventory& inventory, ChestSlots& top, ChestSlots* bottom, std::string title);
 
     const Kind kind;
     std::optional<CraftingMenu> crafting;
     std::optional<CreativeMenu> creative;
+    std::string title;  // a chest's
 
     // Draws the player model into a box (window pixels, bottom-left origin), looking towards (look_x, look_y),
     // which is the mouse position relative to the box's centre in box heights.

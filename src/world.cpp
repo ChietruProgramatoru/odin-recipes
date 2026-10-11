@@ -4,11 +4,14 @@
 #include <cmath>
 #include <limits>
 
+#include <glm/vec2.hpp>
+
 #include "bed.h"
 #include "building.h"
 #include "font.h"
 #include "icons.h"
 #include "painting.h"
+#include "rails.h"
 #include "textures.h"
 
 namespace {
@@ -650,8 +653,6 @@ void wall_sheet(const ShapeCtx& c, int facing, float gap, int tile) {
     (void)front;
 }
 
-// A box given by its centre, half sizes along (right, up, front) and those directions: for a
-// sign turned to any of 16 facings. Every face gets the planks tile.
 // A quad given by its corners as you look at its front (bottom left, bottom right, top right, top
 // left), textured the right way round. The renderer wants corners clockwise from the front, and
 // quad_points puts uv's first corner on its first point.
@@ -660,6 +661,8 @@ void front_quad(MeshData& m, glm::vec3 bl, glm::vec3 br, glm::vec3 tr, glm::vec3
     m.quad_points({br, bl, tl, tr}, {uv[2], uv[1], uv[0], uv[3]}, shade, sky, block);
 }
 
+// A box given by its centre, half sizes along (right, up, front) and those directions: for a
+// sign turned to any of 16 facings. Every face gets the same tile.
 void turned_box(const ShapeCtx& c, glm::vec3 centre, glm::vec3 half, glm::vec3 right, glm::vec3 front, int tile) {
     const glm::vec3 up(0, 1, 0);
     const uint8_t light = c.L[c.i];
@@ -793,6 +796,45 @@ void add_shaped(const ShapeCtx& c, BlockId blk, int data, const MeshExtras* extr
     }
 }
 
+// Rails: one sheet just above the block below, drawn from both sides. The tiles run north-south
+// (bottom of the picture to the south); curves join the bottom and right of the picture (south and
+// east) and are turned for the other corners. Slopes are tilted up to the next block.
+void add_rail(MeshData& mesh, float wx, float wy, float wz, BlockId blk, int data, uint8_t light) {
+    const int shape = rail_shape(blk, data);
+    const bool on = rail_powered(blk, data);
+    const int tile = blk == POWERED_RAIL ? (on ? T_POWERED_RAIL_ON : T_POWERED_RAIL)
+                     : blk == DETECTOR_RAIL ? T_DETECTOR_RAIL
+                     : shape >= RAIL_SOUTH_EAST ? T_RAIL_CURVE : T_RAIL;
+    // Quarter turns from the picture's own direction.
+    int turns = 0;
+    switch (shape) {
+        case RAIL_EAST_WEST: case RAIL_ASCENDING_EAST: case RAIL_ASCENDING_WEST: turns = 1; break;
+        case RAIL_SOUTH_WEST: turns = 1; break;
+        case RAIL_NORTH_WEST: turns = 2; break;
+        case RAIL_NORTH_EAST: turns = 3; break;
+        default: break;
+    }
+    // Corners BL, BR, TR, TL of the picture on the block's top, from above: bottom edge to the south.
+    std::array<glm::vec2, 4> c = {glm::vec2(0, 1), glm::vec2(1, 1), glm::vec2(1, 0), glm::vec2(0, 0)};
+    for (int t = 0; t < turns; ++t)
+        for (glm::vec2& k : c) k = glm::vec2(1 - k.y, k.x);  // a quarter turn, east to south
+    std::array<glm::vec3, 4> pts;
+    for (int k = 0; k < 4; ++k) {
+        float h = 1.0f / 16;
+        switch (shape) {
+            case RAIL_ASCENDING_EAST: h += c[k].x; break;
+            case RAIL_ASCENDING_WEST: h += 1 - c[k].x; break;
+            case RAIL_ASCENDING_NORTH: h += 1 - c[k].y; break;
+            case RAIL_ASCENDING_SOUTH: h += c[k].y; break;
+            default: break;
+        }
+        pts[k] = glm::vec3(wx + c[k].x, wy + h, wz + c[k].y);
+    }
+    const auto uv = tile_uv(tile);
+    mesh.quad_points(pts, uv, 1.0f, sky_of(light), block_of(light));
+    mesh.quad_points({pts[1], pts[0], pts[3], pts[2]}, {uv[2], uv[1], uv[0], uv[3]}, 0.6f, sky_of(light), block_of(light));
+}
+
 // Water or lava: the top slopes between the heights at its four corners, which come from how far
 // the fluid around each corner has flowed (Beta's RenderBlocks.getFluidHeight). Sides are drawn
 // up to the corner heights where the next cell isn't the same fluid.
@@ -884,6 +926,10 @@ ChunkMesh build_mesh(const Padded& P, const PaddedLight& L, int cx, int cz, int 
                 if (is_plant(blk)) {
                     Rgb8 tint = block_tint(blk) == BlockTint::GRASS ? grass[(z << 4) | x] : white;
                     add_plant(mesh.solid, wx, wy, wz, blk, D(i), L[i], tint);
+                    continue;
+                }
+                if (is_rail(blk)) {
+                    add_rail(mesh.solid, wx, wy, wz, blk, D(i), L[i]);
                     continue;
                 }
                 if (blk == CAKE_BLOCK) {

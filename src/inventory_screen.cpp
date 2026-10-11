@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <utility>
 
 namespace {
 
@@ -82,7 +83,8 @@ InventoryScreen::InventoryScreen(Inventory& inventory, Furnace& furnace) : kind(
     crafting.emplace(inventory, furnace);
 }
 
-InventoryScreen::InventoryScreen(Inventory& inventory, ChestSlots& top, ChestSlots* bottom) : kind(Kind::Chest) {
+InventoryScreen::InventoryScreen(Inventory& inventory, ChestSlots& top, ChestSlots* bottom, std::string name)
+    : kind(Kind::Chest), title(std::move(name)) {
     crafting.emplace(inventory, top, bottom);
 }
 
@@ -116,6 +118,9 @@ std::vector<InventoryScreen::SlotPos> InventoryScreen::slot_positions() const {
         for (int r = 0; r < 2; ++r)
             for (int c = 0; c < 2; ++c) out.push_back({{Slot::Grid, r * 2 + c}, 88 + c * 18, 26 + r * 18});
         out.push_back({{Slot::Result, 0}, 144, 36});
+    } else if (kind == Kind::Chest) {
+        for (int r = 0; r < 3; ++r)
+            for (int c = 0; c < 9; ++c) out.push_back({{Slot::Chest, r * 9 + c}, 8 + c * 18, 18 + r * 18});
     } else if (kind == Kind::Furnace) {
         out.push_back({{Slot::Furnace, FURNACE_INPUT}, 56, 17});
         out.push_back({{Slot::Furnace, FURNACE_FUEL}, 56, 53});
@@ -247,7 +252,7 @@ void InventoryScreen::draw(Painter& p, int width, int height, double mx, double 
         f.arrow(79, 34);
         f.arrow(79, 34, WHITE, fur.cook * 24 / SMELT_TICKS);
     } else if (kind == Kind::Chest) {
-        f.label(chest_rows() > 3 ? "Large chest" : "Chest", 8, 6);
+        f.label(title, 8, 6);
         f.label("Inventory", 8, ph - 94);
     } else if (kind == Kind::CraftingTable) {
         f.label("Crafting", 28, 6);

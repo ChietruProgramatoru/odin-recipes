@@ -49,8 +49,8 @@ enum Item : ItemId {
     WHITE_WOOL = FUTURE_BLOCKS, ORANGE_WOOL, MAGENTA_WOOL, LIGHT_BLUE_WOOL, YELLOW_WOOL, LIME_WOOL, PINK_WOOL,
     GRAY_WOOL, LIGHT_GRAY_WOOL, CYAN_WOOL, PURPLE_WOOL, BLUE_WOOL, BROWN_WOOL, GREEN_WOOL, RED_WOOL, BLACK_WOOL,
     // Torches and glowstone became real blocks in M5, sandstone and clay in M4, TNT in M10, flowers and
-    // mushrooms in M8, and the storage blocks, bookshelf, note block, jukebox, stairs, fence, ladder
-    // and trapdoor in M11 (see blocks.h).
+    // mushrooms in M8, rails in M12, and the storage blocks, bookshelf, note block, jukebox, stairs,
+    // fence, ladder and trapdoor in M11 (see blocks.h).
     // Their old ids stay reserved so the ids after them don't move; saves from before have them
     // turned into the blocks on load. Wool and slabs stay items: one block each holds the colour
     // or kind in its data value (building.h).
@@ -60,7 +60,7 @@ enum Item : ItemId {
     OLD_BOOKSHELF_ITEM, OLD_TNT_ITEM, OLD_NOTE_BLOCK_ITEM, OLD_JUKEBOX_ITEM, DISPENSER, PISTON, STICKY_PISTON,
     STONE_SLAB, SANDSTONE_SLAB, WOOD_SLAB, COBBLE_SLAB, OLD_WOOD_STAIRS_ITEM, OLD_COBBLE_STAIRS_ITEM,
     OLD_FENCE_ITEM, OLD_LADDER_ITEM, OLD_TRAPDOOR_ITEM, LEVER, STONE_BUTTON, STONE_PLATE, WOOD_PLATE,
-    RAIL, POWERED_RAIL, DETECTOR_RAIL,
+    OLD_RAIL_ITEM, OLD_POWERED_RAIL_ITEM, OLD_DETECTOR_RAIL_ITEM,
     // Flowers and mushrooms became blocks in M8.
     OLD_YELLOW_FLOWER_ITEM, OLD_RED_ROSE_ITEM, OLD_BROWN_MUSHROOM_ITEM, OLD_RED_MUSHROOM_ITEM,
     ITEM_END

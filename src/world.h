@@ -48,12 +48,12 @@ inline int chunk_of(int block) { return block >> 4; }
 // A block's index in its chunk's arrays (see Chunk::index).
 inline int cell_index(glm::ivec3 p) { return (p.y << 8) | ((p.z & 15) << 4) | (p.x & 15); }
 
-// An animal, monster or dropped item stored with the chunk it is in (in a save file, or while the
-// player is too far away for it to be simulated).
+// An animal, monster, vehicle or dropped item stored with the chunk it is in (in a save file, or
+// while the player is too far away for it to be simulated).
 struct EntityRecord {
     // ANIMAL was COW before M9 (old saves only have cows, whose mob is 0). FALLING: sand or gravel
-    // in the air (item = the block).
-    enum Kind : uint8_t { ANIMAL = 1, ITEM = 2, MONSTER = 3, FALLING = 4 };
+    // in the air (item = the block). VEHICLE: a minecart or boat (mob = its VehicleKind).
+    enum Kind : uint8_t { ANIMAL = 1, ITEM = 2, MONSTER = 3, FALLING = 4, VEHICLE = 5 };
     enum Flags : uint8_t { POWERED = 1, JOCKEY = 2 };  // a charged creeper; a spider with a skeleton riding it
     enum AnimalFlags : uint8_t { SHEARED = 1, SADDLED = 2, TAMED = 4, SITTING = 8, ANGRY = 16 };
     Kind kind = ANIMAL;
@@ -64,9 +64,12 @@ struct EntityRecord {
     float age = 0;   // dropped items: seconds; chickens: ticks to the next egg
     int count = 1;   // dropped items: how many
     int damage = 0;  // dropped items: wear of a tool
-    int mob = 0;     // monsters: the MobKind (combat.h); animals: the AnimalKind (animals.h)
+    int mob = 0;     // monsters: the MobKind (combat.h); animals: the AnimalKind (animals.h); vehicles: the VehicleKind
     int size = 1;    // monsters: a slime's size; sheep: the wool colour
     int flags = 0;   // monsters: Flags; animals: AnimalFlags
+    int fuel = 0;    // vehicles: a powered minecart's fuel (ticks) and which way it pushes
+    float push_x = 0, push_z = 0;
+    std::vector<std::optional<Stack>> chest{};  // vehicles: a storage minecart's chest
     bool operator==(const EntityRecord&) const = default;
 };
 

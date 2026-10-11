@@ -207,7 +207,9 @@ void Game::on_chunk_shown(ChunkPos pos) {
 }
 
 void Game::spawn_entity(const EntityRecord& e) {
-    if (e.kind == EntityRecord::MONSTER) {
+    if (e.kind == EntityRecord::VEHICLE) {
+        if (auto v = Vehicle::from_record(world, e)) vehicles.push_back(std::move(v));
+    } else if (e.kind == EntityRecord::MONSTER) {
         const auto kind = static_cast<MobKind>(e.mob);
         auto m = std::make_unique<Monster>(world, kind, e.x, e.y, e.z, monster_rng_, e.size);
         m->yaw = m->target_yaw = e.yaw;
@@ -316,6 +318,7 @@ bool Game::save(bool wait) {
         if (m->alive() && !m->mount && !m->vanish) live[chunk_at(m->body.x, m->body.z)].push_back(monster_record(*m));
     for (const auto& drop : drops) live[chunk_at(drop->body.x, drop->body.z)].push_back(drop_record(*drop));
     for (const auto& f : falling) live[chunk_at(f->body.x, f->body.z)].push_back(falling_record(*f));
+    for (const auto& v : vehicles) live[chunk_at(v->body.x, v->body.z)].push_back(v->record());
     for (const auto& [pos, list] : live) world.chunk(pos.cx, pos.cz);
 
     std::vector<std::unique_ptr<Chunk>> copies;
@@ -419,6 +422,7 @@ void Game::close_gui() {
     furnace_open.reset();
     for (glm::ivec3 c : chest_open) chest_slots(world, c);  // what was moved in or out gets saved
     chest_open.clear();
+    chest_vehicle = nullptr;
     set_mouse_captured(!paused && !vitals.dead());
 }
 
@@ -465,6 +469,8 @@ void Game::on_key(int key, int action, int mods) {
         creative = !creative;
         flying = false;
         hud->show_message(creative ? "Creative mode" : "Survival mode");
+    } else if (key == options.keys[KEY_SNEAK] && in_vehicle) {
+        get_out();
     } else if (key == options.keys[KEY_DROP]) {
         drop_selected();
     } else if (key == options.keys[KEY_INVENTORY]) {
@@ -543,7 +549,7 @@ void Game::update(double dt) {
 
     vitals.peaceful = difficulty() == PEACEFUL;
     if (!paused && !dead) {
-        if (!sleeping_in) move(dt);
+        if (!sleeping_in && !in_vehicle) move(dt);
         if (gui || sleeping_in) {
             target.reset();
         } else {
@@ -570,6 +576,7 @@ void Game::update(double dt) {
         hand.bobbing = options.view_bobbing;
         hand.update(dt, active_inventory().selected_item(), active_inventory().selected,
                     {std::hypot(player.vx, player.vz), dead ? 0.0 : player.vy, walking});
+        update_vehicles(dt);
         update_animals(dt);
         update_monsters(dt);
         update_drops(dt);
@@ -615,6 +622,8 @@ void Game::update(double dt) {
     for (const auto& m : monsters)
         if (in_view(m->body)) add_lit(m->parts(), m->body);
     for (const auto& tnt : tnts) add_lit(tnt->parts(), tnt->body);
+    for (const auto& v : vehicles)
+        if (in_view(v->body)) add_lit(v->parts(vehicle_ticks), v->body);
     // Falling sand and gravel: the dropped-item cube, blown up to a whole block.
     for (const auto& f : falling) {
         const glm::mat4 m = glm::translate(glm::mat4(1.0f), glm::vec3(f->body.x, f->body.y + 0.49, f->body.z)) *
@@ -657,8 +666,9 @@ void Game::update(double dt) {
     }
     if (third_person && !dead) {
         PlayerPose pose{player.x, player.y, player.z, yaw, pitch, walk_phase, walk_amount, sneaking};
+        pose.sitting = in_vehicle != nullptr;
         pose.armor = worn_armor(inventory);
-        add_lit(player_parts(pose), player);
+        add_lit(player_parts(pose), in_vehicle ? in_vehicle->body : player);  // a rider's feet are down in the vehicle's floor
     }
     renderer->set_instances(std::move(parts));
     {
@@ -679,7 +689,7 @@ std::string Game::help_text() const {
     return k(KEY_FORWARD) + k(KEY_LEFT) + k(KEY_BACK) + k(KEY_RIGHT) + " move   " + k(KEY_JUMP) + " jump/swim   " + k(KEY_SNEAK) +
            " sneak   double-tap " + k(KEY_FORWARD) + " sprint\n"
            "Left mouse: mine block / hit a mob (hold to mine; stone needs a pickaxe)\n"
-           "Right mouse: place block / eat / shoot the bow / use flint and steel or a bucket\n"
+           "Right mouse: place block / eat / shoot the bow / use flint and steel or a bucket / ride a minecart or boat\n"
            "1-9 or wheel: pick slot   " + k(KEY_DROP) + ": drop   " + k(KEY_INVENTORY) + ": inventory and crafting\n" +
            k(KEY_CREATIVE) + ": creative cheat (double-tap " + k(KEY_JUMP) + " to fly)\n"
            "F1 hide HUD   F2 screenshot   F3 debug   F5 third person\n"
@@ -910,12 +920,26 @@ void Game::update_target() {
             best_d = *d;
         }
     }
-    // A block in front hides the mob, except plants: you can hit a cow standing in tall grass.
-    if ((best || best_monster) && target && target->distance < best_d &&
-        !is_plant(world.get_block(target->block.x, target->block.y, target->block.z)))
-        best = nullptr, best_monster = nullptr;
+    Vehicle* best_vehicle = nullptr;
+    for (const auto& v : vehicles) {
+        if (v.get() == in_vehicle) continue;  // the one you sit in is out of the way
+        auto d = v->ray_hit(origin, direction, ATTACK_REACH);
+        if (d && *d < best_d) {
+            best = nullptr;
+            best_monster = nullptr;
+            best_vehicle = v.get();
+            best_d = *d;
+        }
+    }
+    // A block in front hides the mob, except plants and rails: you can hit a cow standing in tall
+    // grass, or a minecart on its rail.
+    const BlockId in_front = target ? world.get_block(target->block.x, target->block.y, target->block.z) : BlockId{AIR};
+    if ((best || best_monster || best_vehicle) && target && target->distance < best_d && !is_plant(in_front) &&
+        !is_rail(in_front))
+        best = nullptr, best_monster = nullptr, best_vehicle = nullptr;
     target_animal = best;
     target_monster = best_monster;
+    target_vehicle = best_vehicle;
 }
 
 // --- actions ------------------------------------------------------------------------------------
@@ -923,6 +947,10 @@ void Game::update_target() {
 void Game::try_attack() {
     if (!targeting_mob() || attack_cooldown > 0) return;
     attack_cooldown = 0.35;
+    if (target_vehicle) {
+        hit_vehicle(*target_vehicle);
+        return;
+    }
     const ItemId held = active_inventory().selected_item().value_or(AIR);
     const int damage = creative ? 10 : attack_damage(held);
     if (target_animal) {
@@ -1099,6 +1127,11 @@ void Game::use_item_by_hand() {
 
 void Game::use_item() {
     use_cooldown = 0.25;
+    if (target_vehicle) {
+        mouse_buttons_.erase(GLFW_MOUSE_BUTTON_RIGHT);
+        use_vehicle(*target_vehicle);
+        return;
+    }
     if (target && !targeting_mob() && world.get_block(target->block.x, target->block.y, target->block.z) == CRAFTING_TABLE) {
         mouse_buttons_.erase(GLFW_MOUSE_BUTTON_RIGHT);
         open_gui(InventoryScreen::Kind::CraftingTable);
@@ -1166,6 +1199,10 @@ void Game::use_item() {
         shoot_arrow();
         return;
     }
+    if (vehicle_for_item(*item)) {
+        place_vehicle(*item);
+        return;
+    }
     if (*item == EGG) {
         throw_egg();
         return;
@@ -1227,6 +1264,7 @@ void Game::use_item() {
         if (!torch || !is_opaque(world.get_block(target->block.x, target->block.y, target->block.z))) return;
         place = *torch;
     }
+    if (is_rail(place) && !is_opaque(world.get_block(c.x, c.y - 1, c.z))) return;  // rails go on solid ground
     std::vector<const Body*> bodies{&player};
     for (const auto& a : animals) bodies.push_back(&a->body);
     for (const auto& m : monsters) bodies.push_back(&m->body);
@@ -1237,6 +1275,7 @@ void Game::use_item() {
     BlockId here = world.get_block(c.x, c.y, c.z);
     if (here != AIR && !is_fluid(here)) return;
     renderer->rebuild(world.set_block(c.x, c.y, c.z, place));
+    if (is_rail(place)) lay_rail(c);
     if (is_solid(place) && world.get_block(c.x, c.y - 1, c.z) == FARMLAND)
         renderer->rebuild(world.set_block(c.x, c.y - 1, c.z, DIRT));  // Beta: farmland under a block turns to dirt
     if (!creative) inv.take_selected();
@@ -1351,7 +1390,7 @@ bool Game::interact(Animal& a) {
                 use_up();
                 return true;
             }
-            if (!a.saddled || riding) return false;
+            if (!a.saddled || riding || in_vehicle) return false;
             // Climb on. Beta's pigs can't be steered: it wanders where it likes. Sneak to get off.
             riding = &a;
             a.ridden = true;
@@ -1449,6 +1488,7 @@ void Game::shoot_arrow() {
 void Game::on_death() {
     close_gui();
     if (riding) dismount();
+    get_out();
     // Everything you carry drops where you died (Beta).
     auto scatter = [&](std::optional<Stack>& slot) {
         if (!slot) return;
@@ -2383,7 +2423,7 @@ void Game::open_chest(glm::ivec3 pos) {
     ChestSlots* top = chest_slots(world, pair.first);
     ChestSlots* bottom = pair.second ? chest_slots(world, *pair.second) : nullptr;
     if (!top || (pair.second && !bottom)) return;
-    show_gui(std::make_unique<InventoryScreen>(active_inventory(), *top, bottom));
+    show_gui(std::make_unique<InventoryScreen>(active_inventory(), *top, bottom, bottom ? "Large chest" : "Chest"));
     chest_open = halves;
 }
 

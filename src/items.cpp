@@ -53,7 +53,7 @@ Table build() {
         if (b == WATER || b == LAVA || b == FIRE || is_torch(b) || is_bed(b) || (is_furnace(b) && b != FURNACE) ||
             is_plant(b) || b == FARMLAND || b == CAKE_BLOCK || b == WOOL || b == SLAB || b == DOUBLE_SLAB ||
             b == FENCE || b == LADDER || is_door(b) || b == TRAPDOOR || b == SIGN_POST || b == WALL_SIGN ||
-            b == PAINTING_BLOCK)
+            b == PAINTING_BLOCK || is_rail(b))
             continue;
         const BlockInfo* info = block_info(b);
         t.cube(b, info->name, info->tiles[0], info->tiles[1], info->tiles[1]);
@@ -258,6 +258,9 @@ ItemId current_item_id(ItemId id) {
         case OLD_FENCE_ITEM: return FENCE;
         case OLD_LADDER_ITEM: return LADDER;
         case OLD_TRAPDOOR_ITEM: return TRAPDOOR;
+        case OLD_RAIL_ITEM: return RAIL;
+        case OLD_POWERED_RAIL_ITEM: return POWERED_RAIL;
+        case OLD_DETECTOR_RAIL_ITEM: return DETECTOR_RAIL;
         default: return id;
     }
 }

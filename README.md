@@ -136,6 +136,14 @@ It runs on Windows (the main target) and Linux.
 - **Beds**: craft one from 3 wool over 3 planks and right-click the top of a block to place it (the head points the way you face). Right-click the bed at night, or in a thunderstorm, to lie down; after 5 seconds the night is skipped, the morning is clear and the bed becomes your spawn point. If the bed is broken or walled in, you respawn at the world spawn instead ("Your home bed was missing or obstructed"). Breaking either half removes the whole bed and drops it.
 
   ![A bed](screenshots/bed.png)
+- **Rails and minecarts**: rails join up with the rails next to them, turn corners and climb one block, as in Beta. Ride a minecart (right-click it, Shift to get out): it rolls downhill, keeps going on the flat and slows down over time. Powered rails speed carts up (they are always on until redstone arrives in M13; unpowered they would brake), and detector rails switch on while a cart is on them. A storage minecart holds 27 stacks (right-click to open it), and a powered minecart burns coal or charcoal to push itself along, away from you.
+
+  ![Rails with a powered rail, a detector rail and a slope](screenshots/rails.png)
+
+  ![Riding a minecart](screenshots/minecart.png)
+- **Boats** float on water and steer with W A S D the way you look. A boat that hits something too fast breaks into 3 planks and 2 sticks (so does one you punch, like Beta).
+
+  ![A boat on the sea](screenshots/boat.png)
 - **Clouds** drift slowly over the world at height 108: 3D boxes with Fancy graphics, a flat layer with Fast graphics. They can be turned off in Video Settings.
 - **Debug screen** (F3) with your position, chunk, facing, biome, light level (sky and block), time of day, weather, seed and frame rate. F1 hides the HUD and F2 saves a screenshot.
 - All textures and the font are drawn by the code itself (no image files), with smooth lighting (ambient occlusion plus light levels blended across each face) and distance fog.
@@ -213,7 +221,7 @@ These are the defaults. Every key except the F keys, Esc, H and 1–9 can be cha
 | Right mouse | Place the selected block (a torch goes on the top or side of the block you point at, a bed on top), eat the selected food, shoot the bow, light a fire or TNT with flint and steel, or fill, pour and drink from a bucket |
 | Right mouse on a bed | Sleep (at night or in a thunderstorm) |
 | Right mouse on an animal | Milk a cow (bucket), saddle or ride a pig, shear or dye a sheep, tame a wolf (bone), feed a tamed wolf (meat), or make a tamed wolf sit or follow |
-| Left Shift while riding | Get off the pig |
+| Left Shift while riding | Get off the pig, or out of a minecart or boat |
 | 1–9 / mouse wheel | Choose a hotbar slot |
 | Q | Drop one of the selected item |
 | E | Open or close the inventory (the item picker in creative) |
@@ -223,6 +231,9 @@ These are the defaults. Every key except the F keys, Esc, H and 1–9 can be cha
 | Right mouse on a door or trapdoor | Open or shut it |
 | Right mouse / left mouse on a note block | Raise its note / play it |
 | Right mouse on a jukebox | Put in the held music disc, or take the disc out |
+| Right mouse on a minecart or boat | Get in (Left Shift gets out) |
+| Right mouse on a storage minecart | Open its chest (shift-click moves stacks between it and your inventory) |
+| Right mouse on a powered minecart with coal | Fuel it: it pushes away from you |
 | C | Cheat: switch between survival and creative |
 | Space twice (creative) | Toggle flying. While flying, Space goes up and Shift goes down |
 | F1 | Hide or show the HUD |
@@ -262,7 +273,7 @@ ctest --test-dir build --output-on-failure        # logic tests (add -C Release 
 xvfb-run -a -s "-screen 0 1280x720x24" ./build/PetrutzCraft --seed 7 --autotest OUT_DIR
 ```
 
-The second command plays a scripted game and saves screenshots plus `report.txt` to `OUT_DIR`: it opens the title and options screens, creates a world from the Create New World screen, finds a cow, kills it, picks up and eats the beef, mines and places a block, crafts planks and a crafting table in the inventory screen, puts on a chestplate, crafts a pickaxe on a placed crafting table, takes a stack from the creative item picker, falls, mines stone by hand and with a pickaxe, takes a hit in full armor, shoots arrows into a wall, lights a fire, pours and scoops up water, flies, visits a desert, hills, a taiga and a torch-lit cave (checking for sandstone, spruces, frozen water and every ore), takes F5 (in armor) and F3 pictures, places a torch and glowstone and checks their light, takes pictures at night and at sunset, makes it rain, snow and thunder (checking that lightning hurts), places a bed, sleeps through the night in it and respawns by it, fights every monster in a flat arena (a zombie's hit and knockback, a sword's hits and the invulnerability after them, a skeleton's arrow, a creeper's fuse and crater, a spider climbing a wall, a slime splitting, a zombie burning in the sun, a chain of TNT, a mob spawner, Peaceful, the death screen and natural spawning at midnight), builds a platform in the sky to try water falling off a pillar and spreading, lava turning to obsidian, sand and gravel falling, a plank hut burning, drowning, lava setting the player on fire, water putting them out, a current carrying them and lightning starting a fire, tills a field next to water, plants seeds, ripens wheat with bone meal and harvests it, eats a slice of cake, counts the wild plants and visits a meadow, builds a gallery of the new building blocks in the sky (hangs paintings, joins two chests and fills the double chest, places stairs, slabs and a double slab, a fence with a door, an iron door, ladders and a trapdoor, plays a note block, puts a disc in a jukebox and types on a sign, then breaks a door and a ladder's wall), builds a pen with every animal (saddles and rides the pig, shears and dyes sheep, milks the cow, tames a wolf that then follows the player and bites a zombie, angers a wild wolf, has a chicken lay an egg, throws eggs until chickens hatch, and checks the saddle and ink sac drops), opens the pause menu, changes a block, saves and quits to the title, and loads the world again to check that everything came back. Its world and `options.txt` go in `OUT_DIR`, so your own saves are never touched. It exits with an error if any check fails. On Windows or a Linux desktop, run it without `xvfb-run`. GitHub runs both on every push (the screenshot test on Linux only, since GitHub's Windows machines have no graphics card).
+The second command plays a scripted game and saves screenshots plus `report.txt` to `OUT_DIR`: it opens the title and options screens, creates a world from the Create New World screen, finds a cow, kills it, picks up and eats the beef, mines and places a block, crafts planks and a crafting table in the inventory screen, puts on a chestplate, crafts a pickaxe on a placed crafting table, takes a stack from the creative item picker, falls, mines stone by hand and with a pickaxe, takes a hit in full armor, shoots arrows into a wall, lights a fire, pours and scoops up water, flies, visits a desert, hills, a taiga and a torch-lit cave (checking for sandstone, spruces, frozen water and every ore), takes F5 (in armor) and F3 pictures, places a torch and glowstone and checks their light, takes pictures at night and at sunset, makes it rain, snow and thunder (checking that lightning hurts), places a bed, sleeps through the night in it and respawns by it, fights every monster in a flat arena (a zombie's hit and knockback, a sword's hits and the invulnerability after them, a skeleton's arrow, a creeper's fuse and crater, a spider climbing a wall, a slime splitting, a zombie burning in the sun, a chain of TNT, a mob spawner, Peaceful, the death screen and natural spawning at midnight), builds a platform in the sky to try water falling off a pillar and spreading, lava turning to obsidian, sand and gravel falling, a plank hut burning, drowning, lava setting the player on fire, water putting them out, a current carrying them and lightning starting a fire, tills a field next to water, plants seeds, ripens wheat with bone meal and harvests it, eats a slice of cake, counts the wild plants and visits a meadow, builds a gallery of the new building blocks in the sky (hangs paintings, joins two chests and fills the double chest, places stairs, slabs and a double slab, a fence with a door, an iron door, ladders and a trapdoor, plays a note block, puts a disc in a jukebox and types on a sign, then breaks a door and a ladder's wall), builds a pen with every animal (saddles and rides the pig, shears and dyes sheep, milks the cow, tames a wolf that then follows the player and bites a zombie, angers a wild wolf, has a chicken lay an egg, throws eggs until chickens hatch, and checks the saddle and ink sac drops), lays a track with a slope, a curve, a powered rail and a detector rail and rides a minecart along it, fills a storage minecart, fuels a powered minecart, breaks a minecart, sails a boat and crashes it, opens the pause menu, changes a block, saves and quits to the title, and loads the world again to check that everything came back. Its world and `options.txt` go in `OUT_DIR`, so your own saves are never touched. It exits with an error if any check fails. On Windows or a Linux desktop, run it without `xvfb-run`. GitHub runs both on every push (the screenshot test on Linux only, since GitHub's Windows machines have no graphics card).
 
 ## Project layout
 
@@ -285,6 +296,9 @@ src/
   sky.cpp          time of day: sun position, sky, fog and cloud colours, how dark the night is, the cloud map
   weather.cpp      rain and thunder timers, where rain and snow fall, lightning, when you can sleep
   bed.cpp          placing beds and finding a free spot next to one
+  rails.cpp        rail shapes, joining rails up, slopes, powered and detector rails
+  vehicles.cpp     minecart and boat physics (Beta's, per game tick), drops, models and saving
+  game_vehicles.cpp  placing, riding, hitting and filling minecarts and boats in the game
   blockupdate.cpp  blocks that change by themselves: flowing water and lava, falling sand and gravel, fire; block ticks
   streamer.cpp     background threads that generate and mesh chunks
   renderer.cpp     OpenGL shaders and drawing the sky, sun, moon, stars, clouds, rain, snow, lightning, chunks, animals, items and the block outline
@@ -326,8 +340,9 @@ tests/             doctest logic tests (no window needed)
 - No cacti, pumpkins, dead bushes or snow layers yet (M6 part 2). Bone meal doesn't grow saplings yet (saplings come in the second part of M6). Plants only grow in chunks within 9 chunks of you, like Beta.
 - Fish come with fishing (M15). Cocoa beans for cookies are found in dungeon chests.
 - Worlds saved before world generation changed keep the chunks you visited, so there is a visible cliff where the old terrain meets the new.
+- Powered rails are always on until redstone arrives in M13 (detector rails already switch on, but power nothing yet). Mobs don't ride minecarts, explosions don't hurt vehicles and lava doesn't burn boats. Riding isn't saved: after loading you stand where your seat was.
 - Snow doesn't pile up on the ground yet, and leaves don't decay, saplings don't exist and ice doesn't melt: those come in the second part of M6.
-- Rails come with minecarts in M12, and iron doors only open by hand once redstone arrives (M13).
+- Iron doors stay shut until redstone arrives (M13).
 - Animals have no pathfinding either, and monsters don't fight back against wolves. Snowballs can't be thrown yet. Pigs struck by lightning stay pigs until zombie pigmen arrive with the Nether (M14).
 - Cactus (to cactus green) and saplings (as fuel) go into the furnace once they exist (M6).
 - Iron and gold need smelting (M7), and string, feathers, bones and gunpowder now come from monsters.
