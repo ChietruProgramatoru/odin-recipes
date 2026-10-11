@@ -1,5 +1,5 @@
-// Cows, dropped items and arrows: behaviour plus the box geometry used to draw them.
-// Monsters are in monsters.h.
+// Dropped items, arrows and the player model: behaviour plus the box geometry used to draw them.
+// Animals are in animals.h, monsters in monsters.h.
 #pragma once
 #include <array>
 #include <map>
@@ -15,13 +15,9 @@
 #include "survival.h"
 #include "world.h"
 
-constexpr double COW_HALF_WIDTH = 0.45;
-constexpr double COW_HEIGHT = 1.3;
-constexpr int COW_MAX_HEALTH = 10;
-
-// Models drawn for cows and dropped items. Item models are ITEM_MODEL_BASE + item id.
+// Models drawn for the player, arrows and dropped items. Item models are ITEM_MODEL_BASE + item id.
+// Animals' models are numbered from 300 (see animals.h).
 enum Model : int {
-    MODEL_COW_BODY, MODEL_COW_BODY_HURT, MODEL_COW_LEG, MODEL_COW_LEG_HURT, MODEL_COW_HEAD, MODEL_COW_HEAD_HURT,
     MODEL_PLAYER_HEAD, MODEL_PLAYER_BODY, MODEL_PLAYER_ARM, MODEL_PLAYER_LEG,
     MODEL_ARROW,
     // Monsters (see monsters.cpp), primed TNT, smoke puffs and the flames on a burning mob.
@@ -57,34 +53,6 @@ struct ArrowTarget {
     const void* who = nullptr;  // an arrow never hits the monster that shot it
 };
 
-class Cow {
-public:
-    enum class State { Idle, Walk, Panic };
-
-    Cow(World& world, double x, double y, double z, Rng& rng);
-
-    Body body;
-    double yaw, target_yaw;
-    int health = COW_MAX_HEALTH;
-    State state = State::Idle;
-    double state_timer;
-    double speed = 0, walk_phase = 0;
-    double knock_x = 0, knock_z = 0;
-    double flash = 0, dying = 0;
-    int blocked = 0;
-    bool graze = false;
-    double head_pitch = 0, roll = 0;
-
-    bool alive() const { return health > 0; }
-    void hurt(int amount, double from_x, double from_z);
-    // Distance along a ray to this cow's hit box, or nothing.
-    std::optional<float> ray_hit(glm::vec3 origin, glm::vec3 direction, float max_dist) const;
-    ArrowTarget target(int kind, int index) const;
-    // Returns true when the cow has finished dying and should drop loot.
-    bool tick(double dt, double player_x, double player_z, Rng& rng);
-    std::vector<ModelPart> parts() const;
-};
-
 class ItemDrop {
 public:
     ItemDrop(World& world, Stack stack, double x, double y, double z, Rng& rng);
@@ -114,6 +82,8 @@ public:
     // Shot by a skeleton: it can't be picked up (Beta), and it doesn't hit the skeleton.
     const void* shooter = nullptr;
     bool from_player = true;
+    // What flies: an arrow, or a thrown egg (it breaks where it lands, see Game::update_arrows).
+    ItemId item = ARROW;
 
     // Fly for dt seconds. Returns what it hit (the arrow is then used up), if anything.
     std::optional<ArrowTarget> tick(double dt, World& world, const std::vector<ArrowTarget>& targets);
@@ -139,7 +109,6 @@ struct PlayerPose {
 std::array<std::optional<Material>, 4> worn_armor(const Inventory& inv);
 std::vector<ModelPart> player_parts(const PlayerPose& pose);
 
-// Static meshes for cows, the player and dropped items, each in its own local frame.
+// Static meshes for animals, monsters, the player and dropped items, each in its own local frame.
 std::map<int, MeshData> build_models();
 
-int drop_beef_count(Rng& rng);

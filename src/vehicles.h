@@ -17,7 +17,7 @@ enum class VehicleKind : uint8_t { Minecart, StorageMinecart, PoweredMinecart, B
 constexpr int VEHICLE_KIND_COUNT = 4;
 
 // Models drawn for vehicles (see mobs.h for the others). Each points its front along +z.
-enum VehicleModel : int { MODEL_MINECART = 300, MODEL_BOAT };
+enum VehicleModel : int { MODEL_MINECART = 400, MODEL_BOAT };  // after the animals (animals.h)
 
 constexpr double CART_HALF_WIDTH = 0.49, CART_HEIGHT = 0.7;  // Beta: 0.98 x 0.7
 constexpr double BOAT_HALF_WIDTH = 0.75, BOAT_HEIGHT = 0.6;  // Beta: 1.5 x 0.6

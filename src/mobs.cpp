@@ -5,6 +5,7 @@
 
 #include <glm/gtc/matrix_transform.hpp>
 
+#include "animals.h"
 #include "monsters.h"
 #include "textures.h"
 #include "vehicles.h"
@@ -24,13 +25,6 @@ glm::mat4 rot(double deg, glm::vec3 axis) {
 }
 glm::mat4 rot_x(double deg) { return rot(deg, {1, 0, 0}); }
 glm::mat4 rot_y(double deg) { return rot(deg, {0, 1, 0}); }
-glm::mat4 rot_z(double deg) { return rot(deg, {0, 0, 1}); }
-
-// Python-style modulo (result has the sign of the divisor).
-double pymod(double a, double b) { return a - b * std::floor(a / b); }
-double angle_diff(double a, double b) { return pymod(b - a + 180, 360) - 180; }
-
-const double LEGS[4][2] = {{-0.22, 0.4}, {0.22, 0.4}, {-0.22, -0.4}, {0.22, -0.4}};
 
 }  // namespace
 
@@ -61,120 +55,6 @@ std::optional<float> ray_box(glm::vec3 origin, glm::vec3 direction, float max_di
         if (t0 > t1) return std::nullopt;
     }
     return t0;
-}
-
-// --- Cow --------------------------------------------------------------------------------
-
-Cow::Cow(World& world, double x, double y, double z, Rng& rng)
-    : body(world, x, y, z, COW_HALF_WIDTH, COW_HEIGHT) {
-    yaw = rng.uniform(0, 360);
-    target_yaw = yaw;
-    state_timer = rng.uniform(1, 4);
-}
-
-void Cow::hurt(int amount, double from_x, double from_z) {
-    if (!alive()) return;
-    health -= amount;
-    double dx = body.x - from_x, dz = body.z - from_z;
-    double d = std::hypot(dx, dz);
-    if (d == 0) d = 1.0;
-    knock_x = dx / d * 7;
-    knock_z = dz / d * 7;
-    if (body.on_ground) body.vy = 5.5;
-    flash = 0.3;
-    state = State::Panic;
-    state_timer = 5.0;
-    target_yaw = degrees(std::atan2(dx, dz));
-    if (!alive()) dying = 0.0001;
-}
-
-ArrowTarget Cow::target(int kind, int index) const {
-    const float h = 0.6f;
-    return {glm::vec3(body.x - h, body.y, body.z - h), glm::vec3(body.x + h, body.y + 1.5, body.z + h), kind, index, this};
-}
-
-std::optional<float> Cow::ray_hit(glm::vec3 origin, glm::vec3 direction, float max_dist) const {
-    const ArrowTarget t = target(0, 0);
-    return ray_box(origin, direction, max_dist, t.lo, t.hi);
-}
-
-bool Cow::tick(double dt, double player_x, double player_z, Rng& rng) {
-    if (dying) {
-        dying += dt;
-        roll = std::min(90.0, dying * 200);
-        return dying > 0.7;
-    }
-
-    state_timer -= dt;
-    if (state_timer <= 0) {
-        if (state == State::Panic || state == State::Walk) {
-            state = State::Idle;
-            state_timer = rng.uniform(2, 6);
-            graze = rng.random() < 0.5;
-        } else {
-            state = State::Walk;
-            state_timer = rng.uniform(2, 5);
-            target_yaw = rng.uniform(0, 360);
-        }
-    }
-    if (state == State::Panic && rng.random() < dt * 1.2) {
-        double away = degrees(std::atan2(body.x - player_x, body.z - player_z));
-        target_yaw = away + rng.uniform(-60, 60);
-    }
-
-    double turn = state == State::Panic ? 360 : 120;
-    double diff = angle_diff(yaw, target_yaw);
-    yaw += std::clamp(diff, -turn * dt, turn * dt);
-
-    double want = state == State::Idle ? 0.0 : state == State::Walk ? 1.3 : 4.2;
-    if (std::abs(diff) > 60) want *= 0.3;
-    speed += (want - speed) * std::min(1.0, dt * 6);
-
-    double rad = radians(yaw);
-    Body& b = body;
-    b.vx = std::sin(rad) * speed + knock_x;
-    b.vz = std::cos(rad) * speed + knock_z;
-    double decay = std::max(0.0, 1 - dt * 6);
-    knock_x *= decay;
-    knock_z *= decay;
-
-    b.check_water();
-    b.vx += b.current.x * CURRENT_SPEED;  // carried along by water
-    b.vz += b.current.z * CURRENT_SPEED;
-    b.apply_gravity(dt);
-    if (b.in_liquid()) b.vy = std::max(b.vy, 2.0);
-    HitAxes hit = b.move(b.vx * dt, b.vy * dt, b.vz * dt);
-    if ((hit.x || hit.z) && speed > 0.3) {
-        if (b.on_ground && blocked < 3) {
-            b.vy = 8.2;  // hop up one block
-            ++blocked;
-        } else if (blocked >= 3) {
-            target_yaw = yaw + rng.choice({-1, 1}) * rng.uniform(90, 180);
-            blocked = 0;
-        }
-    } else if (b.on_ground) {
-        blocked = 0;
-    }
-
-    walk_phase += speed * dt * 5;
-    double target_pitch = (state == State::Idle && graze) ? 40 : 0;
-    head_pitch += (target_pitch - head_pitch) * std::min(1.0, dt * 4);
-    flash = std::max(0.0, flash - dt);
-    return false;
-}
-
-std::vector<ModelPart> Cow::parts() const {
-    glm::mat4 root = translate(body.x, body.y, body.z) * rot_y(yaw) * rot_z(roll);
-    int hurt = (flash > 0 || dying) ? 1 : 0;
-    std::vector<ModelPart> out;
-    out.push_back({MODEL_COW_BODY + hurt, root});
-    double swing = std::sin(walk_phase) * std::min(1.0, speed) * 35;
-    for (int i = 0; i < 4; ++i) {
-        double s = (i == 0 || i == 3) ? swing : -swing;
-        out.push_back({MODEL_COW_LEG + hurt, root * translate(LEGS[i][0], 0.75, LEGS[i][1]) * rot_x(s)});
-    }
-    out.push_back({MODEL_COW_HEAD + hurt, root * translate(0, 1.2, 0.58) * rot_x(head_pitch)});
-    return out;
 }
 
 // --- Dropped items ------------------------------------------------------------------------
@@ -311,6 +191,8 @@ std::optional<ArrowTarget> Arrow::tick(double dt, World& world, const std::vecto
 }
 
 std::vector<ModelPart> Arrow::parts() const {
+    if (item != ARROW)
+        return {{ITEM_MODEL_BASE + item, translate(pos.x, pos.y, pos.z) * rot_y(yaw) * glm::scale(glm::mat4(1.0f), glm::vec3(0.6f))}};
     return {{MODEL_ARROW, translate(pos.x, pos.y, pos.z) * rot_y(yaw) * rot_x(pitch)}};
 }
 
@@ -319,22 +201,6 @@ std::vector<ModelPart> Arrow::parts() const {
 std::map<int, MeshData> build_models() {
     std::map<int, MeshData> models;
     const glm::mat4 ident(1.0f);
-    for (int hurt = 0; hurt < 2; ++hurt) {
-        int hide = hurt ? T_SNOUT : T_COW_HIDE;
-        MeshData& body = models[MODEL_COW_BODY + hurt];
-        add_box(body, ident, {0.75f, 0.62f, 1.15f}, {0, 1.06f, 0}, hide);   // body
-        add_box(body, ident, {0.08f, 0.5f, 0.08f}, {0, 0.95f, -0.6f}, hide);  // tail
-        MeshData& leg = models[MODEL_COW_LEG + hurt];
-        add_box(leg, ident, {0.25f, 0.63f, 0.25f}, {0, -0.315f, 0}, hide);
-        add_box(leg, ident, {0.26f, 0.12f, 0.26f}, {0, -0.69f, 0}, hurt ? T_SNOUT : T_HOOF);
-        MeshData& head = models[MODEL_COW_HEAD + hurt];
-        add_box(head, ident, {0.5f, 0.5f, 0.38f}, {0, 0, 0.19f}, hurt ? T_SNOUT : T_COW_HEAD);
-        add_box(head, ident, {0.32f, 0.2f, 0.08f}, {0, -0.13f, 0.41f}, T_SNOUT);
-        for (float side : {-1.0f, 1.0f}) {
-            add_box(head, ident, {0.07f, 0.07f, 0.02f}, {side * 0.15f, 0.08f, 0.385f}, T_BLACK);  // eyes
-            add_box(head, ident, {0.08f, 0.14f, 0.08f}, {side * 0.29f, 0.25f, 0.12f}, T_HORN);    // horns
-        }
-    }
     // Player parts, each around its joint: head at the neck, body at the hips,
     // arms at the shoulders and legs at the hips. The face looks along +z.
     MeshData& head = models[MODEL_PLAYER_HEAD];
@@ -377,6 +243,7 @@ std::map<int, MeshData> build_models() {
     add_box(arrow, ident, {0.015f, 0.16f, 0.12f}, {0, 0, -0.5f}, T_WHITE);
 
     add_monster_models(models);
+    add_animal_models(models);
     add_vehicle_models(models);
 
     for (ItemId item : all_items()) {
@@ -386,4 +253,3 @@ std::map<int, MeshData> build_models() {
     return models;
 }
 
-int drop_beef_count(Rng& rng) { return rng.randint(1, 3); }

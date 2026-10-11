@@ -12,6 +12,7 @@
 #include <sstream>
 #include <system_error>
 
+#include "animals.h"
 #include "combat.h"
 #include "json.h"
 #include "vehicles.h"
@@ -325,8 +326,9 @@ std::unique_ptr<Chunk> decode_chunk(const std::vector<uint8_t>& bytes, int cx, i
             }
         }
         bool finite = std::isfinite(e.x) && std::isfinite(e.y) && std::isfinite(e.z);
-        if (kind == EntityRecord::COW && finite && e.health > 0) {
-            e.kind = EntityRecord::COW;
+        if (kind == EntityRecord::ANIMAL && finite && e.health > 0 && e.mob >= 0 && e.mob < ANIMAL_KIND_COUNT) {
+            e.kind = EntityRecord::ANIMAL;
+            e.size = std::clamp(e.size, 0, 15);
             c->entities.push_back(e);
         } else if (kind == EntityRecord::MONSTER && finite && e.health > 0 && e.mob < MOB_KIND_COUNT) {
             e.kind = EntityRecord::MONSTER;

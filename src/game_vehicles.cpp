@@ -20,9 +20,9 @@ void Game::update_vehicles(double dt) {
         vehicle_ticks -= 1;
         tick_vehicles();
     }
-    if (riding) {
+    if (in_vehicle) {
         // The rider sits in it, and moves smoothly between ticks with it.
-        const glm::dvec3 s = riding->seat(vehicle_ticks);
+        const glm::dvec3 s = in_vehicle->seat(vehicle_ticks);
         player.x = s.x;
         player.y = s.y;
         player.z = s.z;
@@ -44,15 +44,15 @@ void Game::tick_vehicles() {
             ++i;  // its chunk isn't there yet: wait, so it doesn't fall through the world
             continue;
         }
-        if (&v != riding && std::hypot(v.body.x - player.x, v.body.z - player.z) > far_away) {
+        if (&v != in_vehicle && std::hypot(v.body.x - player.x, v.body.z - player.z) > far_away) {
             // Too far to simulate: keep it with its chunk until the player comes back.
             stash_entity(v.record());
             remove_vehicle(i, false);
             continue;
         }
-        v.ridden = &v == riding;
+        v.ridden = &v == in_vehicle;
         // Walking into a minecart or boat shoves it along.
-        if (!riding && !vitals.dead() && v.overlaps(player)) v.push_from(player.x, player.z);
+        if (!in_vehicle && !vitals.dead() && v.overlaps(player)) v.push_from(player.x, player.z);
         if (v.tick(v.ridden ? &input : nullptr)) {
             // A boat that crashed breaks up (or anything that fell out of the world goes).
             const bool fell = v.body.y < -64;
@@ -96,7 +96,7 @@ void Game::tick_vehicles() {
 
 void Game::remove_vehicle(size_t index, bool drop_items) {
     Vehicle* v = vehicles[index].get();
-    if (riding == v) dismount();
+    if (in_vehicle == v) get_out();
     if (chest_vehicle == v && gui) close_gui();
     chest_vehicle = chest_vehicle == v ? nullptr : chest_vehicle;
     if (target_vehicle == v) target_vehicle = nullptr;
@@ -142,10 +142,10 @@ void Game::use_vehicle(Vehicle& v) {
         if (v.add_fuel(inv.selected_item().value_or(AIR), player.x, player.z) && !creative) inv.take_selected();
         return;
     }
-    if (riding == &v) {
-        dismount();
-    } else if (!riding) {
-        mount(v);
+    if (in_vehicle == &v) {
+        get_out();
+    } else if (!in_vehicle && !riding) {
+        get_in(v);
     }
 }
 
@@ -163,9 +163,9 @@ void Game::hit_vehicle(Vehicle& v) {
         }
 }
 
-void Game::mount(Vehicle& v) {
+void Game::get_in(Vehicle& v) {
     if (!v.rideable()) return;
-    riding = &v;
+    in_vehicle = &v;
     v.ridden = true;
     sneaking = flying = false;
     sprint_.stop();
@@ -173,11 +173,11 @@ void Game::mount(Vehicle& v) {
     hud->show_message("Press " + key_name(options.keys[KEY_SNEAK]) + " to get out", 3);
 }
 
-void Game::dismount() {
-    if (!riding) return;
-    Vehicle& v = *riding;
+void Game::get_out() {
+    if (!in_vehicle) return;
+    Vehicle& v = *in_vehicle;
     v.ridden = false;
-    riding = nullptr;
+    in_vehicle = nullptr;
     // Out on top of it (Beta), or beside it if something is in the way.
     const glm::dvec2 spots[5] = {{0, 0}, {1, 0}, {-1, 0}, {0, 1}, {0, -1}};
     for (glm::dvec2 d : spots) {

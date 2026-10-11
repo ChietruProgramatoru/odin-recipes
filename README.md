@@ -10,7 +10,7 @@ It runs on Windows (the main target) and Linux.
 ## Features
 
 - **Title screen and worlds**: Beta-style gray buttons on a dark dirt background, all drawn by the code. Singleplayer lists your worlds (newest first) and lets you create, rename and delete them. A new world takes a name and an optional seed: a number is used as is, any other text is turned into a number, and a blank seed picks a random one.
-- **Saving**: worlds are saved every 60 seconds, when you open the pause menu and when you quit. Blocks you changed, where you stand, health, hunger, your whole inventory and armor, your bed, the weather, cows, monsters and dropped items all come back when you load the world.
+- **Saving**: worlds are saved every 60 seconds, when you open the pause menu and when you quit. Blocks you changed, where you stand, health, hunger, your whole inventory and armor, your bed, the weather, animals (sheared, saddled, dyed and tamed ones too), monsters and dropped items all come back when you load the world.
 - **Endless Beta-style terrain** from 3D Perlin noise: rolling hills, steep cliffs with overhangs, the odd floating island, oceans with sand and gravel beaches. The world is 128 blocks tall with the sea at height 64. Chunks are generated (or loaded from the save) and meshed on background threads as you walk, so the game doesn't stutter.
 - **Biomes** picked from temperature and rainfall like Beta: Rainforest, Swamp, Seasonal Forest, Forest, Savanna, Shrubland, Taiga, Desert, Plains, Ice Desert and Tundra. Grass and leaves change colour with the climate, deserts are sand with sandstone underneath, and water freezes over in Taiga, Tundra and Ice Desert. F3 shows the biome you are in.
 
@@ -26,7 +26,7 @@ It runs on Windows (the main target) and Linux.
 - **The right tool**: stone, cobblestone, bricks, sandstone, furnaces and ores drop nothing unless mined with a pickaxe, and take 5 s per point of hardness without one. Iron and lapis ore need a stone pickaxe or better; gold, diamond and redstone ore need iron or better.
 - **Wear**: tools have Beta's durability (wood 59 uses, stone 131, iron 250, gold 32, diamond 1561) and break when they run out. Digging uses up one use of a tool (two of a sword); hitting uses one of a sword and two of a tool.
 - **Weapons**: a fist hits for half a heart, swords for 2, 3, 4 and 5 hearts (wood and gold, stone, iron, diamond). Axes, pickaxes and shovels are weak weapons, between a fist and a sword (a diamond axe does 3 hearts).
-- **Bow and arrows**: right click with a bow fires an arrow at once, as in Beta (no drawing back), using one arrow from your inventory. Arrows fly in an arc, hit cows and monsters for 2 hearts, and stick in the block they hit; walk over a stuck arrow to pick it up. They vanish after a minute.
+- **Bow and arrows**: right click with a bow fires an arrow at once, as in Beta (no drawing back), using one arrow from your inventory. Arrows fly in an arc, hit animals and monsters for 2 hearts, and stick in the block they hit; walk over a stuck arrow to pick it up. They vanish after a minute.
 
   ![Arrows in a wall, and a fire](screenshots/arrows.png)
 
@@ -38,7 +38,7 @@ It runs on Windows (the main target) and Linux.
 - **Buckets**: an empty bucket scoops up a water or lava source (it looks straight through flowing water, like Beta), a full one pours a source out again, and it flows from there. Right-click a cow with an empty bucket to milk it; drinking milk just gives the bucket back, as in Beta.
 - **Shears** cut leaves quickly and keep them as leaf blocks.
 - **Flowing water and lava** work like Beta 1.7.3. Water spreads 7 blocks from a source on flat ground and lava 3 (and much more slowly), each step a little lower, and both pour over edges and down holes, taking the shortest way to the nearest drop. Two water sources next to an empty block make a new source, so a 2x2 pool never runs dry. The surface slopes down the way the water runs. Water washes torches away. Where flowing lava meets water it turns to cobblestone, a lava source turns to **obsidian** (it needs a diamond pickaxe), and lava pouring onto water makes stone. Generated lakes and seas stand still until something next to them changes.
-- **Currents** carry you, cows, monsters and dropped items along the way the water flows. Lava slows you down even more than water, and you can swim up in it, slowly.
+- **Currents** carry you, animals, monsters and dropped items along the way the water flows. Lava slows you down even more than water, and you can swim up in it, slowly.
 - **Drowning**: with your head under water you have 15 seconds of air, shown as bubbles above the hunger bar; then you lose a heart every second until you come up.
 - **Lava** burns you for 2 hearts at a time and sets you on fire for 30 seconds; standing in fire also sets you alight. Burning hurts half a heart a second and shows flames over the screen. Water and rain put you out. Items that fall in lava or fire burn up.
 - **Falling sand and gravel**: sand and gravel fall when the block under them goes, and land as blocks again (or drop as an item if they land on a torch). Gravel drops flint 1 time in 10.
@@ -47,7 +47,15 @@ It runs on Windows (the main target) and Linux.
   ![Water falling off a pillar, obsidian where it met lava, and a burning hut](screenshots/fluids_fire.png)
 
 - **Health and hunger**: you have 10 hearts and 10 drumsticks. Walking, sprinting, jumping, mining and fighting use up hunger. When you are well fed you slowly heal. When you are starving you slowly lose health, down to half a heart. Falls of more than 3 blocks hurt, and a big enough fall kills you.
-- **Cows** wander, graze and hop up ledges. Punch one and it panics and runs away. Each cow drops 1 to 3 beef, which you eat with a right click to restore 6 hunger.
+- **Animals** like Beta 1.7.3, with original blocky models. They wander, graze and hop up ledges; punch one and it panics and runs away. Animals caught in fire or lava burn, and burning pigs and cows drop their meat cooked.
+  - **Cows** drop 1 to 3 beef and up to 2 leather. Right-click one with an empty bucket to milk it.
+  - **Pigs** drop up to 2 raw porkchops. Right-click a pig with a saddle to saddle it, then right-click it again to ride. As in Beta you can't steer: the pig goes where it likes. Sneak to get off. A saddled pig drops its saddle when it dies.
+  - **Sheep** grow white wool mostly, sometimes grey, light grey, black or brown, and very rarely pink. Shears take 1 to 3 wool off (it doesn't grow back, as in Beta), and a sheep with its wool drops one wool when it dies. Right-click a sheep with any dye to colour its wool.
+  - **Chickens** flutter down slowly instead of falling, lay an egg every 5 to 10 minutes and drop up to 2 feathers. Right-click with an egg to throw it: one egg in 8 hatches a chicken, and now and then four.
+  - **Squid** swim about in the sea and drop 1 to 3 ink sacs.
+  - **Wolves** live in forests and taiga. Hit one and it turns on you, with the rest of its pack. Wild wolves now and then hunt sheep. Right-click a wolf with bones to tame it (one bone in three works): it sits down, and right-clicking it again makes it stand and follow you, or sit and wait. A tamed wolf jumps to you when you get far away, attacks whatever you hit or whatever hits you, shows its health by how high it holds its tail, and eats porkchops and beef to heal.
+  ![A wolf, a chicken, sheep, a pig and a cow](screenshots/animals.png)
+- **Spawning**: animals mostly appear as the world is made, in groups of up to 4 on grass, picked by the biome (Beta's weights: sheep, then pigs and chickens, then cows; wolves in forests and taiga; none in the desert), with squid in the sea. A few more turn up out of sight as you explore. Unlike Beta, animals never despawn.
 - Apples sometimes drop from leaves.
 - **Farming** like Beta 1.7.3: right-click grass or dirt with a **hoe** to make farmland. Farmland within 4 blocks of water (or out in the rain) turns dark and wet; dry farmland with nothing planted turns back to dirt. **Seeds** (one in eight bits of tall grass drops one) plant wheat, which grows through 8 stages in light 9 or more, fastest on wet farmland with more farmland around it and slower when crops crowd it on two sides. In the best spot it ripens in about 25 minutes of daylight. Ripe wheat drops wheat and 0 to 3 seeds; three wheat in a row make **bread**. Jumping or falling onto farmland can trample it back to dirt; walking over it is safe.
 - **Bone meal** (from bones) ripens a crop at once, or sprouts tall grass and flowers around the grass you use it on.
@@ -163,7 +171,7 @@ Everything lives in the folder the program is in (for example `build\Release\`):
 | Path | What it is |
 | --- | --- |
 | `saves/<world>/level.json` | The world's name, seed, play time, spawn point and the player (position, health, hunger, inventory slots 0-35 and armor slots 100-103 like Beta) |
-| `saves/<world>/region/r.X.Z.pcr` | The world's chunks, 32 x 32 chunks per file, each one compressed. Cows and dropped items are stored with the chunk they are in |
+| `saves/<world>/region/r.X.Z.pcr` | The world's chunks, 32 x 32 chunks per file, each one compressed. Animals, monsters and dropped items are stored with the chunk they are in |
 | `options.txt` | Your settings, one `name:value` per line like Beta's |
 | `screenshots/` | Pictures taken with F2 |
 
@@ -195,9 +203,11 @@ These are the defaults. Every key except the F keys, Esc, H and 1–9 can be cha
 | Space | Jump, or swim up in water or lava |
 | Left Shift | Sneak: walk slowly without falling off edges |
 | Double-tap W (and hold) | Sprint (not possible when hunger is 3 drumsticks or less; stops when you let go, sneak or hit a wall) |
-| Left mouse (hold) | Mine a block, or hit a cow or monster (with the selected tool or weapon) |
+| Left mouse (hold) | Mine a block, or hit an animal or monster (with the selected tool or weapon) |
 | Right mouse | Place the selected block (a torch goes on the top or side of the block you point at, a bed on top), eat the selected food, shoot the bow, light a fire or TNT with flint and steel, or fill, pour and drink from a bucket |
 | Right mouse on a bed | Sleep (at night or in a thunderstorm) |
+| Right mouse on an animal | Milk a cow (bucket), saddle or ride a pig, shear or dye a sheep, tame a wolf (bone), feed a tamed wolf (meat), or make a tamed wolf sit or follow |
+| Left Shift while riding | Get off the pig, or out of a minecart or boat |
 | 1–9 / mouse wheel | Choose a hotbar slot |
 | Q | Drop one of the selected item |
 | E | Open or close the inventory (the item picker in creative) |
@@ -230,7 +240,7 @@ In the inventory, crafting table and furnace screens (Beta's mouse rules):
 
 - Click **Singleplayer**, then **Create New World**.
 - Punch a tree (about 3 s per log), press **E** and put the logs in the crafting grid to make planks, then make a crafting table from 4 planks and build a shelter.
-- Cows are found on grass. Five spawn near you at the start, and more appear as you explore.
+- Cows, pigs, sheep and chickens are found on grass. A herd of cows and a few other groups spawn near you at the start, and more appear as you explore. Tame a wolf with bones to fight beside you.
 - Break tall grass for seeds, till the ground next to water with a hoe and plant them for bread.
 - Make a wooden pickaxe (3 planks over 2 sticks) before mining stone: by hand stone is slow and drops nothing. A stone pickaxe gets you iron ore; a furnace (8 cobblestone in a ring) smelts it into ingots. Cook beef in the furnace too: steak fills more than twice as much as raw beef.
 - Keep at least 9 drumsticks of hunger to regenerate health.
@@ -245,7 +255,7 @@ ctest --test-dir build --output-on-failure        # logic tests (add -C Release 
 xvfb-run -a -s "-screen 0 1280x720x24" ./build/PetrutzCraft --seed 7 --autotest OUT_DIR
 ```
 
-The second command plays a scripted game and saves screenshots plus `report.txt` to `OUT_DIR`: it opens the title and options screens, creates a world from the Create New World screen, finds a cow, kills it, picks up and eats the beef, mines and places a block, crafts planks and a crafting table in the inventory screen, puts on a chestplate, crafts a pickaxe on a placed crafting table, takes a stack from the creative item picker, falls, mines stone by hand and with a pickaxe, takes a hit in full armor, shoots arrows into a wall, lights a fire, pours and scoops up water, flies, visits a desert, hills, a taiga and a torch-lit cave (checking for sandstone, spruces, frozen water and every ore), takes F5 (in armor) and F3 pictures, places a torch and glowstone and checks their light, takes pictures at night and at sunset, makes it rain, snow and thunder (checking that lightning hurts), places a bed, sleeps through the night in it and respawns by it, fights every monster in a flat arena (a zombie's hit and knockback, a sword's hits and the invulnerability after them, a skeleton's arrow, a creeper's fuse and crater, a spider climbing a wall, a slime splitting, a zombie burning in the sun, a chain of TNT, a mob spawner, Peaceful, the death screen and natural spawning at midnight), builds a platform in the sky to try water falling off a pillar and spreading, lava turning to obsidian, sand and gravel falling, a plank hut burning, drowning, lava setting the player on fire, water putting them out, a current carrying them and lightning starting a fire, tills a field next to water, plants seeds, ripens wheat with bone meal and harvests it, eats a slice of cake, lays a track with a slope, a curve, a powered rail and a detector rail and rides a minecart along it, fills a storage minecart, fuels a powered minecart, breaks a minecart, sails a boat and crashes it, counts the wild plants and visits a meadow, opens the pause menu, changes a block, saves and quits to the title, and loads the world again to check that everything came back. Its world and `options.txt` go in `OUT_DIR`, so your own saves are never touched. It exits with an error if any check fails. On Windows or a Linux desktop, run it without `xvfb-run`. GitHub runs both on every push (the screenshot test on Linux only, since GitHub's Windows machines have no graphics card).
+The second command plays a scripted game and saves screenshots plus `report.txt` to `OUT_DIR`: it opens the title and options screens, creates a world from the Create New World screen, finds a cow, kills it, picks up and eats the beef, mines and places a block, crafts planks and a crafting table in the inventory screen, puts on a chestplate, crafts a pickaxe on a placed crafting table, takes a stack from the creative item picker, falls, mines stone by hand and with a pickaxe, takes a hit in full armor, shoots arrows into a wall, lights a fire, pours and scoops up water, flies, visits a desert, hills, a taiga and a torch-lit cave (checking for sandstone, spruces, frozen water and every ore), takes F5 (in armor) and F3 pictures, places a torch and glowstone and checks their light, takes pictures at night and at sunset, makes it rain, snow and thunder (checking that lightning hurts), places a bed, sleeps through the night in it and respawns by it, fights every monster in a flat arena (a zombie's hit and knockback, a sword's hits and the invulnerability after them, a skeleton's arrow, a creeper's fuse and crater, a spider climbing a wall, a slime splitting, a zombie burning in the sun, a chain of TNT, a mob spawner, Peaceful, the death screen and natural spawning at midnight), builds a platform in the sky to try water falling off a pillar and spreading, lava turning to obsidian, sand and gravel falling, a plank hut burning, drowning, lava setting the player on fire, water putting them out, a current carrying them and lightning starting a fire, tills a field next to water, plants seeds, ripens wheat with bone meal and harvests it, eats a slice of cake, counts the wild plants and visits a meadow, builds a pen with every animal (saddles and rides the pig, shears and dyes sheep, milks the cow, tames a wolf that then follows the player and bites a zombie, angers a wild wolf, has a chicken lay an egg, throws eggs until chickens hatch, and checks the saddle and ink sac drops), lays a track with a slope, a curve, a powered rail and a detector rail and rides a minecart along it, fills a storage minecart, fuels a powered minecart, breaks a minecart, sails a boat and crashes it, opens the pause menu, changes a block, saves and quits to the title, and loads the world again to check that everything came back. Its world and `options.txt` go in `OUT_DIR`, so your own saves are never touched. It exits with an error if any check fails. On Windows or a Linux desktop, run it without `xvfb-run`. GitHub runs both on every push (the screenshot test on Linux only, since GitHub's Windows machines have no graphics card).
 
 ## Project layout
 
@@ -256,7 +266,7 @@ src/
   app.cpp          the title screen, menus and options around the game, loading and quitting worlds
   menu.cpp         every menu screen (title, world list, create/rename/delete, options, controls, pause)
   ui.cpp           2D drawing: rectangles, icons and pixel text for the HUD and menus
-  game.cpp         controls, mining/building, survival rules, cows, monsters, explosions, item drops and saving one world
+  game.cpp         controls, mining/building, survival rules, animals, monsters, explosions, item drops and saving one world
   save.cpp         save files: level.json, region files, world folders, background saving
   options.cpp      options.txt and the key bindings
   json.cpp         a small JSON reader and writer
@@ -273,9 +283,9 @@ src/
   game_vehicles.cpp  placing, riding, hitting and filling minecarts and boats in the game
   blockupdate.cpp  blocks that change by themselves: flowing water and lava, falling sand and gravel, fire; block ticks
   streamer.cpp     background threads that generate and mesh chunks
-  renderer.cpp     OpenGL shaders and drawing the sky, sun, moon, stars, clouds, rain, snow, lightning, chunks, cows, items and the block outline
+  renderer.cpp     OpenGL shaders and drawing the sky, sun, moon, stars, clouds, rain, snow, lightning, chunks, animals, items and the block outline
   hud.cpp          crosshair, hotbar, hearts, hunger, text and overlays
-  physics.cpp      box-vs-voxel collision used by the player, cows and items
+  physics.cpp      box-vs-voxel collision used by the player, animals and items
   survival.cpp     the inventory, health, hunger and saturation
   farming.cpp      farmland, wheat, sugar cane, wild plants, cake, bone meal and Beta's random block ticks
   tools.cpp        Beta's tool rules: mining speed, which pickaxe a block needs, damage, wear, armor
@@ -285,7 +295,8 @@ src/
   furnace.cpp      smelting recipes, fuel and a furnace's burning and cooking each tick
   container.cpp    moving stacks in the inventory screens: click, split, shift-click, crafting
   inventory_screen.cpp  drawing the inventory, crafting table, furnace and creative picker screens
-  mobs.cpp         cow AI and model, the player model and its armor, dropped items, arrows
+  mobs.cpp         the player model and its armor, dropped items, arrows and thrown eggs
+  animals.cpp      animals (M9): their AI and models, and Beta's rules for drops, wool, eggs and taming
   combat.cpp       Beta's rules for monsters: difficulty, being hurt, stats, drops, spawning, sunlight, spawners, explosions
   monsters.cpp     monster AI and models, lit TNT, smoke puffs
   sound.cpp        sound effects made by the code, and how loud each ear hears them
@@ -309,12 +320,13 @@ tests/             doctest logic tests (no window needed)
 - Flying arrows, and arrows stuck in blocks, aren't saved: they're gone when you load the world. Fires and flowing water go on after loading; a water source that was just about to spread when you saved waits until something next to it changes.
 - Lava, water and ice are see-through for the crosshair, and ice drops nothing (like Beta). Water and lava have no flowing animation yet. Water washes crops away without dropping seeds.
 - No cacti, pumpkins, dead bushes or snow layers yet (M6 part 2 and M11). Bone meal doesn't grow saplings yet (saplings come in the second part of M6). Plants only grow in chunks within 9 chunks of you, like Beta.
-- Raw porkchops and fish come with pigs (M9) and fishing (M15), cocoa beans for cookies with dungeon chests, and eggs for cake with chickens (M9).
+- Fish come with fishing (M15), and cocoa beans for cookies with dungeon chests.
 - Worlds saved before world generation changed keep the chunks you visited, so there is a visible cliff where the old terrain meets the new.
 - No music, thunder or other sounds yet (M16).
 - Powered rails are always on until redstone arrives in M13 (detector rails already switch on, but power nothing yet). Mobs don't ride minecarts, explosions don't hurt vehicles and lava doesn't burn boats. Riding isn't saved: after loading you stand where your seat was.
 - Snow doesn't pile up on the ground yet, and leaves don't decay, saplings don't exist and ice doesn't melt: those come in the second part of M6.
-- Wool only comes from the creative item picker until sheep arrive (M10), so that's where beds start.
+- Wool can't be placed as a block yet (M11), but it comes from sheep and makes beds.
+- Animals have no pathfinding either, and monsters don't fight back against wolves. Snowballs can't be thrown yet. Pigs struck by lightning stay pigs until zombie pigmen arrive with the Nether (M14).
 - Cactus (to cactus green) and saplings (as fuel) go into the furnace once they exist (M6).
 - Doors and most other crafted things don't do anything yet; they arrive with M11 and the other milestones. Chests are plain blocks for now.
 - Iron and gold need smelting (M7), and string, feathers, bones and gunpowder now come from monsters.
