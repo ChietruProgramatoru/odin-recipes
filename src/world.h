@@ -16,6 +16,7 @@
 #include "blocks.h"
 #include "furnace.h"
 #include "noise.h"
+#include "tiles.h"
 
 constexpr int CHUNK = 16;
 constexpr int HEIGHT = 128;
@@ -44,6 +45,8 @@ struct ChunkPosHash {
 
 // Floor division by 16 for block -> chunk coordinates (works for negatives).
 inline int chunk_of(int block) { return block >> 4; }
+// A block's index in its chunk's arrays (see Chunk::index).
+inline int cell_index(glm::ivec3 p) { return (p.y << 8) | ((p.z & 15) << 4) | (p.x & 15); }
 
 // An animal, monster, vehicle or dropped item stored with the chunk it is in (in a save file, or
 // while the player is too far away for it to be simulated).
@@ -89,6 +92,12 @@ struct Chunk {
     bool saved_entities = false;        // the last save of this chunk had entities in it
     std::vector<EntityRecord> entities;  // waiting to be spawned when the chunk is shown
     std::map<int, Furnace> furnaces;     // what is in each furnace, by block index (saved)
+    // Building (M11), by block index too and saved: chests, signs, painting cells, note block
+    // pitches (0-24) and the disc in each jukebox (an item id).
+    std::map<int, ChestSlots> chests;
+    std::map<int, SignText> signs;
+    std::map<int, PaintingPart> paintings;
+    std::map<int, int> notes, records;
     Climate climate;  // not saved: always recomputed from the seed
 
     Chunk(int x, int z) : cx(x), cz(z) {}
@@ -198,11 +207,18 @@ struct MeshOptions {
     bool operator==(const MeshOptions&) const = default;
 };
 
+// What the mesher needs from a chunk besides its blocks: the text on its signs and which part of
+// which picture its painting cells show (by block index, see Chunk).
+struct MeshExtras {
+    std::map<int, SignText> signs;
+    std::map<int, PaintingPart> paintings;
+};
+
 // Mesh a padded chunk copy. Thread-safe: touches nothing but its arguments. The climate colours
 // grass and leaves (missing: the hotbar icon colours). The data values shape flowing water and
-// lava (missing: all still).
+// lava and turn stairs, doors and the like (missing: all 0).
 ChunkMesh build_mesh(const Padded& P, const PaddedLight& light, int cx, int cz, int max_y, MeshOptions options = {},
-                     const Climate* climate = nullptr, const Padded* data = nullptr);
+                     const Climate* climate = nullptr, const Padded* data = nullptr, const MeshExtras* extras = nullptr);
 
 // All chunks, keyed by chunk position. Only the main thread touches it; worker threads get
 // generated chunks handed over with insert() and mesh from padded copies.
@@ -232,6 +248,9 @@ public:
     // Take the furnace away from a block, returning what was in it.
     std::optional<Furnace> take_furnace(glm::ivec3 pos);
     int get_data(int x, int y, int z);  // the block's 4-bit data value (0 outside the loaded world)
+    // The loaded chunk a cell is in (nullptr outside the world's height or if it isn't loaded), for
+    // the things blocks keep there (chests, signs...; index them with cell_index).
+    Chunk* chunk_at(glm::ivec3 p);
     // Set a block (and its data value) and update the light around it. Returns the chunks whose
     // meshes need rebuilding.
     std::vector<ChunkPos> set_block(int x, int y, int z, BlockId block, int data = 0);
@@ -255,6 +274,9 @@ public:
     bool box_collides(double x0, double y0, double z0, double x1, double y1, double z1);
     // The highest top of the solid blocks a box overlaps (for landing on beds and full blocks).
     double box_top(double x0, double y0, double z0, double x1, double y1, double z1);
+    // Of the boxes a box overlaps, the lowest side facing the way it moved (positive) along an
+    // axis, or the highest one facing the other way: where it has to stop.
+    double box_limit(int axis, bool positive, double x0, double y0, double z0, double x1, double y1, double z1);
     bool box_in_water(double x0, double y0, double z0, double x1, double y1, double z1) {
         return box_in(WATER, x0, y0, z0, x1, y1, z1);
     }
@@ -272,10 +294,13 @@ public:
     Padded padded(int cx, int cz);
     Padded padded_data(int cx, int cz);  // the data values, laid out the same
     PaddedLight padded_light(int cx, int cz);
+    MeshExtras mesh_extras(int cx, int cz);  // a copy of a chunk's signs and paintings
     // Mesh a chunk right now on this thread.
     ChunkMesh build_mesh_now(int cx, int cz, MeshOptions options = {});
 
 private:
+    template <typename Fn>
+    void for_each_box(double x0, double y0, double z0, double x1, double y1, double z1, Fn&& fn);
     // Light (light.cpp): let light flow between a new chunk and its neighbours, and update
     // the light around a changed block (adding the chunks whose meshes see a change to `dirty`).
     void join_light(Chunk& chunk);

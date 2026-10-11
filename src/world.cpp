@@ -7,7 +7,10 @@
 #include <glm/vec2.hpp>
 
 #include "bed.h"
+#include "building.h"
+#include "font.h"
 #include "icons.h"
+#include "painting.h"
 #include "rails.h"
 #include "textures.h"
 
@@ -189,6 +192,11 @@ std::optional<Furnace> World::take_furnace(glm::ivec3 p) {
     return f;
 }
 
+Chunk* World::chunk_at(glm::ivec3 p) {
+    if (p.y < 0 || p.y >= HEIGHT) return nullptr;
+    return find(chunk_of(p.x), chunk_of(p.z));
+}
+
 int World::get_data(int x, int y, int z) {
     if (y < 0 || y >= HEIGHT) return 0;
     Chunk* c = find(chunk_of(x), chunk_of(z));
@@ -233,8 +241,17 @@ std::vector<ChunkPos> World::set_block(int x, int y, int z, BlockId block, int d
     int cx = chunk_of(x), cz = chunk_of(z);
     Chunk& c = chunk(cx, cz);
     int lx = x & 15, lz = z & 15;
-    c.blocks[Chunk::index(lx, y, lz)] = block;
-    c.data[Chunk::index(lx, y, lz)] = static_cast<uint8_t>(data & 15);
+    const int index = Chunk::index(lx, y, lz);
+    if (c.blocks[index] != block) {
+        // What the old block kept goes with it (the game empties a chest or jukebox before this).
+        if (block != CHEST) c.chests.erase(index);
+        if (block != SIGN_POST && block != WALL_SIGN) c.signs.erase(index);
+        if (block != PAINTING_BLOCK) c.paintings.erase(index);
+        if (block != NOTE_BLOCK) c.notes.erase(index);
+        if (block != JUKEBOX) c.records.erase(index);
+    }
+    c.blocks[index] = block;
+    c.data[index] = static_cast<uint8_t>(data & 15);
     c.dirty = true;
     changes_.push_back({x, y, z});
     if (block != AIR) c.max_y = std::max(c.max_y, std::min(HEIGHT - 1, y + 1));
@@ -268,22 +285,53 @@ int World::surface_y(int x, int z) {
     return 1;
 }
 
-bool World::box_collides(double x0, double y0, double z0, double x1, double y1, double z1) {
+// Every box bodies bump into that overlaps the region (x1, y1 and z1 count as inside). The cell
+// layer under the region is looked at too, for the tops of fences, which reach 1.5 high.
+template <typename Fn>
+void World::for_each_box(double x0, double y0, double z0, double x1, double y1, double z1, Fn&& fn) {
     for (int bx = ifloor(x0); bx <= ifloor(x1); ++bx)
-        for (int by = ifloor(y0); by <= ifloor(y1); ++by)
-            for (int bz = ifloor(z0); bz <= ifloor(z1); ++bz)
-                if (BlockId b = get_block(bx, by, bz); is_solid(b) && y0 < by + block_height(b)) return true;
-    return false;
+        for (int by = ifloor(y0) - 1; by <= ifloor(y1); ++by)
+            for (int bz = ifloor(z0); bz <= ifloor(z1); ++bz) {
+                const BlockId b = get_block(bx, by, bz);
+                if (b == AIR || is_fluid(b)) continue;
+                if (by < ifloor(y0) && b != FENCE) continue;
+                auto check = [&](glm::dvec3 lo, glm::dvec3 hi) {
+                    lo += glm::dvec3(bx, by, bz);
+                    hi += glm::dvec3(bx, by, bz);
+                    if (lo.x <= x1 && hi.x > x0 && lo.y <= y1 && hi.y > y0 && lo.z <= z1 && hi.z > z0) return fn(lo, hi);
+                    return false;
+                };
+                if (is_shaped(b)) {
+                    for (const Box& box : block_boxes(*this, {bx, by, bz}, true))
+                        if (check(box.lo, box.hi)) return;
+                } else if (is_solid(b)) {
+                    if (check(glm::dvec3(0), glm::dvec3(1, block_height(b), 1))) return;
+                }
+            }
+}
+
+bool World::box_collides(double x0, double y0, double z0, double x1, double y1, double z1) {
+    bool hit = false;
+    for_each_box(x0, y0, z0, x1, y1, z1, [&](glm::dvec3, glm::dvec3) { return hit = true; });
+    return hit;
 }
 
 double World::box_top(double x0, double y0, double z0, double x1, double y1, double z1) {
     double top = y0;
-    for (int bx = ifloor(x0); bx <= ifloor(x1); ++bx)
-        for (int by = ifloor(y0); by <= ifloor(y1); ++by)
-            for (int bz = ifloor(z0); bz <= ifloor(z1); ++bz)
-                if (BlockId b = get_block(bx, by, bz); is_solid(b) && y0 < by + block_height(b))
-                    top = std::max(top, by + static_cast<double>(block_height(b)));
+    for_each_box(x0, y0, z0, x1, y1, z1, [&](glm::dvec3, glm::dvec3 hi) {
+        top = std::max(top, hi.y);
+        return false;
+    });
     return top;
+}
+
+double World::box_limit(int axis, bool positive, double x0, double y0, double z0, double x1, double y1, double z1) {
+    double limit = positive ? std::numeric_limits<double>::infinity() : -std::numeric_limits<double>::infinity();
+    for_each_box(x0, y0, z0, x1, y1, z1, [&](glm::dvec3 lo, glm::dvec3 hi) {
+        limit = positive ? std::min(limit, lo[axis]) : std::max(limit, hi[axis]);
+        return false;
+    });
+    return limit;
 }
 
 bool World::box_in(BlockId block, double x0, double y0, double z0, double x1, double y1, double z1) {
@@ -321,7 +369,14 @@ std::optional<RayHit> World::raycast(glm::vec3 origin, glm::vec3 direction, floa
     float t = 0.0f;
     while (t <= max_dist) {
         BlockId blk = get_block(pos.x, pos.y, pos.z);
-        if (stops(pos, blk)) return RayHit{pos, prev, t};
+        if (stops(pos, blk)) {
+            if (!is_shaped(blk)) return RayHit{pos, prev, t};
+            // A slab, door, fence...: only where the ray meets one of its boxes.
+            // The cell before is the one beside the box face it hits (on top of a slab, not beside it).
+            glm::ivec3 face(0);
+            const auto d = ray_boxes(block_boxes(*this, pos, false), origin - glm::vec3(pos), direction, &face);
+            if (d && *d <= max_dist) return RayHit{pos, face == glm::ivec3(0) ? prev : std::optional<glm::ivec3>(pos + face), std::max(t, *d)};
+        }
         prev = pos;
         int axis = 0;
         if (t_max[1] < t_max[axis]) axis = 1;
@@ -388,12 +443,18 @@ PaddedLight World::padded_light(int cx, int cz) {
     return pad<uint8_t>(*this, cx, cz, 0, MAX_LIGHT << 4, [](Chunk& c) -> const auto& { return c.light; });
 }
 
+MeshExtras World::mesh_extras(int cx, int cz) {
+    const Chunk& c = chunk(cx, cz);
+    return {c.signs, c.paintings};
+}
+
 ChunkMesh World::build_mesh_now(int cx, int cz, MeshOptions options) {
     Padded P = padded(cx, cz);
     PaddedLight L = padded_light(cx, cz);
     Padded D = padded_data(cx, cz);
+    MeshExtras E = mesh_extras(cx, cz);
     const Chunk& c = chunk(cx, cz);
-    return build_mesh(P, L, cx, cz, c.max_y, options, &c.climate, &D);
+    return build_mesh(P, L, cx, cz, c.max_y, options, &c.climate, &D, &E);
 }
 
 namespace {
@@ -530,6 +591,211 @@ void add_plant(MeshData& mesh, float wx, float wy, float wz, BlockId blk, int da
     sheet({0.15f, 0, 0.85f}, {0.85f, 0, 0.15f});
 }
 
+// --- Building blocks (M11) ---------------------------------------------------------------
+
+// The tiles (top, side, bottom) of a slab or double slab of a kind (Beta: stone, sandstone, wood, cobblestone).
+std::array<int, 3> slab_tiles(int kind) {
+    switch (kind & 3) {
+        case 1: return {IT_SANDSTONE_TOP, IT_SANDSTONE_SIDE, IT_SANDSTONE_TOP};
+        case 2: return {T_PLANKS, T_PLANKS, T_PLANKS};
+        case 3: return {T_COBBLE, T_COBBLE, T_COBBLE};
+        default: return {IT_SLAB_TOP, IT_SLAB_SIDE, IT_SLAB_TOP};
+    }
+}
+
+// Where a shaped block is being drawn, and how to light its faces.
+struct ShapeCtx {
+    MeshData& mesh;
+    const Padded& P;
+    const PaddedLight& L;
+    int i;  // padded index of the cell
+    glm::vec3 o;  // the cell's corner in the world
+    bool light_from_neighbours;  // slabs and stairs are dark inside: use the light next to each face
+
+    uint8_t light_towards(glm::ivec3 n) const { return light_from_neighbours ? L[i + off(n)] : L[i]; }
+};
+
+// A box in a cell, each face textured with the part of its tile the box covers (top, side, bottom
+// tiles). Faces on the cell's edge against an opaque neighbour aren't drawn.
+void shape_box(const ShapeCtx& c, glm::vec3 lo, glm::vec3 hi, const std::array<int, 3>& tiles) {
+    for (const FaceDef& f : face_defs()) {
+        const glm::ivec3 n = f.normal;
+        const int axis = n.x ? 0 : n.y ? 1 : 2;
+        const bool on_edge = n[axis] > 0 ? hi[axis] >= 1.0f : lo[axis] <= 0.0f;
+        if (on_edge && OPAQUE[c.P[c.i + off(n)]]) continue;
+        std::array<glm::vec3, 4> pts;
+        for (int k = 0; k < 4; ++k) pts[k] = c.o + lo + glm::vec3(f.corners[k]) * (hi - lo);
+        float u0, u1, v0, v1;
+        if (n.y != 0) {
+            u0 = lo.x, u1 = hi.x, v0 = lo.z, v1 = hi.z;
+        } else if (n.x != 0) {
+            u0 = lo.z, u1 = hi.z, v0 = 1 - hi.y, v1 = 1 - lo.y;
+        } else {
+            u0 = lo.x, u1 = hi.x, v0 = 1 - hi.y, v1 = 1 - lo.y;
+        }
+        v0 = std::max(0.0f, v0);  // a fence post's top reaches past the cell
+        const uint8_t light = c.light_towards(on_edge || c.light_from_neighbours ? n : glm::ivec3(0));
+        c.mesh.quad_points(pts, sub_uv(tiles[f.slot], u0 * 16, v0 * 16, u1 * 16, v1 * 16), f.light, sky_of(light),
+                           block_of(light));
+    }
+}
+
+// A flat picture (the ladder): one sheet `gap` in front of the wall on side `facing`, drawn from both sides.
+void wall_sheet(const ShapeCtx& c, int facing, float gap, int tile) {
+    const glm::ivec3 d = facing_dir(facing);
+    const glm::vec3 front = -glm::vec3(d), right = glm::vec3(painting_right(-d));
+    const glm::vec3 centre = c.o + glm::vec3(0.5f) + glm::vec3(d) * (0.5f - gap);
+    const glm::vec3 bl = centre - right * 0.5f - glm::vec3(0, 0.5f, 0), br = bl + right, up(0, 1, 0);
+    const uint8_t light = c.L[c.i];
+    const auto uv = tile_uv(tile);
+    c.mesh.quad_points({bl, br, br + up, bl + up}, uv, 0.8f, sky_of(light), block_of(light));
+    c.mesh.quad_points({br, bl, bl + up, br + up}, {uv[2], uv[1], uv[0], uv[3]}, 0.8f, sky_of(light), block_of(light));
+    (void)front;
+}
+
+// A quad given by its corners as you look at its front (bottom left, bottom right, top right, top
+// left), textured the right way round. The renderer wants corners clockwise from the front, and
+// quad_points puts uv's first corner on its first point.
+void front_quad(MeshData& m, glm::vec3 bl, glm::vec3 br, glm::vec3 tr, glm::vec3 tl, const std::array<float, 4>& uv, float shade,
+                float sky, float block) {
+    m.quad_points({br, bl, tl, tr}, {uv[2], uv[1], uv[0], uv[3]}, shade, sky, block);
+}
+
+// A box given by its centre, half sizes along (right, up, front) and those directions: for a
+// sign turned to any of 16 facings. Every face gets the same tile.
+void turned_box(const ShapeCtx& c, glm::vec3 centre, glm::vec3 half, glm::vec3 right, glm::vec3 front, int tile) {
+    const glm::vec3 up(0, 1, 0);
+    const uint8_t light = c.L[c.i];
+    auto corner = [&](float sx, float sy, float sz) { return centre + right * (sx * half.x) + up * (sy * half.y) + front * (sz * half.z); };
+    struct F {
+        glm::vec3 a, b, cc, d;
+        float shade;
+        float w, h;  // size in the face, for the texture
+    };
+    const F faces[6] = {
+        {corner(-1, -1, 1), corner(1, -1, 1), corner(1, 1, 1), corner(-1, 1, 1), 0.8f, half.x, half.y},      // front
+        {corner(1, -1, -1), corner(-1, -1, -1), corner(-1, 1, -1), corner(1, 1, -1), 0.8f, half.x, half.y},  // back
+        {corner(1, -1, 1), corner(1, -1, -1), corner(1, 1, -1), corner(1, 1, 1), 0.68f, half.z, half.y},     // right
+        {corner(-1, -1, -1), corner(-1, -1, 1), corner(-1, 1, 1), corner(-1, 1, -1), 0.68f, half.z, half.y}, // left
+        {corner(-1, 1, 1), corner(1, 1, 1), corner(1, 1, -1), corner(-1, 1, -1), 1.0f, half.x, half.z},      // top
+        {corner(-1, -1, -1), corner(1, -1, -1), corner(1, -1, 1), corner(-1, -1, 1), 0.5f, half.x, half.z},  // bottom
+    };
+    for (const F& f : faces) {
+        const float w = std::min(16.0f, f.w * 32), h = std::min(16.0f, f.h * 32);
+        front_quad(c.mesh, f.a, f.b, f.cc, f.d, sub_uv(tile, 0, 0, w, h), f.shade, sky_of(light), block_of(light));
+    }
+}
+
+// The text of a sign on the plane of its front: up to 4 lines, each centred, black.
+void sign_text(const ShapeCtx& c, const SignText& text, glm::vec3 centre, glm::vec3 right, glm::vec3 front) {
+    constexpr float PX = 1.0f / 96;  // a font pixel on a sign
+    const glm::vec3 up(0, 1, 0);
+    const uint8_t light = c.L[c.i];
+    const float atlas_w = static_cast<float>(TILE * ATLAS_COLS), atlas_h = static_cast<float>(TILE * ATLAS_ROWS);
+    const float font_y = static_cast<float>((FONT_TILE_BASE / ATLAS_COLS) * TILE);
+    const glm::vec3 lift = front * 0.004f;
+    for (int line = 0; line < SIGN_LINES; ++line) {
+        const std::string& s = text[line];
+        if (s.empty()) continue;
+        const float width = static_cast<float>(static_cast<int>(s.size()) * GLYPH_ADVANCE - 1) * PX;
+        const float top = (2 - line) * LINE_HEIGHT * PX - 1 * PX;  // lines from the board's middle up and down
+        glm::vec3 pen = centre + lift - right * (width / 2) + up * (top - CELL_H * PX + 2 * PX);
+        for (char ch : s) {
+            int col, row;
+            glyph_cell(ch, col, row);
+            const float u0 = (col * CELL_W + 0.01f) / atlas_w, u1 = (col * CELL_W + CELL_W - 0.01f) / atlas_w;
+            const float v1 = 1.0f - (font_y + row * CELL_H + 0.01f) / atlas_h, v0 = 1.0f - (font_y + row * CELL_H + CELL_H - 0.01f) / atlas_h;
+            const glm::vec3 bl = pen, br = pen + right * (CELL_W * PX), tl = pen + up * (CELL_H * PX);
+            front_quad(c.mesh, bl, br, br + up * (CELL_H * PX), tl, {u0, v0, u1, v1}, 0.8f, sky_of(light), block_of(light));
+            pen += right * (GLYPH_ADVANCE * PX);
+        }
+    }
+}
+
+void add_shaped(const ShapeCtx& c, BlockId blk, int data, const MeshExtras* extras, int local) {
+    switch (blk) {
+        case SLAB: {
+            shape_box(c, {0, 0, 0}, {1, 0.5f, 1}, slab_tiles(data));
+            return;
+        }
+        case WOOD_STAIRS: case COBBLE_STAIRS: {
+            const int t = blk == WOOD_STAIRS ? T_PLANKS : T_COBBLE;
+            for (const Box& b : shape_boxes(blk, data, {}, false)) shape_box(c, b.lo, b.hi, {t, t, t});
+            return;
+        }
+        case FENCE: {
+            constexpr float A = 6.0f / 16, B = 10.0f / 16, BAR0 = 7.0f / 16, BAR1 = 9.0f / 16;
+            shape_box(c, {A, 0, A}, {B, 1, B}, {T_PLANKS, T_PLANKS, T_PLANKS});
+            for (int f = 0; f < 4; ++f) {
+                const glm::ivec3 d = facing_dir(f);
+                if (c.P[c.i + off(d)] != FENCE) continue;
+                for (float y : {12.0f / 16, 6.0f / 16}) {
+                    glm::vec3 lo(BAR0, y, BAR0), hi(BAR1, y + 3.0f / 16, BAR1);
+                    if (d.x > 0) lo.x = B, hi.x = 1;
+                    if (d.x < 0) lo.x = 0, hi.x = A;
+                    if (d.z > 0) lo.z = B, hi.z = 1;
+                    if (d.z < 0) lo.z = 0, hi.z = A;
+                    shape_box(c, lo, hi, {T_PLANKS, T_PLANKS, T_PLANKS});
+                }
+            }
+            return;
+        }
+        case LADDER: wall_sheet(c, data, 1.0f / 16, T_LADDER); return;
+        case WOOD_DOOR_BLOCK: case IRON_DOOR_BLOCK: {
+            const bool iron = blk == IRON_DOOR_BLOCK, upper = data & DOOR_UPPER;
+            const int t = iron ? (upper ? T_IRON_DOOR_TOP : T_IRON_DOOR_BOTTOM) : (upper ? T_WOOD_DOOR_TOP : T_WOOD_DOOR_BOTTOM);
+            for (const Box& b : shape_boxes(blk, data, {}, false)) shape_box(c, b.lo, b.hi, {t, t, t});
+            return;
+        }
+        case TRAPDOOR:
+            for (const Box& b : shape_boxes(blk, data, {}, false)) shape_box(c, b.lo, b.hi, {T_TRAPDOOR, T_TRAPDOOR, T_TRAPDOOR});
+            return;
+        case SIGN_POST: case WALL_SIGN: {
+            glm::vec3 front, centre;
+            constexpr float THICK = 1.0f / 12;
+            if (blk == SIGN_POST) {
+                const float a = data * 3.14159265f / 8;
+                front = {-std::sin(a), 0, std::cos(a)};
+                centre = c.o + glm::vec3(0.5f, 0.75f, 0.5f);
+            } else {
+                front = -glm::vec3(facing_dir(data));
+                centre = c.o + glm::vec3(0.5f, 0.53125f, 0.5f) - front * (0.5f - THICK / 2);
+            }
+            const glm::vec3 right(front.z, 0, -front.x);
+            turned_box(c, centre, {0.5f, 0.25f, THICK / 2}, right, front, T_PLANKS);
+            if (blk == SIGN_POST) turned_box(c, c.o + glm::vec3(0.5f, 0.25f, 0.5f), {THICK / 2, 0.25f, THICK / 2}, right, front, T_LOG_SIDE);
+            if (extras)
+                if (auto it = extras->signs.find(local); it != extras->signs.end())
+                    sign_text(c, it->second, centre + front * (THICK / 2), right, front);
+            return;
+        }
+        case PAINTING_BLOCK: {
+            const glm::ivec3 d = facing_dir(data);
+            const glm::vec3 front = -glm::vec3(d), right(front.z, 0, -front.x), up(0, 1, 0);
+            PaintingPart part;
+            if (extras)
+                if (auto it = extras->paintings.find(local); it != extras->paintings.end()) part = it->second;
+            // The picture 1/16 out from the wall, its back and edges against the wall.
+            const glm::vec3 face = c.o + glm::vec3(0.5f) + glm::vec3(d) * (0.5f - 1.0f / 16);
+            const glm::vec3 bl = face - right * 0.5f - up * 0.5f;
+            const uint8_t light = c.L[c.i];
+            front_quad(c.mesh, bl, bl + right, bl + right + up, bl + up, tile_uv(painting_tile(part)), 0.8f, sky_of(light),
+                       block_of(light));
+            Box b = shape_boxes(blk, data, {}, false)[0];
+            const glm::vec3 lo = b.lo, hi = b.hi;
+            // Edges only (the front is the picture, the back is against the wall).
+            for (const FaceDef& f : face_defs()) {
+                if (glm::vec3(f.normal) == front || glm::vec3(f.normal) == -front) continue;
+                std::array<glm::vec3, 4> pts;
+                for (int k = 0; k < 4; ++k) pts[k] = c.o + lo + glm::vec3(f.corners[k]) * (hi - lo);
+                c.mesh.quad_points(pts, sub_uv(T_PAINTING_BACK, 0, 0, 16, 1), f.light, sky_of(light), block_of(light));
+            }
+            return;
+        }
+        default: return;
+    }
+}
+
 // Rails: one sheet just above the block below, drawn from both sides. The tiles run north-south
 // (bottom of the picture to the south); curves join the bottom and right of the picture (south and
 // east) and are turned for the other corners. Slopes are tilted up to the next block.
@@ -623,7 +889,7 @@ void add_fluid(MeshData& mesh, const Padded& P, const Padded* D, const PaddedLig
 }  // namespace
 
 ChunkMesh build_mesh(const Padded& P, const PaddedLight& L, int cx, int cz, int max_y, MeshOptions options,
-                     const Climate* climate, const Padded* data) {
+                     const Climate* climate, const Padded* data, const MeshExtras* extras) {
     ChunkMesh mesh;
     const int ox = cx * CHUNK, oz = cz * CHUNK;
     const int top = std::min(HEIGHT, max_y + 1);
@@ -680,6 +946,11 @@ ChunkMesh build_mesh(const Padded& P, const PaddedLight& L, int cx, int cz, int 
                     add_box(mesh.solid, {wx, wy, wz}, {0, 0, 0}, {1, 2.0f / 16, 1}, block_info(SNOW_LAYER)->tiles, -1, L[i]);
                     continue;
                 }
+                if (is_shaped(blk)) {
+                    const ShapeCtx ctx{mesh.solid, P, L, i, {wx, wy, wz}, light_opacity(blk) > 0};
+                    add_shaped(ctx, blk, D(i), extras, (y << 8) | (z << 4) | x);
+                    continue;
+                }
                 if (blk == WATER || blk == LAVA) {
                     add_fluid(blk == WATER ? mesh.water : mesh.solid, P, data, L, i, blk, wx, wy, wz);
                     continue;
@@ -714,6 +985,17 @@ ChunkMesh build_mesh(const Padded& P, const PaddedLight& L, int cx, int cz, int 
                 const bool snowy = blk == GRASS && P[i + off(0, 1, 0)] == SNOW_LAYER;
                 const bool furnace = is_furnace(blk);
                 const glm::ivec3 facing = furnace ? FACING_DIRS[furnace_dir(blk)] : glm::ivec3(0);
+                // Blocks whose faces come from their data value: wool's colour, a double slab's kind,
+                // the side a chest's front is on (and the halves of a double chest).
+                std::optional<std::array<int, 3>> data_tiles;
+                glm::ivec3 chest_front(0), chest_partner(0);
+                if (blk == WOOL) data_tiles = std::array<int, 3>{IT_WOOL + D(i), IT_WOOL + D(i), IT_WOOL + D(i)};
+                if (blk == DOUBLE_SLAB) data_tiles = slab_tiles(D(i));
+                if (blk == CHEST) {
+                    chest_front = FACING_DIRS[D(i) & 3];
+                    for (glm::ivec3 d : FACING_DIRS)
+                        if (P[i + off(d)] == CHEST) chest_partner = d;
+                }
                 for (const Face& f : FACES) {
                     const int front = i + f.offset;
                     BlockId nb = P[front];
@@ -744,11 +1026,27 @@ ChunkMesh build_mesh(const Padded& P, const PaddedLight& L, int cx, int cz, int 
                         sky[c] = s;
                         block[c] = b;
                     }
-                    const auto& uv = furnace && f.def->normal == facing
-                                         ? (is_lit_furnace(blk) ? LIT_FURNACE_FRONT_UV : FURNACE_FRONT_UV)
-                                     : (wet_farmland && f.def->slot == 0) ? FARMLAND_WET_UV
-                                     : (snowy && f.def->slot == 1)         ? GRASS_SNOW_SIDE_UV
-                                                                          : uvs[f.def->slot];
+                    std::array<float, 4> uv = furnace && f.def->normal == facing
+                                                  ? (is_lit_furnace(blk) ? LIT_FURNACE_FRONT_UV : FURNACE_FRONT_UV)
+                                              : (wet_farmland && f.def->slot == 0) ? FARMLAND_WET_UV
+                                              : (snowy && f.def->slot == 1)         ? GRASS_SNOW_SIDE_UV
+                                                                                   : uvs[f.def->slot];
+                    if (data_tiles) uv = tile_uv((*data_tiles)[f.def->slot]);
+                    if (blk == CHEST && f.def->normal.y == 0) {
+                        // Side faces are drawn mirrored (see FACE_DEFS), so the half on the viewer's
+                        // left takes the right half's picture.
+                        const glm::ivec3 n = f.def->normal;
+                        const bool front_face = n == chest_front, back_face = n == -chest_front;
+                        int t = IT_CHEST_SIDE;
+                        if (chest_partner != glm::ivec3(0) && (front_face || back_face)) {
+                            const bool partner_on_right = chest_partner == painting_right(n);
+                            t = front_face ? (partner_on_right ? T_CHEST_FRONT_RIGHT : T_CHEST_FRONT_LEFT)
+                                           : (partner_on_right ? T_CHEST_BACK_RIGHT : T_CHEST_BACK_LEFT);
+                        } else if (front_face) {
+                            t = IT_CHEST_FRONT;
+                        }
+                        uv = tile_uv(t);
+                    }
                     mesh.solid.quad(wx, wy, wz, f.def->corners, h, uv, shades, sky, block,
                                     snowy && f.def->slot == 1 ? white : tint);
                 }

@@ -132,7 +132,7 @@ bool Game::place_vehicle(ItemId item) {
 
 void Game::use_vehicle(Vehicle& v) {
     if (v.kind == VehicleKind::StorageMinecart) {
-        show_gui(std::make_unique<InventoryScreen>(active_inventory(), v.chest, "Minecart"));
+        show_gui(std::make_unique<InventoryScreen>(active_inventory(), v.chest, nullptr, "Minecart"));
         chest_vehicle = &v;
         return;
     }

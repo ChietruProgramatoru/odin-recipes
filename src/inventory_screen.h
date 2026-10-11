@@ -17,8 +17,9 @@ public:
     InventoryScreen(Kind kind, Inventory& inventory);
     // A furnace's screen.
     InventoryScreen(Inventory& inventory, Furnace& furnace);
-    // A chest's screen (a storage minecart's), with its title.
-    InventoryScreen(Inventory& inventory, ChestSlots& chest, std::string title);
+    // A chest's screen with its title ("Chest", "Large chest", "Minecart"); bottom: the lower half
+    // of a double chest.
+    InventoryScreen(Inventory& inventory, ChestSlots& top, ChestSlots* bottom, std::string title);
 
     const Kind kind;
     std::optional<CraftingMenu> crafting;
@@ -61,6 +62,7 @@ private:
     };
     Hover hover(int width, int height, double mx, double my) const;
     int rows() const;  // creative picker rows of items
+    int chest_rows() const;  // 3 for a chest, 6 for a double chest
 
     int scroll_row_ = 0;
 };

@@ -1105,6 +1105,20 @@ Image flat_icon(ItemId id) {
     case POWERED_MINECART: return sprite(CART_ROWS, Palette{{'c', {90, 90, 90, 255}}} + mat({150, 150, 155}));
     case REPEATER:
         return sprite(REPEATER_ROWS, HANDLE + Palette{{'r', {220, 30, 30, 255}}} + mat({160, 160, 160}));
+    case RECORD_13: case RECORD_CAT: {
+        // A black disc with grooves and a coloured label.
+        Image img(TILE, TILE);
+        const Rgb label = id == RECORD_13 ? Rgb{235, 225, 90} : Rgb{90, 210, 90};
+        for (int y = 0; y < TILE; ++y)
+            for (int x = 0; x < TILE; ++x) {
+                const double d = std::hypot(x - 7.5, y - 7.5);
+                if (d > 7.2) continue;
+                if (d < 1.0) continue;  // the hole
+                if (d < 3.2) img.at(x, y) = shade(label, 1.0);
+                else img.at(x, y) = shade({40, 40, 45}, (static_cast<int>(d * 2) % 2) ? 1.0 : 0.7);
+            }
+        return img;
+    }
     case STEAK: return sprite(CHOP_ROWS, Palette{{'w', {235, 215, 175, 255}}} + mat({150, 85, 50}));
     case SADDLE: return sprite(SADDLE_ROWS, Palette{{'w', {190, 190, 190, 255}}} + mat({140, 80, 40}));
     case TORCH: return sprite(TORCH_ROWS, HANDLE + Palette{{'f', {255, 160, 40, 255}}, {'y', {255, 240, 150, 255}}});

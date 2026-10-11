@@ -665,7 +665,67 @@ public:
     }
 };
 
+// --- Sign ---------------------------------------------------------------------------------------------
+
+class SignScreen : public Screen {
+public:
+    using Screen::Screen;
+    enum { DONE = 100 };
+
+    void layout(int gw, int gh) override {
+        const SignText* t = app.game ? app.game->edited_sign() : nullptr;
+        for (int i = 0; i < SIGN_LINES; ++i) {
+            Widget f = text_field(i, gw / 2 - 50, gh / 4 + 24 + i * 14, 100, t ? (*t)[i] : "", SIGN_LINE_LENGTH);
+            f.h = 12;
+            f.focused = first_ && i == 0;
+            widgets.push_back(f);
+        }
+        first_ = false;
+        widgets.push_back(button(DONE, gw / 2 - 100, gh / 4 + 120, 200, "Done"));
+    }
+    void on_text(int id, const std::string& text) override {
+        if (SignText* t = app.game ? app.game->edited_sign() : nullptr) (*t)[id] = text;
+    }
+    // Up and down (and Enter) go from line to line; Enter on the last line is done.
+    bool on_raw_key(int key) override {
+        const bool down = key == GLFW_KEY_DOWN || key == GLFW_KEY_ENTER || key == GLFW_KEY_KP_ENTER;
+        if (!down && key != GLFW_KEY_UP) return false;
+        int line = 0;
+        for (const Widget& w : widgets)
+            if (w.focused) line = w.id;
+        if (line == SIGN_LINES - 1 && key != GLFW_KEY_DOWN && key != GLFW_KEY_UP) {
+            finish();
+            return true;
+        }
+        line = std::clamp(line + (down ? 1 : -1), 0, SIGN_LINES - 1);
+        for (Widget& w : widgets) w.focused = w.kind == Widget::Kind::TextField && w.id == line;
+        return true;
+    }
+    void on_button(int id) override {
+        if (id == DONE) finish();
+    }
+    void on_escape() override { finish(); }
+    void update(double) override {
+        if (!app.game || !app.game->sign_editing) app.close_screen();  // the sign went
+    }
+    bool over_game() const override { return true; }
+    void draw(Gui& g) override {
+        g.text("Edit sign message:", g.width() / 2.0f, 40, TEXT_WHITE, 0.5f);
+        // The board behind the lines, in the planks' colour.
+        g.rect(g.width() / 2.0f - 56, g.height() / 4.0f + 18, 112, SIGN_LINES * 14 + 10, {0.62f, 0.48f, 0.29f, 1});
+    }
+
+private:
+    void finish() {
+        if (app.game) app.game->finish_sign();
+        app.close_screen();
+    }
+    bool first_ = true;
+};
+
 }  // namespace
+
+std::unique_ptr<Screen> sign_screen(App& app) { return std::make_unique<SignScreen>(app); }
 
 std::unique_ptr<Screen> death_screen(App& app) { return std::make_unique<DeathScreen>(app); }
 

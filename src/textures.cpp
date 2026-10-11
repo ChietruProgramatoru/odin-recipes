@@ -848,6 +848,7 @@ std::map<int, Image> make_tiles(int seed) {
         tiles[index] = gen(rng);
     }
     tiles.merge(make_item_tiles());
+    tiles.merge(make_building_tiles());
     return tiles;
 }
 

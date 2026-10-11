@@ -6,7 +6,7 @@
 #include "image.h"
 #include "items.h"
 
-constexpr int ITEM_TILE_BASE = 128;
+constexpr int ITEM_TILE_BASE = 144;
 
 // Faces of blocks that come with the item table.
 enum ItemTile : int {

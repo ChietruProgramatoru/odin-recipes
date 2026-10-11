@@ -28,6 +28,8 @@ public:
     bool in_lava = false;
     bool in_web = false;    // in a cobweb (set by move): moves at 1/4 the speed sideways and 1/20 up and down
     glm::dvec3 current{0};  // which way the water it is in flows (normalised; set by check_water)
+    // How high it walks up without jumping (Beta: half a block for the player, onto slabs and stairs).
+    double step_height = 0;
 
     bool collides() const;
     // In water (sets in_water, in_lava and current). Returns in_water.
@@ -42,5 +44,6 @@ public:
 
 private:
     bool move_axis(int axis, double delta);
+    HitAxes move_plain(double dx, double dy, double dz);
     bool supported(double dx, double dz) const;  // a solid block right under the feet, shifted by (dx, dz)
 };

@@ -636,22 +636,23 @@ void WorldRenderer::draw(int width, int height, glm::vec3 eye, glm::vec3 forward
     glUniformMatrix4fv(model, 1, GL_FALSE, glm::value_ptr(identity));
     glUniform2f(model_light, 1, 0);
     glUniform4f(overlay, 0, 0, 0, 0);
-    if (outline_) {
-        // Rebuilt every frame: 12 edges, slightly bigger than the block.
+    if (!outline_.empty()) {
+        // Rebuilt every frame: 12 edges of each box, slightly bigger than it.
         const float e = 0.003f;
-        glm::vec3 b(*outline_);
-        glm::vec3 corners[8];
-        for (int i = 0; i < 8; ++i)
-            corners[i] = {(i & 1) ? b.x + 1 + e : b.x - e, (i & 2) ? b.y + 1 + e : b.y - e, (i & 4) ? b.z + 1 + e : b.z - e};
         const int edges[12][2] = {{0, 1}, {2, 3}, {4, 5}, {6, 7}, {0, 2}, {1, 3}, {4, 6}, {5, 7}, {0, 4}, {1, 5}, {2, 6}, {3, 7}};
         auto uv = tile_uv(T_BLACK);
         float u = (uv[0] + uv[2]) / 2, v = (uv[1] + uv[3]) / 2;
         MeshData lines;
-        for (const auto& edge : edges)
-            for (int k : edge) {
-                lines.indices.push_back(static_cast<uint32_t>(lines.vertices.size()));
-                lines.vertices.push_back({corners[k].x, corners[k].y, corners[k].z, 1.0f, u, v});
-            }
+        for (const auto& [lo, hi] : outline_) {
+            glm::vec3 corners[8];
+            for (int i = 0; i < 8; ++i)
+                corners[i] = {(i & 1) ? hi.x + e : lo.x - e, (i & 2) ? hi.y + e : lo.y - e, (i & 4) ? hi.z + e : lo.z - e};
+            for (const auto& edge : edges)
+                for (int k : edge) {
+                    lines.indices.push_back(static_cast<uint32_t>(lines.vertices.size()));
+                    lines.vertices.push_back({corners[k].x, corners[k].y, corners[k].z, 1.0f, u, v});
+                }
+        }
         outline_mesh_ = GpuMesh(lines);
         outline_mesh_.draw(GL_LINES);
     }

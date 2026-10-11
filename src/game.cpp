@@ -10,6 +10,9 @@
 #include <glm/gtc/matrix_transform.hpp>
 
 #include "bed.h"
+#include "building.h"
+#include "chest.h"
+#include "painting.h"
 #include "nature.h"
 #include "textures.h"
 #include "tools.h"
@@ -44,6 +47,7 @@ Game::Game(GLFWwindow* win, GLuint atlas, Painter& painter, const Options& opts,
     hud = std::make_unique<Hud>(painter);
 
     for (ItemId item : creative_items()) creative_inventory.add(item, 1);
+    player.step_height = 0.5;  // walk up slabs and stairs (Beta)
 
     spawn = level.spawn ? *level.spawn : find_spawn();
     level.spawn = spawn;
@@ -417,6 +421,8 @@ void Game::close_gui() {
     for (const Stack& s : gui->close()) throw_stack(s);
     gui.reset();
     furnace_open.reset();
+    for (glm::ivec3 c : chest_open) chest_slots(world, c);  // what was moved in or out gets saved
+    chest_open.clear();
     chest_vehicle = nullptr;
     set_mouse_captured(!paused && !vitals.dead());
 }
@@ -515,6 +521,8 @@ void Game::on_mouse_button(int button, int action) {
         update_target();
         try_attack();
         hand.swing();  // Beta swings at anything, even thin air
+        if (target && !targeting_mob() && world.get_block(target->block.x, target->block.y, target->block.z) == NOTE_BLOCK)
+            play_note(target->block);  // hitting a note block plays it
     } else if (button == GLFW_MOUSE_BUTTON_RIGHT) {
         update_target();
         use_item_by_hand();
@@ -664,7 +672,16 @@ void Game::update(double dt) {
         add_lit(player_parts(pose), in_vehicle ? in_vehicle->body : player);  // a rider's feet are down in the vehicle's floor
     }
     renderer->set_instances(std::move(parts));
-    renderer->set_outline(target && !targeting_mob() ? std::optional<glm::ivec3>(target->block) : std::nullopt);
+    {
+        // The outline fits the shape aimed at (a slab, a door, a sign...), or the whole cell.
+        std::vector<std::pair<glm::vec3, glm::vec3>> outline;
+        if (target && !targeting_mob()) {
+            const glm::vec3 at(target->block);
+            for (const Box& b : block_boxes(world, target->block, false)) outline.push_back({at + b.lo, at + b.hi});
+            if (outline.empty()) outline.push_back({at, at + glm::vec3(1)});
+        }
+        renderer->set_outline(std::move(outline));
+    }
     hud->update(static_cast<float>(dt));
 }
 
@@ -691,7 +708,7 @@ std::string Game::debug_text() {
     int dimmed = std::max(0, sky - static_cast<int>(current_sky().darkness));
     int minutes = clock_minutes(level.time);
     std::snprintf(buf, sizeof buf,
-                  "PetrutzCraft M10 (%.0f fps, %d chunk updates)\n"
+                  "PetrutzCraft M11 (%.0f fps, %d chunk updates)\n"
                   "x: %.3f (block %d)\ny: %.3f (feet, block %d)\nz: %.3f (block %d)\n"
                   "Chunk: %d %d (at %d %d in it)\n"
                   "Facing: %s (f: %d)\n"
@@ -745,7 +762,7 @@ void Game::draw(int w, int h) {
 
     if (hud_hidden && !vitals.dead()) return;
     const bool underwater = under_fluid(world, cam, WATER);
-    std::string info = debug_screen ? debug_text() : "PetrutzCraft M10";
+    std::string info = debug_screen ? debug_text() : "PetrutzCraft M11";
     if (!debug_screen && creative) info += flying ? "\nCreative (flying)" : "\nCreative";
     HudState hs{&active_inventory(), &vitals, armor_value(inventory), creative, info, help_text(), underwater, vitals.dead()};
     hs.burning = burn_ticks > 0 && !creative;
@@ -808,6 +825,9 @@ void Game::move(double dt) {
         wz /= length;
     }
     p.check_water();
+    // Ladders: a body with its feet in a ladder's cell climbs (Beta).
+    const BlockId feet = world.get_block(ifloor(p.x), ifloor(p.y), ifloor(p.z));
+    const bool on_ladder = !flying && climbable(feet);
 
     const bool down = action_down(KEY_SNEAK);
     sneaking = down && !flying;
@@ -816,6 +836,7 @@ void Game::move(double dt) {
     double speed = flying ? FLY_SPEED : sneaking ? SNEAK_SPEED : sprint ? SPRINT_SPEED : WALK_SPEED;
     if (p.in_water && !flying) speed *= 0.55;
     if (p.in_lava && !flying) speed *= 0.25;  // Beta: lava drags you more than twice as hard as water
+    if (feet == SOUL_SAND && !flying) speed *= 0.4;  // walking in soul sand (it is lower than a block)
     double accel = (p.on_ground || flying) ? 14 : 5;
     double k = std::min(1.0, accel * dt);
     // Water currents carry you along.
@@ -837,6 +858,10 @@ void Game::move(double dt) {
                 jumped = true;
             }
         }
+        if (on_ladder) {
+            // Slide down slowly, or hold on while sneaking.
+            p.vy = std::max(p.vy, sneaking ? 0.0 : -3.0);
+        }
     }
 
     double ox = p.x, oz = p.z;
@@ -845,6 +870,7 @@ void Game::move(double dt) {
     if (sneaking && p.on_ground && !jumped && !p.in_liquid()) p.clamp_to_edges(dx, dz);
     HitAxes hit = p.move(dx, p.vy * dt, dz);
     if (hit.x || hit.z) sprint_.stop();  // running into a wall ends the sprint
+    if (on_ladder && (hit.x || hit.z)) p.vy = 2.35;  // pushing against the ladder climbs it (Beta's speed)
     if (flying && p.on_ground && down) flying = false;
 
     double moved = std::hypot(p.x - ox, p.z - oz);
@@ -856,7 +882,7 @@ void Game::move(double dt) {
     }
 
     // Fall damage
-    if (p.in_liquid() || p.in_web || flying || creative) {
+    if (p.in_liquid() || p.in_web || flying || creative || on_ladder) {
         fall_peak = p.y;
     } else if (!p.on_ground) {
         fall_peak = std::max(fall_peak, p.y);
@@ -992,7 +1018,9 @@ void Game::mine(double dt) {
 
 void Game::break_block(glm::ivec3 pos, BlockId blk) {
     const int data = world.get_data(pos.x, pos.y, pos.z);
-    renderer->rebuild(world.set_block(pos.x, pos.y, pos.z, AIR));
+    // Both halves of a door and every cell of a painting go together.
+    const std::vector<glm::ivec3> cells = joined_cells(world, pos);
+    for (glm::ivec3 c : cells) renderer->rebuild(clear_cell(c));
     {
         // Plants and cake standing on this block fall off.
         FarmEvents ev;
@@ -1009,6 +1037,7 @@ void Game::break_block(glm::ivec3 pos, BlockId blk) {
             if (!creative) spawn_drop(TORCH, n.x + 0.5, n.y + 0.3, n.z + 0.5);
         }
     }
+    drop_unsupported(cells);
     if (is_furnace(blk)) drop_furnace_contents(pos);
     if (blk == TNT) {
         // Breaking TNT lights it (Beta), whatever you hit it with.
@@ -1039,6 +1068,11 @@ void Game::break_block(glm::ivec3 pos, BlockId blk) {
     }
     if (blk == WHEAT_CROP || blk == TALL_GRASS || blk == FERN) {
         for (ItemId item : farm_drops(blk, data, farm_rng_)) spawn_drop(item, pos.x + 0.5, pos.y + 0.3, pos.z + 0.5);
+        return;
+    }
+    if (auto items = data_drops(blk, data)) {  // wool, slabs, doors, signs, paintings
+        if (can_harvest(held, blk))
+            for (ItemId item : *items) spawn_drop(item, pos.x + 0.5, pos.y + 0.3, pos.z + 0.5);
         return;
     }
     auto drop = harvest_drop(held, blk);
@@ -1073,6 +1107,24 @@ void Game::throw_stack(const Stack& stack) {
     drops.push_back(std::move(drop));
 }
 
+namespace {
+
+// Items placed by building.h's placement() (or as a painting) rather than as a plain block.
+bool is_building_item(ItemId item) {
+    if ((item >= WHITE_WOOL && item <= BLACK_WOOL) || (item >= STONE_SLAB && item <= COBBLE_SLAB)) return true;
+    switch (item) {
+        case WOOD_STAIRS: case COBBLE_STAIRS: case FENCE: case LADDER: case TRAPDOOR: case CHEST:
+        case SIGN: case WOOD_DOOR: case IRON_DOOR: case PAINTING:
+            return true;
+        default: return false;
+    }
+}
+
+// A jukebox's music can be stopped again: its sounds carry a key made from where it stands.
+int jukebox_key(glm::ivec3 p) { return ((p.x * 73856093) ^ (p.y * 19349663) ^ (p.z * 83492791)) | 1; }
+
+}  // namespace
+
 void Game::use_item_by_hand() {
     const long edits = renderer->edit_count();
     const bool had_gui = gui != nullptr, was_asleep = sleeping_in.has_value();
@@ -1101,6 +1153,19 @@ void Game::use_item() {
         mouse_buttons_.erase(GLFW_MOUSE_BUTTON_RIGHT);
         try_sleep(target->block);
         return;
+    }
+    if (target && !targeting_mob()) {
+        const glm::ivec3 b = target->block;
+        const BlockId here = world.get_block(b.x, b.y, b.z);
+        if (here == CHEST) {
+            mouse_buttons_.erase(GLFW_MOUSE_BUTTON_RIGHT);
+            open_chest(b);
+            return;
+        }
+        if ((here == JUKEBOX && use_jukebox(b, active_inventory().selected_item())) || use_block(b)) {
+            mouse_buttons_.erase(GLFW_MOUSE_BUTTON_RIGHT);  // one click, one use
+            return;
+        }
     }
     if (target && !targeting_mob() && world.get_block(target->block.x, target->block.y, target->block.z) == CAKE_BLOCK) {
         // Eat a slice of cake (Beta: right click the cake). The last slice takes the cake away.
@@ -1174,7 +1239,7 @@ void Game::use_item() {
         }
         return;
     }
-    if (*item >= FUTURE_BLOCKS && target && !targeting_mob() && target->before) {
+    if (*item >= FUTURE_BLOCKS && !placeable_future_block(*item) && target && !targeting_mob() && target->before) {
         hud->show_message(item_name(*item) + " can't be placed yet", 2);
         return;
     }
@@ -1190,6 +1255,10 @@ void Game::use_item() {
         renderer->rebuild(world.set_block(bed->foot.x, bed->foot.y, bed->foot.z, bed_block(bed->dir, false)));
         renderer->rebuild(world.set_block(bed->head.x, bed->head.y, bed->head.z, bed_block(bed->dir, true)));
         if (!creative) inv.take_selected();
+        return;
+    }
+    if (is_building_item(*item)) {
+        place_building(*item);
         return;
     }
     if (!is_block(*item) || !target || targeting_mob() || !target->before) return;
@@ -2267,7 +2336,7 @@ void Game::explode(glm::dvec3 center, double power, bool from_monster) {
     std::vector<glm::ivec3> cells = explosion_blocks(world, center, power, rng);
     std::vector<ChunkPos> dirty;
     auto clear = [&](glm::ivec3 c) {
-        for (ChunkPos p : world.set_block(c.x, c.y, c.z, AIR))
+        for (ChunkPos p : clear_cell(c))
             if (std::find(dirty.begin(), dirty.end(), p) == dirty.end()) dirty.push_back(p);
     };
     std::vector<glm::ivec3> tnt_cells;
@@ -2287,7 +2356,13 @@ void Game::explode(glm::dvec3 center, double power, bool from_monster) {
             continue;
         }
         if (is_furnace(b)) drop_furnace_contents(c);
-        clear(c);
+        const int data = world.get_data(c.x, c.y, c.z);
+        for (glm::ivec3 j : joined_cells(world, c)) clear(j);
+        if (auto items = data_drops(b, data)) {
+            if (rng.random() < EXPLOSION_DROP_CHANCE)
+                for (ItemId item : *items) spawn_drop(item, c.x + 0.5, c.y + 0.3, c.z + 0.5);
+            continue;
+        }
         const BlockInfo* info = block_info(b);
         if (info && info->drop && rng.random() < EXPLOSION_DROP_CHANCE) {
             const int n = *info->drop == b ? 1 : rng.randint(info->drop_min, info->drop_max);
@@ -2305,5 +2380,159 @@ void Game::explode(glm::dvec3 center, double power, bool from_monster) {
             }
         }
     if (!dirty.empty()) renderer->rebuild(dirty);
+    drop_unsupported(cells);
     for (glm::ivec3 c : tnt_cells) prime_tnt(c, rng.below(TNT_FUSE_TICKS / 4) + TNT_FUSE_TICKS / 8);
+}
+
+// --- Building (M11) -----------------------------------------------------------------------------
+
+bool Game::place_building(ItemId item) {
+    if (!target || targeting_mob() || !target->before) return false;
+    const glm::ivec3 face = *target->before - target->block;
+    Inventory& inv = active_inventory();
+    if (item == PAINTING) {
+        auto cells = face.y == 0 ? hang_painting(world, target->block, face, rng) : std::nullopt;
+        if (!cells) return false;
+        renderer->rebuild(place_painting(world, facing_of(-face), *cells));
+        if (!creative) inv.take_selected();
+        return true;
+    }
+    auto cells = placement(world, item, target->block, face, yaw);
+    if (!cells) return false;
+    // Nothing goes down inside someone (only what they would bump into counts).
+    std::vector<const Body*> bodies{&player};
+    for (const auto& a : animals) bodies.push_back(&a->body);
+    for (const auto& m : monsters) bodies.push_back(&m->body);
+    for (const PlacedCell& c : *cells) {
+        const std::vector<Box> boxes = is_shaped(c.block) ? shape_boxes(c.block, c.data, {}, true)
+                                       : is_solid(c.block) ? std::vector<Box>{{glm::vec3(0), glm::vec3(1)}}
+                                                           : std::vector<Box>{};
+        for (const Box& box : boxes)
+            for (const Body* b : bodies)
+                if (c.pos.x + box.hi.x > b->x - b->half && c.pos.x + box.lo.x < b->x + b->half && c.pos.z + box.hi.z > b->z - b->half &&
+                    c.pos.z + box.lo.z < b->z + b->half && c.pos.y + box.hi.y > b->y && c.pos.y + box.lo.y < b->y + b->height)
+                    return false;
+    }
+    for (const PlacedCell& c : *cells) {
+        if (world.get_block(c.pos.x, c.pos.y, c.pos.z) == c.block)
+            renderer->rebuild(world.set_data(c.pos.x, c.pos.y, c.pos.z, c.data));  // the chest beside turns to match
+        else
+            renderer->rebuild(world.set_block(c.pos.x, c.pos.y, c.pos.z, c.block, c.data));
+        if (is_solid(c.block) && world.get_block(c.pos.x, c.pos.y - 1, c.pos.z) == FARMLAND)
+            renderer->rebuild(world.set_block(c.pos.x, c.pos.y - 1, c.pos.z, DIRT));  // Beta: farmland under a block turns to dirt
+        if (c.block == SIGN_POST || c.block == WALL_SIGN) sign_editing = c.pos;  // and now type what it says
+    }
+    if (!creative) inv.take_selected();
+    return true;
+}
+
+void Game::open_chest(glm::ivec3 pos) {
+    const ChestPair pair = chest_pair(world, pos);
+    std::vector<glm::ivec3> halves{pair.first};
+    if (pair.second) halves.push_back(*pair.second);
+    for (glm::ivec3 c : halves)
+        if (is_opaque(world.get_block(c.x, c.y + 1, c.z))) return;  // Beta: a block on top keeps the lid shut
+    ChestSlots* top = chest_slots(world, pair.first);
+    ChestSlots* bottom = pair.second ? chest_slots(world, *pair.second) : nullptr;
+    if (!top || (pair.second && !bottom)) return;
+    show_gui(std::make_unique<InventoryScreen>(active_inventory(), *top, bottom, bottom ? "Large chest" : "Chest"));
+    chest_open = halves;
+}
+
+bool Game::use_block(glm::ivec3 pos) {
+    const BlockId b = world.get_block(pos.x, pos.y, pos.z);
+    if (b == NOTE_BLOCK) {
+        if (Chunk* c = world.chunk_at(pos)) {
+            int& note = c->notes[cell_index(pos)];
+            note = (note + 1) % NOTE_PITCHES;
+            c->dirty = true;
+        }
+        play_note(pos);
+        return true;
+    }
+    if (auto cells = toggle_door(world, pos)) {
+        for (const PlacedCell& c : *cells) renderer->rebuild(world.set_data(c.pos.x, c.pos.y, c.pos.z, c.data));
+        return true;
+    }
+    return false;
+}
+
+void Game::play_note(glm::ivec3 pos) {
+    if (world.get_block(pos.x, pos.y + 1, pos.z) != AIR) return;  // Beta: a block on top muffles it
+    int note = 0;
+    if (Chunk* c = world.chunk_at(pos))
+        if (auto it = c->notes.find(cell_index(pos)); it != c->notes.end()) note = it->second;
+    const int instrument = note_instrument(world.get_block(pos.x, pos.y - 1, pos.z));
+    play_sound(static_cast<Sound>(static_cast<int>(Sound::NoteHarp) + instrument), glm::dvec3(pos) + glm::dvec3(0.5), note_pitch(note));
+}
+
+bool Game::use_jukebox(glm::ivec3 pos, std::optional<ItemId> held) {
+    Chunk* c = world.chunk_at(pos);
+    if (!c) return false;
+    const int index = cell_index(pos);
+    const glm::dvec3 mid = glm::dvec3(pos) + glm::dvec3(0.5);
+    if (auto it = c->records.find(index); it != c->records.end()) {
+        // The disc pops out of the top and the music stops.
+        auto drop = std::make_unique<ItemDrop>(world, Stack{static_cast<ItemId>(it->second), 1}, mid.x, pos.y + 1.2, mid.z, rng);
+        drops.push_back(std::move(drop));
+        c->records.erase(it);
+        c->dirty = true;
+        sounds.push_back({Sound::Record13, mid, 1.0f, jukebox_key(pos), true});
+        return true;
+    }
+    if (!held || (*held != RECORD_13 && *held != RECORD_CAT)) return false;
+    c->records[index] = *held;
+    c->dirty = true;
+    const Sound music = *held == RECORD_13 ? Sound::Record13 : Sound::RecordCat;
+    sounds.push_back({music, mid, 1.0f, jukebox_key(pos)});
+    ++sounds_started[static_cast<int>(music)];
+    hud->show_message("Now playing: " + item_name(*held), 3);
+    if (!creative) active_inventory().take_selected();
+    return true;
+}
+
+SignText* Game::edited_sign() {
+    if (!sign_editing) return nullptr;
+    const glm::ivec3 p = *sign_editing;
+    const BlockId b = world.get_block(p.x, p.y, p.z);
+    Chunk* c = world.chunk_at(p);
+    if ((b != SIGN_POST && b != WALL_SIGN) || !c) return nullptr;
+    return &c->signs[cell_index(p)];
+}
+
+void Game::finish_sign() {
+    if (!sign_editing) return;
+    const glm::ivec3 p = *sign_editing;
+    sign_editing.reset();
+    if (Chunk* c = world.chunk_at(p)) c->dirty = true;
+    renderer->rebuild({ChunkPos{chunk_of(p.x), chunk_of(p.z)}});
+}
+
+std::vector<ChunkPos> Game::clear_cell(glm::ivec3 pos) {
+    const BlockId b = world.get_block(pos.x, pos.y, pos.z);
+    const glm::dvec3 mid = glm::dvec3(pos) + glm::dvec3(0.5);
+    Chunk* chunk = world.chunk_at(pos);
+    if (b == CHEST) {
+        if (std::find(chest_open.begin(), chest_open.end(), pos) != chest_open.end()) close_gui();
+        if (chunk)
+            if (auto it = chunk->chests.find(cell_index(pos)); it != chunk->chests.end())
+                for (const auto& s : it->second)
+                    if (s) drops.push_back(std::make_unique<ItemDrop>(world, *s, mid.x, mid.y, mid.z, rng));
+    }
+    if (b == JUKEBOX && chunk && chunk->records.count(cell_index(pos))) use_jukebox(pos, std::nullopt);  // the disc comes out
+    if (sign_editing == pos) sign_editing.reset();
+    return world.set_block(pos.x, pos.y, pos.z, AIR);
+}
+
+void Game::drop_unsupported(std::vector<glm::ivec3> changed) {
+    // Each block that falls can leave another hanging (a sign on a ladder...), so keep going.
+    for (size_t i = 0; i < changed.size() && i < 4096; ++i)
+        for (const auto& [cell, item] : fall_off(world, changed[i])) {
+            if (world.get_block(cell.x, cell.y, cell.z) == AIR) continue;  // went with its other half
+            for (glm::ivec3 j : joined_cells(world, cell)) {
+                renderer->rebuild(clear_cell(j));
+                changed.push_back(j);
+            }
+            if (!creative) spawn_drop(item, cell.x + 0.5, cell.y + 0.3, cell.z + 0.5);
+        }
 }

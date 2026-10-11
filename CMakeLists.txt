@@ -81,6 +81,9 @@ add_library(petrutz_core STATIC
   src/sky.cpp
   src/weather.cpp
   src/bed.cpp
+  src/building.cpp
+  src/chest.cpp
+  src/painting.cpp
   src/blockupdate.cpp
   src/rails.cpp
   src/vehicles.cpp
@@ -97,6 +100,7 @@ add_library(petrutz_core STATIC
   src/monsters.cpp
   src/sound.cpp
   src/textures.cpp
+  src/building_art.cpp
   src/font.cpp
   src/png.cpp
   src/zlib.cpp
@@ -154,6 +158,7 @@ add_executable(petrutz_tests
   tests/test_furnace.cpp
   tests/test_hand.cpp
   tests/test_blockupdate.cpp
+  tests/test_building.cpp
   tests/test_transport.cpp
   tests/test_nature.cpp)
 target_link_libraries(petrutz_tests PRIVATE petrutz_core doctest_header)
