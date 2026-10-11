@@ -14,6 +14,8 @@
 #include "app.h"
 #include "farming.h"
 #include "bed.h"
+#include "building.h"
+#include "chest.h"
 #include "game.h"
 #include "inventory_screen.h"
 #include "menu.h"
@@ -302,6 +304,7 @@ void AutoTest::play(App& app, Game& g) {
     if (f >= 1194 && f < 1200) hand(app, g);
     if (f >= 1200 && f < 1350) fluids_and_fire(app, g);
     if (f >= 1350 && f < 1450) farming(app, g);
+    if (f >= 1380 && f < 1400) building(app, g);
     if (f >= 1450 && f < 1650) animals(app, g);
     if (f >= 1650 && f < 1720) transport(app, g);
     if (f == 1720) {
@@ -1221,6 +1224,237 @@ void AutoTest::animals(App& app, Game& g) {
     }
 }
 
+void AutoTest::building(App& app, Game& g) {
+    const long f = g.frame;
+    Body& p = g.player;
+    World& w = g.world;
+    const glm::ivec3& o = build_;
+    auto set = [&](glm::ivec3 b, BlockId id, int data = 0) { g.renderer->rebuild(w.set_block(b.x, b.y, b.z, id, data)); };
+    auto at = [&](glm::ivec3 b) { return w.get_block(b.x, b.y, b.z); };
+    auto stand = [&](double x, double z) {
+        p.x = o.x + 0.5 + x;
+        p.y = o.y;
+        p.z = o.z + 0.5 + z;
+        p.vx = p.vy = p.vz = 0;
+        g.fall_peak = p.y;
+    };
+    // Aim at a point inside a block, just behind the face `face` (0 for the top), and pick it.
+    auto aim = [&](glm::ivec3 b, glm::ivec3 face = {0, 1, 0}) {
+        const glm::vec3 e = g.eye();
+        glm::vec3 point = glm::vec3(b) + glm::vec3(0.5f) + glm::vec3(face) * 0.45f;
+        if (face.y > 0) {  // just under the top of what is there (half way up for a slab)
+            float top = 0;
+            for (const Box& box : block_boxes(w, b, false)) top = std::max(top, box.hi.y);
+            point.y = b.y + top - 0.05f;
+        }
+        const glm::vec3 d = point - e;
+        g.yaw = degrees(std::atan2(d.x, d.z));
+        g.pitch = -degrees(std::asin(d.y / glm::length(d)));
+        g.update_target();
+        return g.target && g.target->block == b;
+    };
+    auto hold = [&](ItemId item, int count = 1) { g.inventory.slots[g.inventory.selected] = Stack{item, count}; };
+    // Right-click the face of a block with an item, standing in front of a side face or a little
+    // south of a top.
+    auto use_on = [&](glm::ivec3 clicked, glm::ivec3 face, ItemId item, int count = 1) {
+        if (face.y == 0)
+            stand(clicked.x - o.x + face.x * 2.5, clicked.z - o.z + face.z * 2.5);
+        else
+            stand(clicked.x - o.x + 0.3, clicked.z - o.z - 2.6);
+        hold(item, count);
+        const bool aimed = aim(clicked, face);
+        g.use_item();
+        return aimed;
+    };
+    const glm::ivec3 UP(0, 1, 0), NORTH(0, 0, -1);
+    const int wall_z = 10;
+
+    if (f == 1380) {
+        build_return_ = {p.x, p.y, p.z};
+        build_weather_ = g.weather;
+        build_time_ = g.level.time;
+        build_creative_ = g.creative;
+        g.monsters.clear();
+        g.target_monster = nullptr;
+        g.weather.clear();
+        g.creative = false;
+        g.flying = false;
+        g.vitals.reset();
+        g.burn_ticks = 0;
+        g.level.time = 6000 + (g.level.time / DAY_TICKS) * DAY_TICKS;
+        g.drops.clear();
+        // Below the clouds, somewhere the ground is well below it.
+        build_ = {static_cast<int>(std::floor(p.x)) - 60, 98, static_cast<int>(std::floor(p.z)) + 40};
+        for (int tries = 0; tries < 20; ++tries) {
+            g.renderer->load_all(o.x + 0.5, o.z + 0.5, 2);
+            int top = 0;
+            for (int dx = -10; dx <= 10; dx += 2)
+                for (int dz = -5; dz <= 12; dz += 2) top = std::max(top, w.surface_y(o.x + dx, o.z + dz));
+            if (top < 90) break;
+            build_.x -= 48;
+        }
+        for (int dx = -10; dx <= 10; ++dx)
+            for (int dz = -5; dz <= 12; ++dz) {
+                set(o + glm::ivec3(dx, -1, dz), STONE);
+                for (int dy = 0; dy < 7; ++dy) set(o + glm::ivec3(dx, dy, dz), AIR);
+            }
+        // The back wall: wool in all 16 colours, a row of the new blocks, and stone for pictures.
+        const BlockId row[16] = {GOLD_BLOCK, IRON_BLOCK, DIAMOND_BLOCK, LAPIS_BLOCK, BOOKSHELF, OBSIDIAN, MOSSY_COBBLE, SANDSTONE,
+                                 NETHERRACK, SOUL_SAND, GLASS, SNOW_BLOCK, ICE, CLAY_BLOCK, BRICK, JUKEBOX};
+        for (int i = 0; i < 16; ++i) {
+            set(o + glm::ivec3(i - 8, 0, wall_z), WOOL, i);
+            set(o + glm::ivec3(i - 8, 1, wall_z), row[i]);
+            for (int dy = 2; dy < 6; ++dy) set(o + glm::ivec3(i - 8, dy, wall_z), STONE);
+        }
+        // Pictures on the wall, hung like a player does.
+        bool hung = true;
+        for (int x : {-5, 3}) {
+            const glm::ivec3 spot = o + glm::ivec3(x, 3, wall_z);
+            use_on(spot, NORTH, PAINTING);
+            hung &= at(spot - glm::ivec3(0, 0, 1)) == PAINTING_BLOCK;
+        }
+        check("paintings hang on a wall", hung);
+        // A double chest from two chests side by side.
+        chest_pos_ = o + glm::ivec3(-6, 0, 6);
+        use_on(chest_pos_ - UP, UP, CHEST);
+        use_on(chest_pos_ + glm::ivec3(1, -1, 0), UP, CHEST);
+        check("two chests side by side make a double chest", at(chest_pos_) == CHEST && chest_partner(w, chest_pos_) == chest_pos_ + glm::ivec3(1, 0, 0));
+        // Stairs, slabs and a double slab.
+        use_on(o + glm::ivec3(-3, -1, 6), UP, WOOD_STAIRS);
+        use_on(o + glm::ivec3(-2, -1, 6), UP, COBBLE_STAIRS);
+        check("stairs are placed with their back away from the player", at(o + glm::ivec3(-3, 0, 6)) == WOOD_STAIRS &&
+                                                                            w.get_data(o.x - 3, o.y, o.z + 6) == 0);
+        for (int k = 0; k < 4; ++k) use_on(o + glm::ivec3(4 + k, -1, 4), UP, STONE_SLAB + k);
+        use_on(o + glm::ivec3(7, 0, 4), UP, COBBLE_SLAB);
+        check("a slab on a slab of its kind makes a double slab", at(o + glm::ivec3(7, 0, 4)) == DOUBLE_SLAB &&
+                                                                     at(o + glm::ivec3(6, 0, 4)) == SLAB);
+        // A fence with a door in it, and an iron door.
+        for (int x : {0, 1, 2, 4, 5}) set(o + glm::ivec3(x, 0, 7), FENCE);
+        set(o + glm::ivec3(0, 1, 7), FENCE);
+        use_on(o + glm::ivec3(3, -1, 7), UP, WOOD_DOOR);
+        check("a wooden door stands two blocks high", at(o + glm::ivec3(3, 0, 7)) == WOOD_DOOR_BLOCK && at(o + glm::ivec3(3, 1, 7)) == WOOD_DOOR_BLOCK);
+        use_on(o + glm::ivec3(7, -1, 7), UP, IRON_DOOR);
+        // A ladder up a pillar, a trapdoor beside it.
+        for (int dy = 0; dy < 4; ++dy) set(o + glm::ivec3(-9, dy, 2), STONE);
+        for (int dy = 0; dy < 4; ++dy) use_on(o + glm::ivec3(-9, dy, 2), glm::ivec3(1, 0, 0), LADDER);
+        check("ladders go up the side of a pillar", at(o + glm::ivec3(-8, 3, 2)) == LADDER);
+        use_on(o + glm::ivec3(-9, 1, 2), NORTH, TRAPDOOR);
+        check("a trapdoor hangs on the side of a block", at(o + glm::ivec3(-9, 1, 1)) == TRAPDOOR);
+        // A note block on stone and a jukebox.
+        note_pos_ = o + glm::ivec3(1, 0, 4);
+        jukebox_pos_ = o + glm::ivec3(2, 0, 4);
+        use_on(note_pos_ - UP, UP, NOTE_BLOCK);
+        use_on(jukebox_pos_ - UP, UP, JUKEBOX);
+        const int drums = g.sounds_started[static_cast<int>(Sound::NoteBassDrum)];
+        use_on(note_pos_, UP, STICK);
+        check("right-clicking a note block raises it a note and plays a drum on stone",
+              w.chunk_at(note_pos_)->notes[cell_index(note_pos_)] == 1 && g.sounds_started[static_cast<int>(Sound::NoteBassDrum)] == drums + 1);
+        use_on(jukebox_pos_, UP, RECORD_CAT);
+        check("a jukebox takes a disc and plays it", w.chunk_at(jukebox_pos_)->records[cell_index(jukebox_pos_)] == RECORD_CAT &&
+                                                         g.sounds_started[static_cast<int>(Sound::RecordCat)] == 1 &&
+                                                         !g.inventory.slots[g.inventory.selected]);
+        // A wall sign with something on it.
+        const glm::ivec3 wall_sign = o + glm::ivec3(0, 2, wall_z - 1);
+        set(wall_sign, WALL_SIGN, 0);
+        w.chunk_at(wall_sign)->signs[cell_index(wall_sign)] = {"", "Gallery", "of blocks", ""};
+        g.renderer->rebuild({ChunkPos{chunk_of(wall_sign.x), chunk_of(wall_sign.z)}});
+    }
+    if (f == 1381) {
+        // A sign post: placing it opens the sign screen.
+        sign_pos_ = o + glm::ivec3(-1, 0, 4);
+        use_on(sign_pos_ - UP, UP, SIGN);
+        check("placing a sign starts typing its text", at(sign_pos_) == SIGN_POST && g.sign_editing == sign_pos_);
+    }
+    if (f == 1383) {
+        check("the sign screen is open", app.screen() != nullptr && g.paused);
+        if (Screen* s = app.screen()) {
+            auto type = [&](const std::string& text) {
+                for (char c : text) s->character(static_cast<unsigned char>(c));
+            };
+            type("Welcome to");
+            s->key(GLFW_KEY_DOWN);
+            type("PetrutzCraft");
+            s->key(GLFW_KEY_DOWN);
+            type("Beta 1.7.3");
+            g.hud->show_message("", 0);
+            shot(app, "m11_sign_editor.png");
+            s->key(GLFW_KEY_ESCAPE);
+        }
+    }
+    if (f == 1385) {
+        const SignText* t = w.chunk_at(sign_pos_) ? &w.chunk_at(sign_pos_)->signs[cell_index(sign_pos_)] : nullptr;
+        check("the typed text is on the sign", t && (*t)[0] == "Welcome to" && (*t)[1] == "PetrutzCraft" && (*t)[2] == "Beta 1.7.3");
+        check("the sign screen closed", !app.screen() && !g.paused && !g.sign_editing);
+        // Open the chest and put things in it.
+        use_on(chest_pos_, UP, STICK);
+        check("right-clicking a double chest opens its large screen",
+              g.gui && g.gui->kind == InventoryScreen::Kind::Chest && g.gui->crafting && g.gui->crafting->chest_slots() == 2 * CHEST_SLOTS);
+        if (g.gui && g.gui->crafting) {
+            CraftingMenu& m = *g.gui->crafting;
+            m.at({Slot::Chest, 0}) = Stack{DIAMOND, 5};
+            m.at({Slot::Chest, 4}) = Stack{IRON_INGOT, 12};
+            m.at({Slot::Chest, 30}) = Stack{RECORD_13, 1};
+            m.at({Slot::Chest, 52}) = Stack{RED_WOOL, 64};
+            g.inventory.slots[0] = Stack{COBBLE, 64};
+            m.click({Slot::Inv, 0}, 0, true);
+            check("shift-click moves a stack from the inventory into the chest",
+                  !g.inventory.slots[0] && m.at({Slot::Chest, 1}) && m.at({Slot::Chest, 1})->item == COBBLE);
+        }
+        g.hud->show_message("", 0);
+    }
+    if (f == 1387) shot(app, "m11_chest.png");
+    if (f == 1388) {
+        g.close_gui();
+        // Open the door, then look at it all.
+        use_on(o + glm::ivec3(3, 0, 7), UP, STICK);
+        check("right-clicking a wooden door opens both halves", door_open(w.get_data(o.x + 3, o.y, o.z + 7)) &&
+                                                                    door_open(w.get_data(o.x + 3, o.y + 1, o.z + 7)));
+        use_on(o + glm::ivec3(7, 0, 7), UP, STICK);
+        check("an iron door doesn't open by hand", !door_open(w.get_data(o.x + 7, o.y, o.z + 7)));
+        stand(-1, -1);
+        g.yaw = 0;
+        g.pitch = 14;
+        g.inventory.slots[g.inventory.selected].reset();
+        g.hud->show_message("", 0);
+    }
+    if (f == 1390) shot(app, "m11_building.png");
+    if (f == 1391) {
+        // Breaking a door's bottom drops one door and takes the top too; the chest spills.
+        const size_t before = g.drops.size();
+        g.break_block(o + glm::ivec3(3, 0, 7), WOOD_DOOR_BLOCK);
+        int doors = 0;
+        for (size_t i = before; i < g.drops.size(); ++i) doors += g.drops[i]->stack.item == WOOD_DOOR;
+        check("breaking a door removes both halves and drops one door", doors == 1 && at(o + glm::ivec3(3, 1, 7)) == AIR);
+        // The stone behind the ladders goes: they fall off.
+        g.break_block(o + glm::ivec3(-9, 3, 2), STONE);
+        check("a ladder falls when its wall goes", at(o + glm::ivec3(-8, 3, 2)) == AIR && at(o + glm::ivec3(-8, 2, 2)) == LADDER);
+        // Falling down a ladder is slow.
+        p.x = o.x - 8 + 0.5;
+        p.z = o.z + 2 + 0.5;
+        p.y = o.y + 1;
+        p.vy = -10;
+        g.update(0.05);
+        --g.frame;  // that update was extra: keep the scene's frame numbers
+        check("a ladder slows a fall", p.vy >= -3.01);
+        // Soul sand.
+        set(o + glm::ivec3(-1, -1, 0), SOUL_SAND);
+        check("soul sand is lower than a block", block_height(SOUL_SAND) < 1.0f);
+    }
+    if (f == 1392) {
+        // Back to where the farm scene left off.
+        g.drops.clear();
+        p.x = build_return_.x;
+        p.y = build_return_.y;
+        p.z = build_return_.z;
+        p.vx = p.vy = p.vz = 0;
+        g.fall_peak = p.y;
+        g.weather = build_weather_;
+        g.level.time = build_time_;
+        g.creative = build_creative_;
+        g.renderer->load_all(p.x, p.z, 2);
+    }
+}
+
 void AutoTest::tour(App& app, Game& g) {
     const long f = g.frame;
     Body& p = g.player;
@@ -1939,6 +2173,18 @@ void AutoTest::reload(App& app) {
               std::any_of(g.monsters.begin(), g.monsters.end(), [&](const auto& m) {
                   return m->kind == MobKind::Zombie && std::hypot(m->body.x - g.player.x, m->body.z - g.player.z) < 6;
               }));
+        // The building scene is far away: load it to look.
+        g.renderer->load_all(build_.x + 0.5, build_.z + 0.5, 1);
+        Chunk* sc = g.world.chunk_at(sign_pos_);
+        check("a sign keeps its text through saving",
+              sc && sc->signs.count(cell_index(sign_pos_)) && sc->signs[cell_index(sign_pos_)][1] == "PetrutzCraft");
+        ChestSlots* cs = chest_slots(g.world, chest_pos_);
+        check("a chest keeps what is in it through saving", cs && (*cs)[0] && (*cs)[0]->item == DIAMOND && (*cs)[0]->count == 5);
+        Chunk* nc = g.world.chunk_at(note_pos_);
+        check("a note block keeps its pitch", nc && nc->notes.count(cell_index(note_pos_)) && nc->notes[cell_index(note_pos_)] == 1);
+        Chunk* jc = g.world.chunk_at(jukebox_pos_);
+        check("a jukebox keeps its disc", jc && jc->records.count(cell_index(jukebox_pos_)) &&
+                                              jc->records[cell_index(jukebox_pos_)] == RECORD_CAT);
         shot(app, "9_reloaded.png");
         finish(app);
     }

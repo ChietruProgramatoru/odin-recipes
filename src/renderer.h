@@ -106,7 +106,8 @@ public:
     int jobs_in_flight() const { return streamer_.jobs_in_flight(); }
 
     void set_instances(std::vector<ModelPart> instances) { instances_ = std::move(instances); }
-    void set_outline(std::optional<glm::ivec3> block) { outline_ = block; }
+    // The boxes (world coordinates, low and high corners) outlined around the block aimed at.
+    void set_outline(std::vector<std::pair<glm::vec3, glm::vec3>> boxes) { outline_ = std::move(boxes); }
     // View bobbing: applied to the camera after it is pointed (identity: none).
     void set_view_bob(const glm::mat4& bob) { view_bob_ = bob; }
     // Falling rain and snow around the player, and lightning bolts (position and zigzag seed).
@@ -145,7 +146,7 @@ private:
     std::unordered_map<ChunkPos, ChunkGpu, ChunkPosHash> meshes_;
     std::map<int, GpuMesh> models_;
     std::vector<ModelPart> instances_;
-    std::optional<glm::ivec3> outline_;
+    std::vector<std::pair<glm::vec3, glm::vec3>> outline_;
     long edits_ = 0;
     glm::mat4 view_bob_{1.0f};
     GpuMesh outline_mesh_;

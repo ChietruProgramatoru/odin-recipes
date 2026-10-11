@@ -29,6 +29,9 @@ struct Audio::Impl {
         const std::vector<float>* samples;
         double pos, step;
         float left, right;
+        Sound sound;
+        glm::dvec3 source;
+        int key;
     };
     std::mutex mutex;
     std::vector<Voice> voices;
@@ -86,10 +89,29 @@ bool Audio::ok() const { return impl_->open; }
 
 void Audio::play(const SoundEvent& event, glm::dvec3 listener, double yaw_degrees) {
     if (!impl_->open) return;
-    const StereoGain g = sound_gain(event.sound, listener, yaw_degrees, event.pos);
-    if (g.left <= 0 && g.right <= 0) return;
     std::lock_guard lock(impl_->mutex);
     auto& voices = impl_->voices;
+    if (event.key) std::erase_if(voices, [&](const Impl::Voice& v) { return v.key == event.key; });
+    if (event.stop) return;
+    const StereoGain g = sound_gain(event.sound, listener, yaw_degrees, event.pos);
+    if (g.left <= 0 && g.right <= 0 && !event.key) return;  // a disc keeps playing out of earshot
     if (voices.size() >= MAX_VOICES) voices.erase(voices.begin());
-    voices.push_back({&impl_->sounds[static_cast<int>(event.sound)], 0.0, std::max(0.1f, event.pitch) * 1.0, g.left, g.right});
+    voices.push_back({&impl_->sounds[static_cast<int>(event.sound)], 0.0, std::max(0.1f, event.pitch) * 1.0, g.left, g.right,
+                      event.sound, event.pos, event.key});
+}
+
+void Audio::stop_all() {
+    if (!impl_->open) return;
+    std::lock_guard lock(impl_->mutex);
+    impl_->voices.clear();
+}
+
+void Audio::move_listener(glm::dvec3 listener, double yaw_degrees) {
+    if (!impl_->open) return;
+    std::lock_guard lock(impl_->mutex);
+    for (auto& v : impl_->voices) {
+        const StereoGain g = sound_gain(v.sound, listener, yaw_degrees, v.source);
+        v.left = g.left;
+        v.right = g.right;
+    }
 }

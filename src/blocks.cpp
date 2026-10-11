@@ -19,7 +19,7 @@ const BlockInfo BLOCKS[BLOCK_COUNT] = {
     {"Water", {T_WATER, T_WATER, T_WATER}, std::nullopt, std::nullopt},
     {"Bricks", {T_BRICK, T_BRICK, T_BRICK}, 2.0f, BRICK},
     {"Crafting Table", {IT_CRAFT_TOP, IT_CRAFT_FRONT, T_PLANKS}, 2.5f, CRAFTING_TABLE},
-    {"Chest", {IT_CHEST_TOP, IT_CHEST_FRONT, IT_CHEST_TOP}, 2.5f, CHEST},
+    {"Chest", {IT_CHEST_TOP, IT_CHEST_SIDE, IT_CHEST_TOP}, 2.5f, CHEST},  // the front goes on one side (data value)
     {"Furnace", {IT_FURNACE_TOP, IT_FURNACE_SIDE, IT_FURNACE_TOP}, 3.5f, FURNACE},
     {"Glowstone", {IT_GLOWSTONE, IT_GLOWSTONE, IT_GLOWSTONE}, 0.3f, GLOWSTONE},
     {"Torch", {T_TORCH, T_TORCH, T_TORCH}, 0.0f, TORCH},
@@ -81,6 +81,31 @@ const BlockInfo BLOCKS[BLOCK_COUNT] = {
     {"Rail", {T_RAIL, T_RAIL, T_RAIL}, 0.7f, RAIL},
     {"Powered Rail", {T_POWERED_RAIL, T_POWERED_RAIL, T_POWERED_RAIL}, 0.7f, POWERED_RAIL},
     {"Detector Rail", {T_DETECTOR_RAIL, T_DETECTOR_RAIL, T_DETECTOR_RAIL}, 0.7f, DETECTOR_RAIL},
+    // Building (M11). Beta's hardness; bookshelves drop nothing in Beta.
+    {"Snow", {IT_SNOW, IT_SNOW, IT_SNOW}, 0.2f, SNOWBALL, 4, 4},
+    {"Block of Gold", {IT_GOLD_BLOCK, IT_GOLD_BLOCK, IT_GOLD_BLOCK}, 3.0f, GOLD_BLOCK},
+    {"Block of Iron", {IT_IRON_BLOCK, IT_IRON_BLOCK, IT_IRON_BLOCK}, 5.0f, IRON_BLOCK},
+    {"Block of Diamond", {IT_DIAMOND_BLOCK, IT_DIAMOND_BLOCK, IT_DIAMOND_BLOCK}, 5.0f, DIAMOND_BLOCK},
+    {"Lapis Lazuli Block", {IT_LAPIS_BLOCK, IT_LAPIS_BLOCK, IT_LAPIS_BLOCK}, 3.0f, LAPIS_BLOCK},
+    {"Bookshelf", {T_PLANKS, IT_BOOKSHELF, T_PLANKS}, 1.5f, std::nullopt},
+    {"Note Block", {IT_NOTE_BLOCK, IT_NOTE_BLOCK, IT_NOTE_BLOCK}, 0.8f, NOTE_BLOCK},
+    {"Jukebox", {IT_JUKEBOX_TOP, IT_NOTE_BLOCK, IT_NOTE_BLOCK}, 2.0f, JUKEBOX},
+    {"Netherrack", {T_NETHERRACK, T_NETHERRACK, T_NETHERRACK}, 0.4f, NETHERRACK},
+    {"Soul Sand", {T_SOUL_SAND, T_SOUL_SAND, T_SOUL_SAND}, 0.5f, SOUL_SAND},
+    // Wool and slabs drop the item for their data value (building.h), as do doors, signs and paintings.
+    {"Wool", {IT_WOOL, IT_WOOL, IT_WOOL}, 0.8f, std::nullopt},
+    {"Slab", {IT_SLAB_TOP, IT_SLAB_SIDE, IT_SLAB_TOP}, 2.0f, std::nullopt},
+    {"Double Slab", {IT_SLAB_TOP, IT_SLAB_SIDE, IT_SLAB_TOP}, 2.0f, std::nullopt},
+    {"Wooden Stairs", {T_PLANKS, T_PLANKS, T_PLANKS}, 2.0f, WOOD_STAIRS},
+    {"Cobblestone Stairs", {T_COBBLE, T_COBBLE, T_COBBLE}, 2.0f, COBBLE_STAIRS},
+    {"Fence", {T_PLANKS, T_PLANKS, T_PLANKS}, 2.0f, FENCE},
+    {"Ladder", {T_LADDER, T_LADDER, T_LADDER}, 0.4f, LADDER},
+    {"Wooden Door", {T_WOOD_DOOR_TOP, T_WOOD_DOOR_BOTTOM, T_WOOD_DOOR_BOTTOM}, 3.0f, std::nullopt},
+    {"Iron Door", {T_IRON_DOOR_TOP, T_IRON_DOOR_BOTTOM, T_IRON_DOOR_BOTTOM}, 5.0f, std::nullopt},
+    {"Trapdoor", {T_TRAPDOOR, T_TRAPDOOR, T_TRAPDOOR}, 3.0f, TRAPDOOR},
+    {"Sign", {T_PLANKS, T_PLANKS, T_PLANKS}, 1.0f, std::nullopt},
+    {"Sign", {T_PLANKS, T_PLANKS, T_PLANKS}, 1.0f, std::nullopt},
+    {"Painting", {T_PAINTING_BACK, T_PAINTING_BACK, T_PAINTING_BACK}, 0.0f, std::nullopt},
 };
 static_assert(TILE_COUNT <= ITEM_TILE_BASE, "world tiles run into the item tiles in the atlas");
 
@@ -114,14 +139,19 @@ float block_height(BlockId id) {
     if (is_bed(id)) return 9.0f / 16;
     if (id == FARMLAND) return 15.0f / 16;
     if (id == CAKE_BLOCK) return 0.5f;
+    if (id == SOUL_SAND) return 14.0f / 16;
     return 1.0f;
 }
 bool falls(BlockId id) { return id == SAND || id == GRAVEL; }
-bool is_thin(BlockId id) { return is_torch(id) || id == FIRE || is_plant(id) || is_rail(id); }
+bool is_shaped(BlockId id) { return id == SLAB || (id >= WOOD_STAIRS && id <= PAINTING_BLOCK); }
+bool is_door(BlockId id) { return id == WOOD_DOOR_BLOCK || id == IRON_DOOR_BLOCK; }
+// Signs and paintings have nothing to bump into (Beta); they are aimed at by their boxes.
+bool is_thin(BlockId id) { return is_torch(id) || id == FIRE || is_plant(id) || id == SIGN_POST || id == WALL_SIGN || id == PAINTING_BLOCK ||
+                                    is_rail(id); }
 bool is_solid(BlockId id) { return id != AIR && !is_fluid(id) && !is_thin(id); }
 bool is_opaque(BlockId id) {
     return id != AIR && !is_fluid(id) && id != ICE && !is_cutout(id) && !is_thin(id) && !is_bed(id) && id != CAKE_BLOCK &&
-           id != FARMLAND;
+           id != FARMLAND && !is_shaped(id);
 }
 bool is_block(ItemId id) { return block_info(id) != nullptr; }
 
@@ -138,6 +168,10 @@ BlockTint block_tint(BlockId id) {
 // Beta's values: leaves dim light by 1, water and ice by 3, solid blocks stop it.
 int light_opacity(BlockId id) {
     if (id == AIR || is_thin(id) || is_bed(id) || id == SPAWNER || id == GLASS || id == CAKE_BLOCK) return 0;
+    // Beta: slabs and stairs stop light like full blocks (the cell's own light is taken from above
+    // when they are drawn); the other shaped blocks and soul sand let it through.
+    if (id == SLAB || id == WOOD_STAIRS || id == COBBLE_STAIRS) return 15;
+    if (is_shaped(id)) return 0;
     if (is_leaves(id)) return 1;
     if (id == WATER || id == ICE) return 3;
     return 15;

@@ -11,22 +11,30 @@ bool pickaxe_block(BlockId b) {
     switch (b) {
         case STONE: case COBBLE: case SANDSTONE: case MOSSY_COBBLE: case ICE: case OBSIDIAN:
         case COAL_ORE: case IRON_ORE: case GOLD_ORE: case DIAMOND_ORE: case LAPIS_ORE:
+        case SLAB: case DOUBLE_SLAB: case IRON_BLOCK: case GOLD_BLOCK: case DIAMOND_BLOCK: case LAPIS_BLOCK:
+        case NETHERRACK:
             return true;
         default: return false;
     }
 }
-bool shovel_block(BlockId b) { return b == GRASS || b == DIRT || b == SAND || b == GRAVEL || b == CLAY_BLOCK || b == FARMLAND; }
-bool axe_block(BlockId b) { return b == PLANKS || b == LOG || b == BIRCH_LOG || b == SPRUCE_LOG || b == CHEST; }
+bool shovel_block(BlockId b) {
+    return b == GRASS || b == DIRT || b == SAND || b == GRAVEL || b == CLAY_BLOCK || b == FARMLAND || b == SNOW_BLOCK ||
+           b == SOUL_SAND;
+}
+bool axe_block(BlockId b) {
+    return b == PLANKS || b == LOG || b == BIRCH_LOG || b == SPRUCE_LOG || b == CHEST || b == BOOKSHELF;
+}
 
 // Stone-like blocks drop nothing unless mined with a pickaxe of at least this level.
 std::optional<int> pickaxe_needed(BlockId b) {
     if (is_furnace(b)) return 0;
     switch (b) {
         case STONE: case COBBLE: case BRICK: case SANDSTONE: case MOSSY_COBBLE: case SPAWNER:
-        case COAL_ORE:
+        case COAL_ORE: case NETHERRACK: case COBBLE_STAIRS: case IRON_DOOR_BLOCK:
+        case SLAB: case DOUBLE_SLAB:  // Beta: every slab is made of stone, even the wooden one
             return 0;
-        case IRON_ORE: case LAPIS_ORE: return 1;
-        case GOLD_ORE: case DIAMOND_ORE: case REDSTONE_ORE: return 2;
+        case IRON_ORE: case LAPIS_ORE: case IRON_BLOCK: case LAPIS_BLOCK: return 1;
+        case GOLD_ORE: case DIAMOND_ORE: case REDSTONE_ORE: case GOLD_BLOCK: case DIAMOND_BLOCK: return 2;
         case OBSIDIAN: return 3;
         default: return std::nullopt;
     }

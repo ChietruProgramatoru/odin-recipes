@@ -83,10 +83,12 @@ InventoryScreen::InventoryScreen(Inventory& inventory, Furnace& furnace) : kind(
     crafting.emplace(inventory, furnace);
 }
 
-InventoryScreen::InventoryScreen(Inventory& inventory, ChestSlots& chest, std::string name)
+InventoryScreen::InventoryScreen(Inventory& inventory, ChestSlots& top, ChestSlots* bottom, std::string name)
     : kind(Kind::Chest), title(std::move(name)) {
-    crafting.emplace(inventory, chest);
+    crafting.emplace(inventory, top, bottom);
 }
+
+int InventoryScreen::chest_rows() const { return kind == Kind::Chest ? crafting->chest_slots() / 9 : 0; }
 
 int InventoryScreen::gui_scale(int width, int height) {
     // Like Beta's automatic GUI scale: as big as fits a 320 x 240 screen.
@@ -96,7 +98,10 @@ int InventoryScreen::gui_scale(int width, int height) {
 }
 
 int InventoryScreen::panel_width() const { return kind == Kind::Creative ? 195 : 176; }
-int InventoryScreen::panel_height() const { return kind == Kind::Creative ? 136 : 166; }
+int InventoryScreen::panel_height() const {
+    if (kind == Kind::Chest) return 114 + chest_rows() * 18;  // Beta's chest screen
+    return kind == Kind::Creative ? 136 : 166;
+}
 
 int InventoryScreen::rows() const {
     return (static_cast<int>(all_items().size()) + PICKER_COLS - 1) / PICKER_COLS;
@@ -120,6 +125,14 @@ std::vector<InventoryScreen::SlotPos> InventoryScreen::slot_positions() const {
         out.push_back({{Slot::Furnace, FURNACE_INPUT}, 56, 17});
         out.push_back({{Slot::Furnace, FURNACE_FUEL}, 56, 53});
         out.push_back({{Slot::Furnace, FURNACE_OUTPUT}, 116, 35});
+    } else if (kind == Kind::Chest) {
+        const int rows = chest_rows(), shift = (rows - 3) * 18;
+        for (int r = 0; r < rows; ++r)
+            for (int c = 0; c < 9; ++c) out.push_back({{Slot::Chest, r * 9 + c}, 8 + c * 18, 18 + r * 18});
+        for (int r = 0; r < 3; ++r)
+            for (int c = 0; c < 9; ++c) out.push_back({{Slot::Inv, 9 + r * 9 + c}, 8 + c * 18, 85 + shift + r * 18});
+        for (int c = 0; c < 9; ++c) out.push_back({{Slot::Inv, c}, 8 + c * 18, 143 + shift});
+        return out;
     } else {
         for (int r = 0; r < 3; ++r)
             for (int c = 0; c < 3; ++c) out.push_back({{Slot::Grid, r * 3 + c}, 30 + c * 18, 17 + r * 18});
@@ -240,7 +253,7 @@ void InventoryScreen::draw(Painter& p, int width, int height, double mx, double 
         f.arrow(79, 34, WHITE, fur.cook * 24 / SMELT_TICKS);
     } else if (kind == Kind::Chest) {
         f.label(title, 8, 6);
-        f.label("Inventory", 8, 72);
+        f.label("Inventory", 8, ph - 94);
     } else if (kind == Kind::CraftingTable) {
         f.label("Crafting", 28, 6);
         f.arrow(90, 35);

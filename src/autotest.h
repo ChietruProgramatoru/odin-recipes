@@ -49,6 +49,7 @@ private:
     void hand(App& app, Game& g);      // the first-person hand, held items and the swing
     void fluids_and_fire(App& app, Game& g);  // flowing water and lava, falling sand, fire, drowning, burning
     void farming(App& app, Game& g);   // tilling, planting, bone meal, harvesting, cake and the wild plants
+    void building(App& app, Game& g);  // M11: building blocks, chests, doors, signs, paintings, note blocks
     void animals(App& app, Game& g);   // every animal, saddles and riding, shearing, dye, milk, taming wolves, eggs
     void transport(App& app, Game& g); // rails, riding a minecart, the chest and furnace minecarts, a boat
     void reload(App& app);      // quit to the title and load the world again
@@ -101,6 +102,14 @@ private:
     // Fluids and fire: a stone platform high in the sky (x, top y, z of its middle).
     glm::ivec3 pad_{0};
     double current_start_x_ = 0;
+    // Building: a stone floor high in the sky (x, top y, z of where the player starts), the things
+    // checked again after loading, and what the scene borrowed.
+    glm::ivec3 build_{0};
+    glm::ivec3 sign_pos_{0}, chest_pos_{0}, note_pos_{0}, jukebox_pos_{0};
+    glm::dvec3 build_return_{0};
+    Weather build_weather_;
+    int64_t build_time_ = 0;
+    bool build_creative_ = false;
     // Animals: the cow, pig, white sheep, pink sheep, chicken, wolf and squid in the pen.
     std::array<Animal*, 7> pen_{};
     long chickens_ = 0;

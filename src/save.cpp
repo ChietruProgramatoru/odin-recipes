@@ -279,6 +279,40 @@ std::vector<uint8_t> encode_chunk(const Chunk& c) {
     std::vector<uint8_t> packed(c.data.size() / 2);
     for (size_t i = 0; i < packed.size(); ++i) packed[i] = (c.data[2 * i] & 15) | (c.data[2 * i + 1] << 4);
     w.bytes(packed.data(), packed.size());
+    // Building (format 7): chests (only their filled slots), signs, painting cells, note pitches, discs.
+    w.u16(static_cast<uint16_t>(std::min<size_t>(c.chests.size(), 0xFFFF)));
+    for (const auto& [index, slots] : c.chests) {
+        w.i32(index);
+        w.u8(static_cast<uint8_t>(std::count_if(slots.begin(), slots.end(), [](const auto& st) { return st.has_value(); })));
+        for (int i = 0; i < CHEST_SLOTS; ++i)
+            if (slots[i]) {
+                w.u8(static_cast<uint8_t>(i));
+                slot(slots[i]);
+            }
+    }
+    w.u16(static_cast<uint16_t>(std::min<size_t>(c.signs.size(), 0xFFFF)));
+    for (const auto& [index, text] : c.signs) {
+        w.i32(index);
+        for (const std::string& line : text) {
+            const size_t n = std::min<size_t>(line.size(), SIGN_LINE_LENGTH);
+            w.u8(static_cast<uint8_t>(n));
+            w.bytes(reinterpret_cast<const uint8_t*>(line.data()), n);
+        }
+    }
+    w.u16(static_cast<uint16_t>(std::min<size_t>(c.paintings.size(), 0xFFFF)));
+    for (const auto& [index, part] : c.paintings) {
+        w.i32(index);
+        w.u8(part.motif);
+        w.u8(part.x);
+        w.u8(part.y);
+    }
+    for (const auto* values : {&c.notes, &c.records}) {
+        w.u16(static_cast<uint16_t>(std::min<size_t>(values->size(), 0xFFFF)));
+        for (const auto& [index, v] : *values) {
+            w.i32(index);
+            w.i32(v);
+        }
+    }
     return w.out;
 }
 
@@ -373,6 +407,62 @@ std::unique_ptr<Chunk> decode_chunk(const std::vector<uint8_t>& bytes, int cx, i
         for (size_t i = 0; i < c->data.size() / 2; ++i) {
             c->data[2 * i] = packed[i] & 15;
             c->data[2 * i + 1] = packed[i] >> 4;
+        }
+    }
+    if (version >= 7) {
+        // Each kept only where its block still stands.
+        auto block_is = [&](int index, auto test) { return index >= 0 && index < static_cast<int>(c->blocks.size()) && test(c->blocks[index]); };
+        auto slot = [&]() -> std::optional<Stack> {
+            int item = current_item_id(r.i32()), count = r.i32(), damage = r.i32();
+            if (!valid_item(item) || count < 1) return std::nullopt;
+            return Stack{item, std::min(count, max_stack(item)), std::clamp(damage, 0, max_damage(item))};
+        };
+        const int chests = r.u16();
+        for (int i = 0; i < chests && r.ok(); ++i) {
+            const int index = r.i32();
+            ChestSlots slots{};
+            const int filled = r.u8();
+            for (int k = 0; k < filled && r.ok(); ++k) {
+                const int at = r.u8();
+                auto st = slot();
+                if (at < CHEST_SLOTS) slots[at] = st;
+            }
+            if (block_is(index, [](BlockId b) { return b == CHEST; })) c->chests[index] = slots;
+        }
+        const int signs = r.u16();
+        for (int i = 0; i < signs && r.ok(); ++i) {
+            const int index = r.i32();
+            SignText text;
+            for (std::string& line : text) {
+                const int n = r.u8();
+                const uint8_t* p = r.bytes(n);
+                if (!p) return nullptr;
+                for (int k = 0; k < n && k < SIGN_LINE_LENGTH; ++k)
+                    if (p[k] >= 32 && p[k] < 127) line += static_cast<char>(p[k]);
+            }
+            if (block_is(index, [](BlockId b) { return b == SIGN_POST || b == WALL_SIGN; })) c->signs[index] = text;
+        }
+        const int paintings = r.u16();
+        for (int i = 0; i < paintings && r.ok(); ++i) {
+            const int index = r.i32();
+            PaintingPart part;
+            part.motif = r.u8();
+            part.x = r.u8();
+            part.y = r.u8();
+            if (block_is(index, [](BlockId b) { return b == PAINTING_BLOCK; })) c->paintings[index] = part;
+        }
+        for (auto* values : {&c->notes, &c->records}) {
+            const int n = r.u16();
+            const BlockId owner = values == &c->notes ? static_cast<BlockId>(NOTE_BLOCK) : static_cast<BlockId>(JUKEBOX);
+            for (int i = 0; i < n && r.ok(); ++i) {
+                const int index = r.i32(), v = r.i32();
+                if (!block_is(index, [owner](BlockId b) { return b == owner; })) continue;
+                if (values == &c->notes) {
+                    if (v >= 0 && v < NOTE_PITCHES) (*values)[index] = v;
+                } else if (v == RECORD_13 || v == RECORD_CAT) {
+                    (*values)[index] = v;
+                }
+            }
         }
     }
     if (!r.ok()) return nullptr;

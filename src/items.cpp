@@ -48,8 +48,12 @@ Table build() {
     for (int b = GRASS; b < BLOCK_COUNT; ++b) {
         // The torch is a flat icon, added below; beds are placed from the BED item.
         // Farmland, crops, sugar cane and cake come from other items; flowers are flat icons below.
+        // Wool, slabs, doors, signs and paintings are placed from their items; fences, ladders and
+        // trapdoors are flat icons, added below.
         if (b == WATER || b == LAVA || b == FIRE || is_torch(b) || is_bed(b) || (is_furnace(b) && b != FURNACE) ||
-            is_plant(b) || b == FARMLAND || b == CAKE_BLOCK || is_rail(b))
+            is_plant(b) || b == FARMLAND || b == CAKE_BLOCK || b == WOOL || b == SLAB || b == DOUBLE_SLAB ||
+            b == FENCE || b == LADDER || is_door(b) || b == TRAPDOOR || b == SIGN_POST || b == WALL_SIGN ||
+            b == PAINTING_BLOCK || is_rail(b))
             continue;
         const BlockInfo* info = block_info(b);
         t.cube(b, info->name, info->tiles[0], info->tiles[1], info->tiles[1]);
@@ -68,14 +72,7 @@ Table build() {
                IT_WOOL + c, IT_WOOL + c);
     t.cube(PUMPKIN, "Pumpkin", IT_PUMPKIN_TOP, IT_PUMPKIN_FACE, IT_PUMPKIN_SIDE);
     t.cube(JACK_O_LANTERN, "Jack 'o' Lantern", IT_PUMPKIN_TOP, IT_JACK_FACE, IT_PUMPKIN_SIDE);
-    t.cube(SNOW_BLOCK, "Snow", IT_SNOW, IT_SNOW, IT_SNOW);
-    t.cube(GOLD_BLOCK, "Block of Gold", IT_GOLD_BLOCK, IT_GOLD_BLOCK, IT_GOLD_BLOCK);
-    t.cube(IRON_BLOCK, "Block of Iron", IT_IRON_BLOCK, IT_IRON_BLOCK, IT_IRON_BLOCK);
-    t.cube(DIAMOND_BLOCK, "Block of Diamond", IT_DIAMOND_BLOCK, IT_DIAMOND_BLOCK, IT_DIAMOND_BLOCK);
-    t.cube(LAPIS_BLOCK, "Lapis Lazuli Block", IT_LAPIS_BLOCK, IT_LAPIS_BLOCK, IT_LAPIS_BLOCK);
     t.cube(BOOKSHELF, "Bookshelf", T_PLANKS, IT_BOOKSHELF, IT_BOOKSHELF);
-    t.cube(NOTE_BLOCK, "Note Block", IT_NOTE_BLOCK, IT_NOTE_BLOCK, IT_NOTE_BLOCK);
-    t.cube(JUKEBOX, "Jukebox", IT_JUKEBOX_TOP, IT_NOTE_BLOCK, IT_NOTE_BLOCK);
     t.cube(DISPENSER, "Dispenser", IT_FURNACE_TOP, IT_DISPENSER_FRONT, IT_FURNACE_SIDE);
     t.cube(PISTON, "Piston", IT_PISTON_TOP, IT_PISTON_SIDE, IT_PISTON_SIDE);
     t.cube(STICKY_PISTON, "Sticky Piston", IT_STICKY_TOP, IT_PISTON_SIDE, IT_PISTON_SIDE);
@@ -184,6 +181,8 @@ Table build() {
     t.flat(REPEATER, "Redstone Repeater");
     t.flat(SADDLE, "Saddle", 1);
     t.flat(SEEDS, "Seeds");
+    t.flat(RECORD_13, "Music Disc 13", 1);
+    t.flat(RECORD_CAT, "Music Disc cat", 1);
     return t;
 }
 
@@ -215,6 +214,8 @@ int armor_slot(ItemId id) {
     return info ? info->armor_slot : -1;
 }
 
+bool placeable_future_block(ItemId id) { return (id >= WHITE_WOOL && id <= BLACK_WOOL) || (id >= STONE_SLAB && id <= COBBLE_SLAB); }
+
 bool looks_like_block(ItemId id) {
     const ItemInfo* info = item_info(id);
     return info && info->icon.shape != ItemIcon::Flat;
@@ -243,10 +244,25 @@ ItemId current_item_id(ItemId id) {
     if (id == OLD_RED_ROSE_ITEM) return RED_ROSE;
     if (id == OLD_BROWN_MUSHROOM_ITEM) return BROWN_MUSHROOM;
     if (id == OLD_RED_MUSHROOM_ITEM) return RED_MUSHROOM;
-    if (id == OLD_RAIL_ITEM) return RAIL;
-    if (id == OLD_POWERED_RAIL_ITEM) return POWERED_RAIL;
-    if (id == OLD_DETECTOR_RAIL_ITEM) return DETECTOR_RAIL;
-    return id;
+    switch (id) {
+        case OLD_SNOW_BLOCK_ITEM: return SNOW_BLOCK;
+        case OLD_GOLD_BLOCK_ITEM: return GOLD_BLOCK;
+        case OLD_IRON_BLOCK_ITEM: return IRON_BLOCK;
+        case OLD_DIAMOND_BLOCK_ITEM: return DIAMOND_BLOCK;
+        case OLD_LAPIS_BLOCK_ITEM: return LAPIS_BLOCK;
+        case OLD_BOOKSHELF_ITEM: return BOOKSHELF;
+        case OLD_NOTE_BLOCK_ITEM: return NOTE_BLOCK;
+        case OLD_JUKEBOX_ITEM: return JUKEBOX;
+        case OLD_WOOD_STAIRS_ITEM: return WOOD_STAIRS;
+        case OLD_COBBLE_STAIRS_ITEM: return COBBLE_STAIRS;
+        case OLD_FENCE_ITEM: return FENCE;
+        case OLD_LADDER_ITEM: return LADDER;
+        case OLD_TRAPDOOR_ITEM: return TRAPDOOR;
+        case OLD_RAIL_ITEM: return RAIL;
+        case OLD_POWERED_RAIL_ITEM: return POWERED_RAIL;
+        case OLD_DETECTOR_RAIL_ITEM: return DETECTOR_RAIL;
+        default: return id;
+    }
 }
 
 int icon_tile(ItemId id) {

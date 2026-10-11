@@ -11,6 +11,7 @@
 #include <cmath>
 #include <vector>
 
+#include "chest.h"
 #include "rng.h"
 #include "world.h"
 
@@ -38,6 +39,7 @@ struct Region {
     int x0, z0;
     std::vector<BlockId> blocks = std::vector<BlockId>(RW * RW * HEIGHT, AIR);  // column-major: y fastest
     std::array<Biome, RW * RW> biomes{};
+    std::vector<std::pair<glm::ivec3, ChestSlots>> chests{};  // dungeon chests and what is in them
 
     static int col(int lx, int lz) { return lz * RW + lx; }
     bool inside(int x, int y, int z) const {
@@ -218,8 +220,10 @@ bool lake(Region& r, Rng& rng, int ox, int oy, int oz, BlockId liquid) {
 // --- Dungeons ---------------------------------------------------------------------------------
 
 // A mossy cobblestone room with a spawner in the middle, only where it fits underground with
-// 1 to 5 openings into caves (Beta's rule). Loot chests come once chests exist.
-bool dungeon(Region& r, Rng& rng, int x, int y, int z) {
+// 1 to 5 openings into caves (Beta's rule), and up to two loot chests against its walls. The chests
+// use their own random numbers (from `loot_seed` and the room's spot), so worlds made before chests
+// existed still get the same rooms.
+bool dungeon(Region& r, Rng& rng, int x, int y, int z, uint64_t loot_seed) {
     const int h = 3, rx = rng.below(2) + 2, rz = rng.below(2) + 2;
     int openings = 0;
     for (int i = x - rx - 1; i <= x + rx + 1; ++i)
@@ -242,7 +246,24 @@ bool dungeon(Region& r, Rng& rng, int x, int y, int z) {
                 else if (is_solid(r.get(i, j, k)))
                     r.set(i, j, k, j == y - 1 && rng.below(4) != 0 ? MOSSY_COBBLE : COBBLE);
             }
-    r.set(x, y, z, SPAWNER);
+    Rng loot(loot_seed ^ (static_cast<uint64_t>(static_cast<uint32_t>(x)) * 73856093ull) ^
+             (static_cast<uint64_t>(static_cast<uint32_t>(y)) * 19349663ull) ^
+             (static_cast<uint64_t>(static_cast<uint32_t>(z)) * 83492791ull));
+    for (int chest = 0; chest < 2; ++chest)
+        for (int attempt = 0; attempt < 3; ++attempt) {
+            const int cx = x + loot.randint(-rx, rx), cz = z + loot.randint(-rz, rz);
+            if (r.get(cx, y, cz) != AIR || (cx == x && cz == z)) continue;
+            int walls = 0;
+            for (glm::ivec3 d : {glm::ivec3(1, 0, 0), glm::ivec3(-1, 0, 0), glm::ivec3(0, 0, 1), glm::ivec3(0, 0, -1)})
+                walls += is_solid(r.get(cx + d.x, y, cz + d.z));
+            if (walls != 1) continue;
+            r.set(cx, y, cz, CHEST);
+            ChestSlots slots{};
+            dungeon_loot(loot, slots);
+            r.chests.push_back({{cx, y, cz}, slots});
+            break;
+        }
+    r.set(x, y, z, SPAWNER);  // after the chests, like Beta: a chest only counts the room's walls
     return true;
 }
 
@@ -678,7 +699,7 @@ std::unique_ptr<Chunk> TerrainGenerator::generate(int cx, int cz) const {
         }
     });
     sources(DUNGEONS, [&](Rng& rng, int x, int z) {
-        for (int i = 0; i < 8; ++i) dungeon(r, rng, x + rng.below(16), rng.below(HEIGHT), z + rng.below(16));
+        for (int i = 0; i < 8; ++i) dungeon(r, rng, x + rng.below(16), rng.below(HEIGHT), z + rng.below(16), seed_);
     });
     sources(CLAY_SALT, [&](Rng& rng, int x, int z) {
         for (int i = 0; i < 2; ++i) clay(r, rng, x + rng.below(16), z + rng.below(16));
@@ -745,6 +766,8 @@ std::unique_ptr<Chunk> TerrainGenerator::generate(int cx, int cz) const {
                     break;
                 }
         }
+    for (const auto& [p, slots] : r.chests)
+        if (chunk_of(p.x) == cx && chunk_of(p.z) == cz && chunk->blocks[cell_index(p)] == CHEST) chunk->chests[cell_index(p)] = slots;
     chunk->recompute_max_y();
     return chunk;
 }

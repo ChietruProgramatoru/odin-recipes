@@ -26,8 +26,8 @@
 
 constexpr int LEVEL_FORMAT = 1;
 // 2 added stack size and wear to dropped items, 3 monsters, 4 furnaces, 5 block data values and
-// falling blocks, 6 minecarts and boats
-constexpr int CHUNK_FORMAT = 6;
+// falling blocks, 6 minecarts and boats, 7 chests, signs, paintings, note blocks and jukeboxes
+constexpr int CHUNK_FORMAT = 7;
 constexpr int ARMOR_SLOT_BASE = 100;  // armor slot numbers in level.json, like Beta
 constexpr int REGION_SIZE = 32;  // chunks per side of a region file
 constexpr double AUTOSAVE_INTERVAL = 60.0;  // seconds

@@ -105,3 +105,5 @@ std::unique_ptr<Screen> controls_screen(App& app, ScreenFactory back);
 std::unique_ptr<Screen> pause_screen(App& app);
 // "Game over!" with Respawn and Title menu, shown while the player is dead.
 std::unique_ptr<Screen> death_screen(App& app);
+// Typing the text of a sign just placed (Game::sign_editing): four lines, Done or Escape to finish.
+std::unique_ptr<Screen> sign_screen(App& app);
