@@ -88,6 +88,7 @@ add_library(petrutz_core STATIC
   src/farming.cpp
   src/tools.cpp
   src/mobs.cpp
+  src/animals.cpp
   src/hand.cpp
   src/combat.cpp
   src/monsters.cpp
@@ -145,6 +146,7 @@ add_executable(petrutz_tests
   tests/test_tools.cpp
   tests/test_weather.cpp
   tests/test_monsters.cpp
+  tests/test_animals.cpp
   tests/test_furnace.cpp
   tests/test_hand.cpp
   tests/test_blockupdate.cpp)

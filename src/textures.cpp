@@ -731,6 +731,11 @@ std::map<int, Image> make_tiles(int seed) {
                                                                        {'s', {225, 215, 195, 255}}}); }},
         {T_CAKE_TOP, cake_top}, {T_CAKE_SIDE, [](Rng& rng) { return cake_side(rng, false); }},
         {T_CAKE_INSIDE, [](Rng& rng) { return cake_side(rng, true); }},
+        {T_PIG, solid({240, 165, 160}, 0.06)}, {T_PIG_SNOUT, solid({220, 130, 130}, 0.04)},
+        {T_SADDLE, solid({125, 75, 40}, 0.1)}, {T_SHEEP_SKIN, solid({225, 195, 170}, 0.06)},
+        {T_SHEEP_FACE, solid({205, 175, 150}, 0.06)}, {T_BEAK, solid({235, 175, 40}, 0.04)},
+        {T_WATTLE, solid({200, 30, 30}, 0.04)}, {T_SQUID, solid({40, 60, 95}, 0.12)},
+        {T_WOLF, solid({205, 200, 195}, 0.14)}, {T_WOLF_DARK, solid({140, 130, 120}, 0.12)},
     };
     std::map<int, Image> tiles;
     for (int k = 0; k < 8; ++k) generators.emplace(T_WHEAT_0 + k, [k](Rng& rng) { return wheat(rng, k); });

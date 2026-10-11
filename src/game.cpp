@@ -32,6 +32,7 @@ Game::Game(GLFWwindow* win, GLuint atlas, Painter& painter, const Options& opts,
       painter_(painter),
       scripted_(setup.scripted),
       weather_rng_(setup.scripted ? 1 : std::random_device{}()),
+      animal_rng_(setup.scripted ? 4 : std::random_device{}()),
       monster_rng_(setup.scripted ? 2 : std::random_device{}()),
       farm_rng_(setup.scripted ? 3 : std::random_device{}()) {
     weather = Weather(level.weather);
@@ -58,7 +59,9 @@ Game::Game(GLFWwindow* win, GLuint atlas, Painter& painter, const Options& opts,
     // Build the area around the player before the first frame; the rest streams in.
     renderer->load_all(player.x, player.z, 2);
     if (new_world) {
-        for (int i = 0; i < 5; ++i) spawn_cow_near(player.x, player.z, 6, 20);
+        // A herd of cows, then a few groups of whatever lives here.
+        spawn_animal_group(player.x, player.z, 6, 20, AnimalKind::Cow);
+        for (int i = 0; i < 4; ++i) spawn_animal_group(player.x, player.z, 6, 24);
         hud->show_message("Welcome! Punch trees, find cows, survive.", 5);
     } else {
         hud->show_message("Welcome back to " + level.name, 3);
@@ -118,18 +121,57 @@ PlayerData Game::player_data() const {
     return p;
 }
 
-bool Game::spawn_cow_near(double x, double z, double rmin, double rmax) {
+Animal* Game::spawn_animal(AnimalKind kind, double x, double y, double z) {
+    animals.push_back(std::make_unique<Animal>(world, kind, x, y, z, animal_rng_));
+    return animals.back().get();
+}
+
+int Game::spawn_animal_group(double x, double z, double rmin, double rmax, std::optional<AnimalKind> kind) {
+    // Grass under open sky (Beta: light 9 or more) with room for an animal above it.
+    auto spot = [&](int cx, int cz) -> std::optional<int> {
+        const int y = world.surface_y(cx, cz);
+        if (world.get_block(cx, y - 1, cz) != GRASS || world.is_solid_at(cx, y, cz) || world.is_solid_at(cx, y + 1, cz) ||
+            world.sky_light(cx, y, cz) < 9)
+            return std::nullopt;
+        return y;
+    };
     for (int i = 0; i < 10; ++i) {
-        double a = rng.uniform(0, 2 * PI);
-        double r = rng.uniform(rmin, rmax);
-        int cx = ifloor(x + std::cos(a) * r), cz = ifloor(z + std::sin(a) * r);
-        int y = world.surface_y(cx, cz);
-        if (world.get_block(cx, y - 1, cz) == GRASS && !world.is_solid_at(cx, y + 1, cz)) {
-            cows.push_back(std::make_unique<Cow>(world, cx + 0.5, y, cz + 0.5, rng));
-            return true;
+        const double a = animal_rng_.uniform(0, 2 * PI), r = animal_rng_.uniform(rmin, rmax);
+        const int cx = ifloor(x + std::cos(a) * r), cz = ifloor(z + std::sin(a) * r);
+        if (!spot(cx, cz)) continue;
+        const std::optional<AnimalKind> k = kind ? kind : pick_land_animal(world.biome_at(cx, cz).value_or(Biome::PLAINS), animal_rng_);
+        if (!k) return 0;
+        int made = 0;
+        for (int n = animal_rng_.randint(1, 4), tries = 0; made < n && tries < 12; ++tries) {
+            const int gx = cx + (tries ? animal_rng_.randint(-3, 3) : 0), gz = cz + (tries ? animal_rng_.randint(-3, 3) : 0);
+            if (auto y = spot(gx, gz)) {
+                spawn_animal(*k, gx + 0.5, *y, gz + 0.5);
+                ++made;
+            }
         }
+        return made;
     }
-    return false;
+    return 0;
+}
+
+int Game::spawn_squid(double x, double z, double rmin, double rmax) {
+    for (int i = 0; i < 10; ++i) {
+        const double a = animal_rng_.uniform(0, 2 * PI), r = animal_rng_.uniform(rmin, rmax);
+        const int cx = ifloor(x + std::cos(a) * r), cz = ifloor(z + std::sin(a) * r);
+        // Water at least 4 deep under the surface of the sea (Beta: squid swim between 46 and 62).
+        const int y = SEA_LEVEL - 4;
+        bool deep = true;
+        for (int dy = 0; dy < 4 && deep; ++dy) deep = world.get_block(cx, y + dy, cz) == WATER;
+        if (!deep) continue;
+        const int n = animal_rng_.randint(1, 4);
+        for (int k = 0; k < n; ++k) spawn_animal(AnimalKind::Squid, cx + animal_rng_.uniform(0.3, 0.7), y + 0.5, cz + animal_rng_.uniform(0.3, 0.7));
+        return n;
+    }
+    return 0;
+}
+
+size_t Game::land_animal_count() const {
+    return static_cast<size_t>(std::count_if(animals.begin(), animals.end(), [](const auto& a) { return a->kind != AnimalKind::Squid; }));
 }
 
 void Game::on_chunk_shown(ChunkPos pos) {
@@ -144,7 +186,7 @@ void Game::on_chunk_shown(ChunkPos pos) {
         if (std::none_of(spawners.begin(), spawners.end(), [&](const Spawner& s) { return s.pos == at; }))
             spawners.push_back({at});
     }
-    // Cows, monsters and items that were saved here, or left behind when the player walked away.
+    // Animals, monsters and items that were saved here, or left behind when the player walked away.
     if (!chunk->entities.empty()) {
         auto entities = std::move(chunk->entities);
         chunk->entities.clear();
@@ -154,10 +196,10 @@ void Game::on_chunk_shown(ChunkPos pos) {
     if (chunk->mob_spawned) return;
     chunk->mob_spawned = true;
     chunk->dirty = true;
-    if (cows.size() >= MAX_COWS || rng.random() > 0.12) return;
-    double cx = pos.cx * CHUNK + 8, cz = pos.cz * CHUNK + 8;
-    int n = rng.randint(1, 3);
-    for (int i = 0; i < n; ++i) spawn_cow_near(cx, cz, 0, 6);
+    // Animals mostly appear when the world is made (Beta): a group in about one chunk in 8.
+    const double cx = pos.cx * CHUNK + 8, cz = pos.cz * CHUNK + 8;
+    if (land_animal_count() < MAX_ANIMALS && animal_rng_.random() < 0.12) spawn_animal_group(cx, cz, 0, 7);
+    if (animals.size() - land_animal_count() < MAX_SQUID && animal_rng_.random() < 0.1) spawn_squid(cx, cz, 0, 8);
 }
 
 void Game::spawn_entity(const EntityRecord& e) {
@@ -181,11 +223,17 @@ void Game::spawn_entity(const EntityRecord& e) {
         f->body.y = e.y;
         f->body.z = e.z;
         falling.push_back(std::move(f));
-    } else if (e.kind == EntityRecord::COW) {
-        auto cow = std::make_unique<Cow>(world, e.x, e.y, e.z, rng);
-        cow->yaw = cow->target_yaw = e.yaw;
-        cow->health = std::clamp(e.health, 1, COW_MAX_HEALTH);
-        cows.push_back(std::move(cow));
+    } else if (e.kind == EntityRecord::ANIMAL) {
+        Animal& a = *spawn_animal(static_cast<AnimalKind>(e.mob), e.x, e.y, e.z);
+        a.yaw = a.target_yaw = e.yaw;
+        a.wool = e.size;
+        a.sheared = e.flags & EntityRecord::SHEARED;
+        a.saddled = e.flags & EntityRecord::SADDLED;
+        a.tamed = e.flags & EntityRecord::TAMED;
+        a.sitting = e.flags & EntityRecord::SITTING;
+        a.angry = e.flags & EntityRecord::ANGRY;
+        if (a.kind == AnimalKind::Chicken && e.age > 0) a.egg_timer = e.age;
+        a.health = std::clamp(e.health, 1, a.max_health());
     } else {
         auto drop = std::make_unique<ItemDrop>(world, Stack{e.item, e.count, e.damage}, e.x, e.y, e.z, rng);
         drop->body.vx = drop->body.vy = drop->body.vz = 0;
@@ -201,14 +249,19 @@ void Game::stash_entity(const EntityRecord& e) {
 }
 
 namespace {
-EntityRecord cow_record(const Cow& c) {
+EntityRecord animal_record(const Animal& a) {
     EntityRecord e;
-    e.kind = EntityRecord::COW;
-    e.x = c.body.x;
-    e.y = c.body.y;
-    e.z = c.body.z;
-    e.yaw = static_cast<float>(c.yaw);
-    e.health = c.health;
+    e.kind = EntityRecord::ANIMAL;
+    e.x = a.body.x;
+    e.y = a.body.y;
+    e.z = a.body.z;
+    e.yaw = static_cast<float>(a.yaw);
+    e.health = a.health;
+    e.mob = static_cast<int>(a.kind);
+    e.size = a.wool;
+    e.flags = (a.sheared ? EntityRecord::SHEARED : 0) | (a.saddled ? EntityRecord::SADDLED : 0) |
+              (a.tamed ? EntityRecord::TAMED : 0) | (a.sitting ? EntityRecord::SITTING : 0) | (a.angry ? EntityRecord::ANGRY : 0);
+    e.age = a.kind == AnimalKind::Chicken ? static_cast<float>(a.egg_timer) : 0.0f;
     return e;
 }
 // A monster for its chunk. A skeleton riding a spider is saved as part of the spider.
@@ -251,10 +304,10 @@ EntityRecord drop_record(const ItemDrop& d) {
 // --- saving --------------------------------------------------------------------------------
 
 bool Game::save(bool wait) {
-    // Cows, monsters and items are saved with the chunk they stand in.
+    // Animals, monsters and items are saved with the chunk they stand in.
     std::unordered_map<ChunkPos, std::vector<EntityRecord>, ChunkPosHash> live;
-    for (const auto& cow : cows)
-        if (cow->alive()) live[chunk_at(cow->body.x, cow->body.z)].push_back(cow_record(*cow));
+    for (const auto& a : animals)
+        if (a->alive()) live[chunk_at(a->body.x, a->body.z)].push_back(animal_record(*a));
     for (const auto& m : monsters)
         if (m->alive() && !m->mount && !m->vanish) live[chunk_at(m->body.x, m->body.z)].push_back(monster_record(*m));
     for (const auto& drop : drops) live[chunk_at(drop->body.x, drop->body.z)].push_back(drop_record(*drop));
@@ -509,7 +562,7 @@ void Game::update(double dt) {
         hand.bobbing = options.view_bobbing;
         hand.update(dt, active_inventory().selected_item(), active_inventory().selected,
                     {std::hypot(player.vx, player.vz), dead ? 0.0 : player.vy, walking});
-        update_cows(dt);
+        update_animals(dt);
         update_monsters(dt);
         update_drops(dt);
         update_arrows(dt);
@@ -549,8 +602,8 @@ void Game::update(double dt) {
             parts.push_back(part);
         }
     };
-    for (const auto& cow : cows)
-        if (in_view(cow->body)) add_lit(cow->parts(), cow->body);
+    for (const auto& a : animals)
+        if (in_view(a->body)) add_lit(a->parts(), a->body);
     for (const auto& m : monsters)
         if (in_view(m->body)) add_lit(m->parts(), m->body);
     for (const auto& tnt : tnts) add_lit(tnt->parts(), tnt->body);
@@ -637,13 +690,13 @@ std::string Game::debug_text() {
                   "Weather: %s (rain %.2f, thunder %.2f)\n"
                   "Seed: %lld\n"
                   "Difficulty: %s\n"
-                  "Chunks loaded: %zu   cows: %zu   monsters: %zu   items: %zu",
+                  "Chunks loaded: %zu   animals: %zu   monsters: %zu   items: %zu",
                   fps, renderer->jobs_in_flight(), player.x, bx, player.y, by, player.z, bz, chunk_of(bx), chunk_of(bz),
                   bx & 15, bz & 15, FACING[f], f, biome_name(world.generator().biome_at(bx, bz)), std::max(dimmed, blk),
                   sky, blk, static_cast<long long>(level.time / DAY_TICKS + 1), minutes / 60, minutes % 60,
                   weather.is_thundering() ? "thunderstorm" : weather.is_raining() ? "rain" : "clear",
                   weather.rain_strength(), weather.thunder_strength(),
-                  static_cast<long long>(level.seed), difficulty_name(difficulty()), world.chunk_count(), cows.size(),
+                  static_cast<long long>(level.seed), difficulty_name(difficulty()), world.chunk_count(), animals.size(),
                   monsters.size(), drops.size());
     return buf;
 }
@@ -715,6 +768,23 @@ void Game::draw_player_preview(int x, int y, int w, int h, float look_x, float l
 
 void Game::move(double dt) {
     Body& p = player;
+    if (riding) {
+        if (action_down(KEY_SNEAK)) {
+            dismount();
+        } else {
+            // Sitting on the pig: it goes where it wants and the player goes with it.
+            p.x = riding->body.x;
+            p.y = riding->body.y + RIDE_HEIGHT;
+            p.z = riding->body.z;
+            p.vx = p.vy = p.vz = 0;
+            p.on_ground = true;
+            fall_peak = p.y;
+            was_on_ground = true;
+            sneaking = false;
+            walk_amount += (0 - walk_amount) * std::min(1.0, dt * 10);
+            return;
+        }
+    }
     double yr = radians(yaw);
     double fx = std::sin(yr), fz = std::cos(yr);
     double rx = -std::cos(yr), rz = std::sin(yr);
@@ -794,14 +864,14 @@ void Game::move(double dt) {
 void Game::update_target() {
     glm::vec3 origin = eye(), direction = forward();
     target = world.raycast(origin, direction, REACH);
-    Cow* best = nullptr;
+    Animal* best = nullptr;
     Monster* best_monster = nullptr;
     float best_d = ATTACK_REACH;
-    for (const auto& cow : cows) {
-        if (!cow->alive()) continue;
-        auto d = cow->ray_hit(origin, direction, ATTACK_REACH);
+    for (const auto& a : animals) {
+        if (!a->alive() || a.get() == riding) continue;
+        auto d = a->ray_hit(origin, direction, ATTACK_REACH);
         if (d && *d < best_d) {
-            best = cow.get();
+            best = a.get();
             best_d = *d;
         }
     }
@@ -818,7 +888,7 @@ void Game::update_target() {
     if ((best || best_monster) && target && target->distance < best_d &&
         !is_plant(world.get_block(target->block.x, target->block.y, target->block.z)))
         best = nullptr, best_monster = nullptr;
-    target_cow = best;
+    target_animal = best;
     target_monster = best_monster;
 }
 
@@ -829,11 +899,21 @@ void Game::try_attack() {
     attack_cooldown = 0.35;
     const ItemId held = active_inventory().selected_item().value_or(AIR);
     const int damage = creative ? 10 : attack_damage(held);
-    if (target_cow) {
-        target_cow->hurt(damage, player.x, player.z);
+    if (target_animal) {
+        Animal& a = *target_animal;
+        a.hurt(damage, player.x, player.z);
+        if (a.kind == AnimalKind::Wolf && !a.tamed) {
+            // A wild wolf turns on you, and so does its pack (Beta).
+            for (const auto& w : animals)
+                if (w->kind == AnimalKind::Wolf && !w->tamed && w->alive() &&
+                    std::hypot(w->body.x - a.body.x, w->body.z - a.body.z) < WOLF_ANGER_RANGE)
+                    w->angry = true;
+        }
+        if (!(a.kind == AnimalKind::Wolf && a.tamed)) alert_wolves(&a);
     } else {
         target_monster->hurt(damage, player.x, player.z);
         target_monster->targeting = true;  // monsters turn on whoever hits them
+        alert_wolves(target_monster);
     }
     if (creative) return;
     vitals.exhaust(EXHAUST_ATTACK);
@@ -993,6 +1073,7 @@ void Game::use_item() {
         }
         return;
     }
+    if (target_animal && interact(*target_animal)) return;
     Inventory& inv = active_inventory();
     auto item = inv.selected_item();
     if (!item) return;
@@ -1020,6 +1101,10 @@ void Game::use_item() {
         shoot_arrow();
         return;
     }
+    if (*item == EGG) {
+        throw_egg();
+        return;
+    }
     if (*item == FLINT_AND_STEEL) {
         if (target && !targeting_mob() && world.get_block(target->block.x, target->block.y, target->block.z) == TNT) {
             prime_tnt(target->block, TNT_FUSE_TICKS);  // the flame lights the TNT
@@ -1027,10 +1112,6 @@ void Game::use_item() {
         } else if (target && !targeting_mob() && target->before && light_fire(*target->before)) {
             wear_selected(1);
         }
-        return;
-    }
-    if (*item == BUCKET && target_cow) {  // milking
-        if (!creative) swap_selected(MILK_BUCKET);
         return;
     }
     if (*item == MILK_BUCKET) {  // drinking: in Beta milk does nothing else
@@ -1078,7 +1159,7 @@ void Game::use_item() {
         place = *torch;
     }
     std::vector<const Body*> bodies{&player};
-    for (const auto& cow : cows) bodies.push_back(&cow->body);
+    for (const auto& a : animals) bodies.push_back(&a->body);
     for (const auto& m : monsters) bodies.push_back(&m->body);
     for (const Body* b : bodies)
         if (is_solid(place) && c.x + 1 > b->x - b->half && c.x < b->x + b->half && c.z + 1 > b->z - b->half && c.z < b->z + b->half &&
@@ -1172,6 +1253,118 @@ bool Game::light_fire(glm::ivec3 pos) {
     return true;
 }
 
+void Game::throw_egg() {
+    // Thrown like Beta's eggs and snowballs: as fast as an arrow, a little less accurate.
+    if (!creative) active_inventory().take_selected();
+    glm::dvec3 dir(forward());
+    dir += glm::dvec3(animal_rng_.uniform(-1, 1), animal_rng_.uniform(-1, 1), animal_rng_.uniform(-1, 1)) * 0.0075;
+    dir = glm::normalize(dir);
+    auto egg = std::make_unique<Arrow>(glm::dvec3(eye()) + dir * 0.3, dir * Arrow::SPEED);
+    egg->item = EGG;
+    arrows.push_back(std::move(egg));
+    hand.swing();
+}
+
+bool Game::interact(Animal& a) {
+    Inventory& inv = active_inventory();
+    const ItemId held = inv.selected_item().value_or(AIR);
+    auto use_up = [&] {
+        if (!creative) inv.take_selected();
+    };
+    switch (a.kind) {
+        case AnimalKind::Cow:
+            if (held != BUCKET) return false;
+            if (!creative) swap_selected(MILK_BUCKET);  // milking
+            return true;
+        case AnimalKind::Pig:
+            if (held == SADDLE && !a.saddled) {
+                a.saddled = true;
+                use_up();
+                return true;
+            }
+            if (!a.saddled || riding) return false;
+            // Climb on. Beta's pigs can't be steered: it wanders where it likes. Sneak to get off.
+            riding = &a;
+            a.ridden = true;
+            mouse_buttons_.erase(GLFW_MOUSE_BUTTON_RIGHT);
+            hud->show_message("Sneak to get off the pig", 3);
+            return true;
+        case AnimalKind::Sheep:
+            if (held == SHEARS && !a.sheared) {
+                a.sheared = true;
+                for (int n = shear_count(animal_rng_); n > 0; --n) {
+                    spawn_drop(wool_item(a.wool), a.body.x, a.body.y + 1.0, a.body.z);
+                    drops.back()->body.vy = animal_rng_.uniform(3, 5);
+                }
+                wear_selected(1);
+                return true;
+            }
+            if (auto color = dye_wool_color(held); color && !a.sheared && *color != a.wool) {
+                a.wool = *color;
+                use_up();
+                return true;
+            }
+            return false;
+        case AnimalKind::Wolf:
+            if (!a.tamed) {
+                if (held != BONE || a.angry) return false;
+                use_up();
+                if (tame_succeeds(animal_rng_)) {
+                    a.tame();
+                    add_puffs(puffs, {a.body.x, a.body.y + 1, a.body.z}, 7, 0.4, 0.6, 0.12, animal_rng_);
+                    hud->show_message("The wolf is tame", 2);
+                } else {
+                    add_puffs(puffs, {a.body.x, a.body.y + 1, a.body.z}, 3, 0.4, 0.6, 0.12, animal_rng_);
+                }
+                return true;
+            }
+            if (const int heal = wolf_food_heal(held); heal > 0 && a.health < a.max_health()) {
+                a.health = std::min(a.max_health(), a.health + heal);
+                use_up();
+                return true;
+            }
+            // Anything else: sit down, or get up and follow.
+            a.sitting = !a.sitting;
+            a.prey = nullptr;
+            mouse_buttons_.erase(GLFW_MOUSE_BUTTON_RIGHT);
+            return true;
+        case AnimalKind::Chicken:
+        case AnimalKind::Squid:
+            return false;
+    }
+    return false;
+}
+
+void Game::dismount() {
+    if (!riding) return;
+    Animal& pig = *riding;
+    pig.ridden = false;
+    riding = nullptr;
+    // Stand on top of the pig, or beside it if there's no room above.
+    player.x = pig.body.x;
+    player.z = pig.body.z;
+    player.y = pig.body.y + pig.body.height;
+    for (int i = 0; i < 4 && player.collides(); ++i) {
+        player.x = pig.body.x + (i & 1 ? 1.0 : -1.0) * (i < 2 ? 1 : 0);
+        player.z = pig.body.z + (i & 1 ? 1.0 : -1.0) * (i < 2 ? 0 : 1);
+        player.y = pig.body.y;
+    }
+    if (player.collides()) {
+        player.x = pig.body.x;
+        player.z = pig.body.z;
+        player.y = pig.body.y + pig.body.height;
+    }
+    player.vx = player.vy = player.vz = 0;
+    fall_peak = player.y;
+}
+
+void Game::alert_wolves(const void* enemy) {
+    for (const auto& w : animals)
+        if (w->kind == AnimalKind::Wolf && w->tamed && !w->sitting && w->alive() && w.get() != enemy &&
+            std::hypot(w->body.x - player.x, w->body.z - player.z) < 16)
+            w->prey = enemy;
+}
+
 void Game::shoot_arrow() {
     // Beta's bow fires as soon as you click (no drawing back), using up an arrow.
     if (!creative && !inventory.remove(ARROW, 1)) return;
@@ -1186,6 +1379,7 @@ void Game::shoot_arrow() {
 
 void Game::on_death() {
     close_gui();
+    if (riding) dismount();
     // Everything you carry drops where you died (Beta).
     auto scatter = [&](std::optional<Stack>& slot) {
         if (!slot) return;
@@ -1351,8 +1545,11 @@ void Game::strike(glm::dvec3 pos) {
     lightning_flash = LIGHTNING_FLASH_TICKS;
     auto near = [&](const Body& b) { return b.distance_to(pos.x, pos.y, pos.z) <= LIGHTNING_REACH + 1; };
     if (!creative && !vitals.dead() && near(player)) hurt_player(LIGHTNING_DAMAGE);
-    for (const auto& cow : cows)
-        if (cow->alive() && near(cow->body)) cow->hurt(LIGHTNING_DAMAGE, pos.x, pos.z);
+    for (const auto& a : animals)
+        if (a->alive() && near(a->body)) {
+            a->hurt(LIGHTNING_DAMAGE, pos.x, pos.z);
+            a->burning = std::max(a->burning, ANIMAL_BURN_SECONDS);
+        }
     for (const auto& m : monsters)
         if (m->alive() && near(m->body)) {
             if (m->kind == MobKind::Creeper) m->powered = true;  // a charged creeper
@@ -1484,38 +1681,112 @@ void Game::wake_up(bool set_spawn) {
     if (set_spawn) bed_spawn = head;
 }
 
-// --- cows and drops -------------------------------------------------------------------------------
+// --- animals and drops -------------------------------------------------------------------------------
 
-void Game::update_cows(double dt) {
+void Game::update_animals(double dt) {
     // Past the distance where chunk meshes are dropped, so the chunk is shown (and spawns it) again on the way back.
     const double far_away = (renderer->render_distance + 3) * CHUNK;
-    for (auto it = cows.begin(); it != cows.end();) {
-        Cow& cow = **it;
-        // Skip cows on chunks that aren't generated yet so they don't fall through the world.
-        if (!world.find(chunk_of(ifloor(cow.body.x)), chunk_of(ifloor(cow.body.z)))) {
-            ++it;
+    // Where a wolf's prey is (a monster or an animal), if it is still about.
+    struct Prey {
+        Monster* monster = nullptr;
+        Animal* animal = nullptr;
+        const Body* body = nullptr;
+    };
+    auto find_prey = [&](const void* who) {
+        Prey p;
+        if (!who) return p;
+        for (const auto& m : monsters)
+            if (m.get() == who && m->alive()) p.monster = m.get(), p.body = &m->body;
+        for (const auto& o : animals)
+            if (o.get() == who && o->alive()) p.animal = o.get(), p.body = &o->body;
+        return p;
+    };
+    AnimalSenses senses;
+    senses.player = {player.x, player.y, player.z};
+    senses.player_targetable = !creative && !vitals.dead();
+    senses.peaceful = difficulty() == PEACEFUL;
+    for (size_t i = 0; i < animals.size();) {
+        Animal& a = *animals[i];
+        // Skip animals on chunks that aren't generated yet so they don't fall through the world.
+        if (!world.find(chunk_of(ifloor(a.body.x)), chunk_of(ifloor(a.body.z)))) {
+            ++i;
             continue;
         }
         bool remove = false;
-        // Lava burns cows too (4 at a time, like everything else).
-        if (cow.alive() && cow.body.in_lava && cow.flash <= 0) cow.hurt(LAVA_DAMAGE, cow.body.x, cow.body.z);
-        if (cow.tick(dt, player.x, player.z, rng)) {
-            int n = drop_beef_count(rng);
-            for (int i = 0; i < n; ++i) spawn_drop(BEEF, cow.body.x, cow.body.y + 0.5, cow.body.z);
+        // Lava burns animals too (4 at a time, like everything else) and sets them alight, as does fire.
+        const Body& b = a.body;
+        if (a.alive() && b.in_lava) {
+            if (a.flash <= 0) a.hurt(LAVA_DAMAGE, b.x, b.z);
+            a.burning = std::max(a.burning, ANIMAL_BURN_SECONDS * 2);
+        } else if (a.alive() && world.box_in(FIRE, b.x - b.half, b.y, b.z - b.half, b.x + b.half, b.y + b.height, b.z + b.half)) {
+            a.burning = std::max(a.burning, ANIMAL_BURN_SECONDS);
+        }
+        // Wild wolves now and then go after a sheep (Beta: one tick in 900).
+        if (a.kind == AnimalKind::Wolf && !a.tamed && !a.angry && !a.prey && animal_rng_.random() < dt * 20 / 900) {
+            double best = 16;
+            for (const auto& o : animals)
+                if (o->kind == AnimalKind::Sheep && o->alive()) {
+                    const double d = std::hypot(o->body.x - b.x, o->body.z - b.z);
+                    if (d < best) best = d, a.prey = o.get();
+                }
+        }
+        Prey prey = find_prey(a.prey);
+        if (!prey.body) a.prey = nullptr;
+        senses.prey.reset();
+        if (prey.body) {
+            senses.prey = glm::dvec3(prey.body->x, prey.body->y, prey.body->z);
+            senses.prey_half = prey.body->half;
+        }
+        AnimalActions act;
+        if (a.tick(dt, senses, animal_rng_, act)) {
+            for (ItemId item : animal_drops(a.kind, a.loot_state(), animal_rng_)) spawn_drop(item, b.x, b.y + 0.5, b.z);
+            add_puffs(puffs, {b.x, b.y + b.height * 0.5, b.z}, 6, b.half + 0.2, 1.0, 0.2, animal_rng_);
             remove = true;
-        } else if (std::hypot(cow.body.x - player.x, cow.body.z - player.z) > far_away) {
+        } else if (std::hypot(b.x - player.x, b.z - player.z) > far_away && &a != riding) {
             // Too far to simulate: keep it with its chunk until the player comes back.
-            if (cow.alive()) stash_entity(cow_record(cow));
+            if (a.alive()) stash_entity(animal_record(a));
             remove = true;
+        }
+        if (act.bite_player > 0 && hurt_player(act.bite_player)) {
+            // Pushed back like any hit.
+            const double dx = player.x - b.x, dz = player.z - b.z, d = std::max(1e-6, std::hypot(dx, dz));
+            player.vx += dx / d * 6;
+            player.vz += dz / d * 6;
+            player.vy = std::max(player.vy, 4.0);
+        }
+        if (act.bite_prey > 0) {
+            if (prey.monster) prey.monster->hurt(act.bite_prey, b.x, b.z);
+            if (prey.animal) prey.animal->hurt(act.bite_prey, b.x, b.z);
+        }
+        if (act.lay_egg) spawn_drop(EGG, b.x, b.y + 0.3, b.z);
+        if (act.teleport) {
+            // A tamed wolf left behind turns up next to its owner, on solid ground.
+            for (int tries = 0; tries < 10; ++tries) {
+                const int x = ifloor(player.x) + animal_rng_.randint(-2, 2), z = ifloor(player.z) + animal_rng_.randint(-2, 2);
+                for (int y = ifloor(player.y) + 1; y >= ifloor(player.y) - 2; --y) {
+                    if (!world.is_solid_at(x, y - 1, z) || world.is_solid_at(x, y, z) || world.is_solid_at(x, y + 1, z)) continue;
+                    a.body.x = x + 0.5;
+                    a.body.y = y;
+                    a.body.z = z + 0.5;
+                    a.body.vx = a.body.vy = a.body.vz = 0;
+                    tries = 10;
+                    break;
+                }
+            }
         }
         if (remove) {
-            if (target_cow == &cow) target_cow = nullptr;
-            it = cows.erase(it);
+            if (target_animal == &a) target_animal = nullptr;
+            if (riding == &a) dismount();
+            for (const auto& o : animals)
+                if (o->prey == &a) o->prey = nullptr;
+            animals.erase(animals.begin() + static_cast<std::ptrdiff_t>(i));
         } else {
-            ++it;
+            ++i;
         }
     }
-    if (cows.size() < 6 && rng.random() < dt * 0.05) spawn_cow_near(player.x, player.z, 24, 48);
+    // Now and then more appear out of sight on grass, and squid in the sea.
+    if (land_animal_count() < 10 && animal_rng_.random() < dt * 0.05) spawn_animal_group(player.x, player.z, 24, 48);
+    if (animals.size() - land_animal_count() < 3 && animal_rng_.random() < dt * 0.03) spawn_squid(player.x, player.z, 16, 40);
 }
 
 void Game::update_drops(double dt) {
@@ -1565,16 +1836,25 @@ void Game::update_drops(double dt) {
 
 void Game::update_arrows(double dt) {
     const double far_away = (renderer->render_distance + 3) * CHUNK;
-    // What arrows can hit: cows (kind 0), monsters (1) and, for monsters' arrows, the player (2).
+    // What arrows can hit: animals (kind 0), monsters (1) and, for monsters' arrows, the player (2).
     std::vector<ArrowTarget> mobs;
-    for (size_t i = 0; i < cows.size(); ++i)
-        if (cows[i]->alive()) mobs.push_back(cows[i]->target(0, static_cast<int>(i)));
+    for (size_t i = 0; i < animals.size(); ++i)
+        if (animals[i]->alive() && animals[i].get() != riding) mobs.push_back(animals[i]->target(0, static_cast<int>(i)));
     for (size_t i = 0; i < monsters.size(); ++i)
         if (monsters[i]->alive()) mobs.push_back(monsters[i]->target(1, static_cast<int>(i)));
     std::vector<ArrowTarget> with_player = mobs;
     if (!creative && !vitals.dead())
         with_player.push_back({glm::vec3(player.x - player.half, player.y, player.z - player.half),
                                glm::vec3(player.x + player.half, player.y + player.height, player.z + player.half), 2, 0});
+    // A thrown egg breaks on whatever it hits; now and then a chicken hatches from it (Beta).
+    auto hatch = [&](const Arrow& egg) {
+        add_puffs(puffs, egg.pos, 4, 0.1, 1.0, 0.1, animal_rng_);
+        for (int n = chicks_from_egg(animal_rng_); n > 0; --n) {
+            Animal* chick = spawn_animal(AnimalKind::Chicken, egg.pos.x, egg.pos.y, egg.pos.z);
+            chick->body.y = std::floor(egg.pos.y);
+            if (chick->body.collides()) chick->body.y = std::floor(egg.pos.y) + 1;
+        }
+    };
     for (auto it = arrows.begin(); it != arrows.end();) {
         Arrow& a = **it;
         bool remove = false;
@@ -1583,15 +1863,25 @@ void Game::update_arrows(double dt) {
             remove = true;  // flew off the loaded world (arrows aren't saved)
         } else if ((hit = a.tick(dt, world, a.from_player ? mobs : with_player))) {
             const double fx = a.pos.x - a.vel.x, fz = a.pos.z - a.vel.z;
-            if (hit->kind == 0) {
-                cows[hit->index]->hurt(ARROW_DAMAGE, fx, fz);
+            if (a.item == EGG) {
+                hatch(a);
+            } else if (hit->kind == 0) {
+                Animal& hit_animal = *animals[hit->index];
+                hit_animal.hurt(ARROW_DAMAGE, fx, fz);
+                if (hit_animal.kind == AnimalKind::Wolf && !hit_animal.tamed) hit_animal.angry = true;
             } else if (hit->kind == 1) {
                 Monster& m = *monsters[hit->index];
                 m.hurt(ARROW_DAMAGE, fx, fz);
-                if (a.from_player) m.targeting = true;
+                if (a.from_player) {
+                    m.targeting = true;
+                    alert_wolves(&m);
+                }
             } else {
                 hurt_player_by_monster(ARROW_DAMAGE, fx, fz);
             }
+            remove = true;
+        } else if (a.item == EGG && a.stuck) {
+            hatch(a);
             remove = true;
         } else if (a.expired() || a.age > 120 || a.pos.y < -16 ||
                    std::hypot(a.pos.x - player.x, a.pos.z - player.z) > far_away) {
@@ -1659,8 +1949,8 @@ bool Game::can_spawn_monster(MobKind kind, double x, double y, double z, int siz
     };
     for (const auto& m : monsters)
         if (overlaps(m->body)) return false;
-    for (const auto& c : cows)
-        if (overlaps(c->body)) return false;
+    for (const auto& a : animals)
+        if (overlaps(a->body)) return false;
     return !overlaps(player);
 }
 
@@ -1757,6 +2047,8 @@ void Game::update_monsters(double dt) {
         if (m.rider) m.rider->mount = nullptr;
         if (m.mount) m.mount->rider = nullptr;
         if (target_monster == &m) target_monster = nullptr;
+        for (const auto& a : animals)
+            if (a->prey == &m) a->prey = nullptr;
         monsters.erase(monsters.begin() + static_cast<std::ptrdiff_t>(i));
     };
     if (difficulty() == PEACEFUL) {
@@ -1802,7 +2094,7 @@ void Game::update_monsters(double dt) {
         }
         MonsterActions act;
         const bool done = m.tick(dt, world, senses, monster_rng_, act);
-        if (act.melee > 0) hurt_player_by_monster(act.melee, m.body.x, m.body.z);
+        if (act.melee > 0 && hurt_player_by_monster(act.melee, m.body.x, m.body.z)) alert_wolves(&m);
         if (act.arrow_from) {
             auto arrow = std::make_unique<Arrow>(*act.arrow_from, act.arrow_vel);
             arrow->shooter = &m;
@@ -1886,11 +2178,11 @@ void Game::explode(glm::dvec3 center, double power, bool from_monster) {
             player.vz += push.z;
         }
     }
-    for (const auto& cow : cows) {
-        if (!cow->alive()) continue;
-        const Body& b = cow->body;
+    for (const auto& a : animals) {
+        if (!a->alive()) continue;
+        const Body& b = a->body;
         if (int dmg = hit({b.x, b.y, b.z}, {b.x - b.half, b.y, b.z - b.half}, {b.x + b.half, b.y + b.height, b.z + b.half}, push))
-            cow->hurt(dmg, center.x, center.z);
+            a->hurt(dmg, center.x, center.z);
     }
     for (const auto& m : monsters) {
         if (!m->alive()) continue;

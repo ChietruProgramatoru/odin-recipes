@@ -1,29 +1,44 @@
-// Cows, item drops, textures, the font and the PNG writer.
+// Cows, item drops, textures, the font and the PNG writer. Other animals are in test_animals.cpp.
 #include <doctest/doctest.h>
 
+#include <algorithm>
+
+#include "animals.h"
 #include "font.h"
 #include "icons.h"
 #include "mobs.h"
 #include "png.h"
 #include "textures.h"
 
-TEST_CASE("a cow dies after 5 punches, then drops 1 to 3 beef") {
+namespace {
+AnimalSenses player_at(double x, double z) {
+    AnimalSenses s;
+    s.player = {x, 0, z};
+    return s;
+}
+}  // namespace
+
+TEST_CASE("a cow dies after 5 punches, then drops 1 to 3 beef and up to 2 leather") {
     World w(5);
     Rng rng(1);
     int y = w.surface_y(8, 8);
-    Cow cow(w, 8.5, y, 8.5, rng);
+    Animal cow(w, AnimalKind::Cow, 8.5, y, 8.5, rng);
     for (int i = 0; i < 4; ++i) cow.hurt(2, 6, 8);
     CHECK(cow.alive());
-    CHECK(cow.state == Cow::State::Panic);
+    CHECK(cow.state == Animal::State::Panic);
     cow.hurt(2, 6, 8);
     CHECK_FALSE(cow.alive());
     bool finished = false;
-    for (int i = 0; i < 60 && !finished; ++i) finished = cow.tick(1.0 / 60, 6, 8, rng);
+    AnimalActions act;
+    for (int i = 0; i < 60 && !finished; ++i) finished = cow.tick(1.0 / 60, player_at(6, 8), rng, act);
     CHECK(finished);
     for (int i = 0; i < 50; ++i) {
-        int n = drop_beef_count(rng);
-        CHECK(n >= 1);
-        CHECK(n <= 3);
+        auto drops = animal_drops(AnimalKind::Cow, cow.loot_state(), rng);
+        const auto beef = std::count(drops.begin(), drops.end(), BEEF), leather = std::count(drops.begin(), drops.end(), LEATHER);
+        CHECK(beef >= 1);
+        CHECK(beef <= 3);
+        CHECK(leather <= 2);
+        CHECK(beef + leather == static_cast<long>(drops.size()));
     }
 }
 
@@ -33,8 +48,9 @@ TEST_CASE("a wandering cow stays on the ground") {
     for (int cx = -2; cx <= 2; ++cx)
         for (int cz = -2; cz <= 2; ++cz) w.chunk(cx, cz);
     int y = w.surface_y(8, 8);
-    Cow cow(w, 8.5, y, 8.5, rng);
-    for (int i = 0; i < 600; ++i) cow.tick(1.0 / 60, 100, 100, rng);
+    Animal cow(w, AnimalKind::Cow, 8.5, y, 8.5, rng);
+    AnimalActions act;
+    for (int i = 0; i < 600; ++i) cow.tick(1.0 / 60, player_at(100, 100), rng, act);
     CHECK(cow.body.y > 1);
     CHECK_FALSE(cow.body.collides());
 }
@@ -42,7 +58,7 @@ TEST_CASE("a wandering cow stays on the ground") {
 TEST_CASE("the cow hit box is found by a ray pointed at it") {
     World w(5);
     Rng rng(3);
-    Cow cow(w, 10.5, 30, 10.5, rng);
+    Animal cow(w, AnimalKind::Cow, 10.5, 30, 10.5, rng);
     auto t = cow.ray_hit({10.5f, 31, 7.5f}, {0, 0, 1}, 3.5f);
     REQUIRE(t);
     CHECK(*t == doctest::Approx(2.4f));
@@ -63,7 +79,7 @@ TEST_CASE("item drops fall and settle") {
 TEST_CASE("models exist for cows and every item") {
     auto models = build_models();
     CHECK(models.count(MODEL_COW_BODY));
-    CHECK(models.count(MODEL_COW_HEAD_HURT));
+    CHECK(models.count(MODEL_COW_HEAD));
     for (ItemId item : all_items()) CHECK(models.count(ITEM_MODEL_BASE + item));
     CHECK(models[MODEL_COW_BODY].vertices.size() == 2 * 6 * 4);
 }
