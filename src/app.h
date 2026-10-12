@@ -6,6 +6,7 @@
 #include <optional>
 #include <string>
 
+#include "achievements.h"
 #include "gl.h"
 #include "options.h"
 #include "ui.h"
@@ -35,6 +36,8 @@ public:
     AppConfig config;
     std::filesystem::path saves_dir;
     Options options;
+    Stats stats;  // achievements and statistics, from stats.json (the player's, across worlds)
+    std::filesystem::path stats_file() const { return config.data_dir / "stats.json"; }
     GLuint atlas = 0;
     std::unique_ptr<Painter> painter;
     std::unique_ptr<Game> game;
