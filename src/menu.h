@@ -70,6 +70,8 @@ public:
     // A click that hit no widget.
     virtual void on_click(double gx, double gy) {}
     virtual void on_scroll(double dy) {}
+    // The mouse moved (dx, dy) with the button held down after a click that hit no widget.
+    virtual void on_drag(double dx, double dy) {}
     virtual void update(double dt) {}
     // Titles, labels and anything else that isn't a widget.
     virtual void draw(Gui& gui) {}
@@ -88,9 +90,12 @@ public:
     void ensure_layout(int gw, int gh);
     void draw_all(Gui& gui, double mouse_x, double mouse_y, long frame);
     Widget* find(int id);
+    double mouse_x = -1, mouse_y = -1;  // where the mouse was when the screen was last drawn
 
 private:
     int dragging_ = -1;
+    bool pressed_ = false;
+    double press_x_ = 0, press_y_ = 0;
     int laid_out_w_ = -1, laid_out_h_ = -1;
 };
 
@@ -107,3 +112,9 @@ std::unique_ptr<Screen> pause_screen(App& app);
 std::unique_ptr<Screen> death_screen(App& app);
 // Typing the text of a sign just placed (Game::sign_editing): four lines, Done or Escape to finish.
 std::unique_ptr<Screen> sign_screen(App& app);
+// The achievement map (drag it about) and the statistics (General, Blocks and Items lists), from
+// the game menu (achievement_screens.cpp).
+std::unique_ptr<Screen> achievements_screen(App& app, ScreenFactory back);
+std::unique_ptr<Screen> statistics_screen(App& app, ScreenFactory back);
+// A Beta-style button.
+Widget button(int id, int x, int y, int w, const std::string& label, bool enabled = true);

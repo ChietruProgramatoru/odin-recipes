@@ -149,6 +149,7 @@ void Game::use_fishing_rod() {
             fish->pickup_delay = 0;
             drops.push_back(std::move(fish));
             ++fish_caught;
+            count(STAT_FISH);
         }
         wear_selected(reel_wear(r));
         bobber.reset();
