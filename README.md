@@ -330,7 +330,7 @@ In the inventory, crafting table and furnace screens (Beta's mouse rules):
 
 ## Making a release
 
-Push a version tag and GitHub builds both downloads and publishes the release:
+Run the **Release** workflow from the **Actions** tab (Run workflow, then type the version, like `v1.1.0`), or push a version tag. GitHub builds both downloads and publishes the release:
 
 ```bash
 git tag v1.1.0
