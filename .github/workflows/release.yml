@@ -1,11 +1,17 @@
 name: Release
 
-# Pushing a tag like v1.2.0 builds the game for Windows and Linux and publishes
-# a GitHub Release with both downloads. Pull requests that change this file
+# Pushing a tag like v1.2.0, or running this workflow from the Actions tab with a
+# version, builds the game for Windows and Linux and publishes a GitHub Release
+# with both downloads. Pull requests that change this file
 # build and package too, without publishing, so the workflow is tested first.
 on:
   push:
     tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to publish, like v1.2.0 (the tag is made on the commit this runs on)'
+        required: true
   pull_request:
     paths: ['.github/workflows/release.yml']
 
@@ -63,7 +69,7 @@ jobs:
           path: PetrutzCraft-linux-x64.zip
 
   publish:
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
     needs: [windows, linux]
     runs-on: ubuntu-latest
     steps:
@@ -73,7 +79,7 @@ jobs:
       - name: Publish the release
         env:
           GH_TOKEN: ${{ github.token }}
-          TAG: ${{ github.ref_name }}
+          TAG: ${{ inputs.version || github.ref_name }}
         run: |
           cat > notes.md <<EOF
           ## Download PetrutzCraft ${TAG}
@@ -87,4 +93,4 @@ jobs:
           You need a graphics card with OpenGL 3.3.
           EOF
           gh release create "$TAG" PetrutzCraft-windows-x64.zip PetrutzCraft-linux-x64.zip \
-            --repo "$GITHUB_REPOSITORY" --title "PetrutzCraft $TAG" --notes-file notes.md --generate-notes --latest
+            --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title "PetrutzCraft $TAG" --notes-file notes.md --generate-notes --latest
