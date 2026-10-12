@@ -1,0 +1,90 @@
+name: Release
+
+# Pushing a tag like v1.2.0 builds the game for Windows and Linux and publishes
+# a GitHub Release with both downloads. Pull requests that change this file
+# build and package too, without publishing, so the workflow is tested first.
+on:
+  push:
+    tags: ['v*']
+  pull_request:
+    paths: ['.github/workflows/release.yml']
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure
+        # The C++ runtime is linked in, so players don't need the Visual C++ Redistributable.
+        run: cmake -S . -B build -A x64 -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded -DUSE_MSVC_RUNTIME_LIBRARY_DLL=OFF
+      - name: Build
+        run: cmake --build build --config Release
+      - name: Logic tests
+        run: ctest --test-dir build -C Release --output-on-failure
+      - name: Package
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path dist/PetrutzCraft | Out-Null
+          Copy-Item build/Release/PetrutzCraft.exe dist/PetrutzCraft/
+          Copy-Item README.md dist/PetrutzCraft/
+          Compress-Archive -Path dist/PetrutzCraft -DestinationPath PetrutzCraft-windows-x64.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-windows
+          path: PetrutzCraft-windows-x64.zip
+
+  linux:
+    # The oldest supported runner, so the game runs on older Linux systems too.
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev libgl-dev
+      - name: Configure
+        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+      - name: Build
+        run: cmake --build build
+      - name: Logic tests
+        run: ctest --test-dir build --output-on-failure
+      - name: Package
+        run: |
+          mkdir -p dist/PetrutzCraft
+          cp build/PetrutzCraft README.md dist/PetrutzCraft/
+          strip dist/PetrutzCraft/PetrutzCraft
+          (cd dist && zip -r ../PetrutzCraft-linux-x64.zip PetrutzCraft)
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-linux
+          path: PetrutzCraft-linux-x64.zip
+
+  publish:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [windows, linux]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          merge-multiple: true
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          cat > notes.md <<EOF
+          ## Download PetrutzCraft ${TAG}
+
+          | System | Download |
+          | --- | --- |
+          | Windows 10/11 (64-bit) | [PetrutzCraft-windows-x64.zip](https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}/PetrutzCraft-windows-x64.zip) |
+          | Linux (64-bit, X11 or XWayland) | [PetrutzCraft-linux-x64.zip](https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}/PetrutzCraft-linux-x64.zip) |
+
+          Unzip it anywhere and run \`PetrutzCraft.exe\` (Windows) or \`./PetrutzCraft\` (Linux). Your worlds are saved next to the program, in \`saves/\`.
+          You need a graphics card with OpenGL 3.3.
+          EOF
+          gh release create "$TAG" PetrutzCraft-windows-x64.zip PetrutzCraft-linux-x64.zip \
+            --repo "$GITHUB_REPOSITORY" --title "PetrutzCraft $TAG" --notes-file notes.md --generate-notes --latest
