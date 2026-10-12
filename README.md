@@ -3,6 +3,27 @@
 A small Minecraft-style survival game for the desktop, written in C++20 with OpenGL 3.3.
 It runs on Windows (the main target) and Linux.
 
+## Download
+
+**Latest version: [PetrutzCraft v1.0.0](https://github.com/ChietruProgramatoru/PetrutzCraft/releases/latest)**
+
+| System | Download |
+| --- | --- |
+| Windows 10/11 (64-bit) | [**PetrutzCraft-windows-x64.zip**](https://github.com/ChietruProgramatoru/PetrutzCraft/releases/latest/download/PetrutzCraft-windows-x64.zip) |
+| Linux (64-bit, X11 or XWayland) | [**PetrutzCraft-linux-x64.zip**](https://github.com/ChietruProgramatoru/PetrutzCraft/releases/latest/download/PetrutzCraft-linux-x64.zip) |
+
+Unzip it anywhere and run `PetrutzCraft.exe` (Windows) or `./PetrutzCraft` (Linux). Nothing else to install: you only need a graphics card with OpenGL 3.3. Your worlds are saved next to the program, in `saves/`, so keep that folder when you move to a new version.
+
+<details>
+<summary><b>Older versions</b></summary>
+
+| Version | Released | Downloads |
+| --- | --- | --- |
+| _None yet: v1.0.0 is the first release._ | | |
+
+Every version is also on the [Releases page](https://github.com/ChietruProgramatoru/PetrutzCraft/releases).
+</details>
+
 ![Spawn](screenshots/spawn.png)
 
 ![Title screen](screenshots/title.png)
@@ -203,7 +224,7 @@ cmake --build build --config Release
 .\build\Release\PetrutzCraft.exe
 ```
 
-Every push also builds `PetrutzCraft.exe` on GitHub: open the latest run under the **Actions** tab and download the **PetrutzCraft-windows-x64** artifact.
+Every push also builds `PetrutzCraft.exe` on GitHub: open the latest run under the **Actions** tab and download the **PetrutzCraft-windows-x64** artifact. Finished versions are on the [Releases page](https://github.com/ChietruProgramatoru/PetrutzCraft/releases) (see [Download](#download)).
 
 ## Build and run on Linux
 
@@ -306,6 +327,17 @@ In the inventory, crafting table and furnace screens (Beta's mouse rules):
 - Light up your home with torches before night: monsters spawn in the dark. Back away from a hissing creeper.
 - Set the difficulty to Peaceful under Options if you just want to build.
 - On fire? Jump in water. Dig carefully next to the sea or a lava lake: they pour into the hole you make.
+
+## Making a release
+
+Push a version tag and GitHub builds both downloads and publishes the release:
+
+```bash
+git tag v1.1.0
+git push origin v1.1.0
+```
+
+The [Download](#download) links always point at the newest release. Change the version on its **Latest version** line, and move the version it replaces into the **Older versions** table, with links to that release's two zips (`https://github.com/ChietruProgramatoru/PetrutzCraft/releases/download/<version>/PetrutzCraft-windows-x64.zip` and `...-linux-x64.zip`).
 
 ## Tests
 
