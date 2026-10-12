@@ -29,6 +29,7 @@
 #include "rng.h"
 #include "save.h"
 #include "sound.h"
+#include "soundboard.h"
 #include "sky.h"
 #include "weather.h"
 #include "survival.h"
@@ -130,7 +131,18 @@ public:
     // kind were ever started (the autotest checks these).
     std::vector<SoundEvent> sounds;
     std::array<int, SOUND_COUNT> sounds_started{};
-    void play_sound(Sound sound, glm::dvec3 pos, float pitch = 1.0f);
+    void play_sound(Sound sound, glm::dvec3 pos, float pitch = 1.0f, float volume = 1.0f);
+    // A sound heard the same wherever the player is (going through a portal).
+    void play_ui_sound(Sound sound, float pitch = 1.0f, float volume = 1.0f);
+    // Sounds (M16, game_sound.cpp). Each game tick: animals and monsters speak, get hurt and die out
+    // loud, rain patters, and water, lava, fire and portals near the player make their noises.
+    void tick_sounds();
+    // A block's sound from its cell (see soundboard.h for the volumes): walking, digging, breaking, placing.
+    void block_sound_at(glm::ivec3 pos, BlockId block, float volume, float pitch, bool breaking = false);
+    // The player walked `distance` on the ground (footsteps) and maybe fell into water (a splash).
+    void step_sounds(double distance);
+    void door_sound(glm::ivec3 pos, bool opened);
+    void pickup_sound();  // Beta's pop, high and varied
     // Achievements and statistics (M17, game_stats.cpp). They are the player's, across worlds.
     Stats& stats() { return *stats_; }
     // Earn an achievement (not with the creative cheat on, and only once its parent is earned):
@@ -423,6 +435,14 @@ private:
     Rng monster_rng_;   // and its own for monsters, so they don't change what the rest does
     Rng farm_rng_;      // and for random block ticks (crops growing, farmland drying)
     Rng fishing_rng_;   // and for fishing
+    Rng sound_rng_;     // and for sounds (which one, what pitch, when mobs speak)
+    // Sounds (game_sound.cpp): steps walked, seconds to the next digging hit sound, whether the
+    // player was in water (a splash going in), and Beta's counter between rain sounds.
+    Footsteps footsteps_;
+    double dig_wait_ = 0;
+    bool was_in_water_ = false;
+    int rain_sound_counter_ = 0;
+    void voice_tick(MobVoice& voice, const MobSounds& sounds, const Body& body, int health);
     // Statistics: the game's own when no one gave it any, where the player was last frame, where
     // the minecart ride began, and the highest point of the ridden pig's fall.
     std::unique_ptr<Stats> own_stats_;

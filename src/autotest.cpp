@@ -317,6 +317,7 @@ void AutoTest::play(App& app, Game& g) {
     if (f >= 1950 && f < 2110) nether(app, g);
     if (f >= 2110 && f < 2210) achievements(app, g);
     if (f == 2210) {
+        sounds(g);
         app.pause();
         check("Escape menu pauses the game", g.paused && app.screen());
         shot(app, "7_pause.png");
@@ -3009,6 +3010,30 @@ void AutoTest::finding_and_fishing(App& app, Game& g) {
         stand(items_return_);
         if (items_raining_) g.weather = Weather(WeatherState{true, false, 100000, 100000});
     }
+}
+
+void AutoTest::sounds(Game& g) {
+    // No new scene: the scenes before walked, dug, built, fought and fished, and every one of those
+    // started its sounds (the autotest never opens an audio device, but the game still asks for them).
+    auto n = [&](Sound s) { return g.sounds_started[static_cast<int>(s)]; };
+    std::string counts;
+    for (int i = 0; i < SOUND_COUNT; ++i) counts += std::to_string(n(static_cast<Sound>(i))) + " ";
+    log("sounds started: " + counts);
+    const int steps = n(Sound::StepStone) + n(Sound::StepWood) + n(Sound::StepGravel) + n(Sound::StepGrass) + n(Sound::StepSand) +
+                      n(Sound::StepCloth);
+    check("blocks are heard being walked on, dug, broken and placed", steps > 0 && n(Sound::GlassBreak) > 0);
+    check("the player is heard getting hurt and picking things up", n(Sound::Hurt) > 0 && n(Sound::Pop) > 0);
+    check("bows twang and arrows thud", n(Sound::Bow) > 0 && n(Sound::ArrowHit) > 0);
+    check("doors and chests are heard", n(Sound::DoorOpen) > 0 && n(Sound::ChestOpen) > 0 && n(Sound::ChestClose) > 0);
+    check("animals and monsters speak and are heard getting hurt",
+          n(Sound::CowSay) + n(Sound::PigSay) + n(Sound::SheepSay) + n(Sound::ChickenSay) > 0 &&
+              n(Sound::ZombieSay) + n(Sound::SkeletonSay) + n(Sound::SpiderSay) > 0 && n(Sound::ZombieHurt) + n(Sound::SkeletonHurt) > 0);
+    check("flint and steel, lava meeting water, and flowing water and lava are heard",
+          n(Sound::Ignite) > 0 && n(Sound::Fizz) > 0 && n(Sound::Water) > 0 && n(Sound::Lava) + n(Sound::LavaPop) > 0);
+    check("rain patters", n(Sound::Rain) > 0);
+    check("going through the portal rushes", n(Sound::PortalTravel) > 0);
+    check("a ghast moans and spits fire", n(Sound::GhastFireball) > 0);
+    check("a fish bite splashes", n(Sound::Splash) > 0);
 }
 
 void AutoTest::nether(App& app, Game& g) {

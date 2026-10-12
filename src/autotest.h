@@ -59,6 +59,7 @@ private:
     void finding_and_fishing(App& app, Game& g);  // M15: compass, clock, a map, fishing, snowballs
     void nether(App& app, Game& g);    // M14: lighting a portal, the Nether, pigmen, a ghast's fireball, back again
     void achievements(App& app, Game& g);  // M17: earning all 16 achievements, the pop-ups, the map and statistics
+    void sounds(Game& g);  // M16: the sounds every scene before made along the way
     void reload(App& app);      // quit to the title and load the world again
 
     std::string out_;

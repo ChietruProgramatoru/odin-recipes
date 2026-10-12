@@ -105,6 +105,9 @@ add_library(petrutz_core STATIC
   src/combat.cpp
   src/monsters.cpp
   src/sound.cpp
+  src/sound_effects.cpp
+  src/music.cpp
+  src/soundboard.cpp
   src/textures.cpp
   src/building_art.cpp
   src/redstone_art.cpp
@@ -134,6 +137,7 @@ add_executable(PetrutzCraft
   src/game_items.cpp
   src/game_redstone.cpp
   src/game_nether.cpp
+  src/game_sound.cpp
   src/game_stats.cpp
   src/achievement_screens.cpp
   src/audio.cpp
@@ -176,6 +180,7 @@ add_executable(petrutz_tests
   tests/test_nature.cpp
   tests/test_navigation.cpp
   tests/test_redstone.cpp
-  tests/test_nether.cpp)
+  tests/test_nether.cpp
+  tests/test_sound.cpp)
 target_link_libraries(petrutz_tests PRIVATE petrutz_core doctest_header)
 add_test(NAME logic COMMAND petrutz_tests)

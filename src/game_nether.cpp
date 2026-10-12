@@ -38,6 +38,7 @@ void Game::tick_portal() {
         return;
     }
     if (portal_cooldown || vitals.dead() || in_vehicle || riding || sleeping_in) return;
+    if (portal_ticks == 0) play_ui_sound(Sound::PortalTrigger, 0.8f + static_cast<float>(sound_rng_.random()) * 0.4f, 0.5f);
     if (++portal_ticks >= PORTAL_TICKS) travel_through_portal();
 }
 
@@ -85,6 +86,7 @@ void Game::travel_through_portal() {
     portal_cooldown = true;  // not straight back: step out of it first
     portal_ticks = 0;
     hud->show_message(to == Dimension::Nether ? "Entering the Nether" : "Leaving the Nether", 3);
+    play_ui_sound(Sound::PortalTravel, 0.8f + static_cast<float>(sound_rng_.random()) * 0.4f, 0.5f);
 }
 
 void Game::change_dimension(Dimension to, std::optional<glm::dvec3> at) {
@@ -187,4 +189,5 @@ void Game::anger_pigmen(const Monster& hit) {
 
 void Game::evaporate(glm::ivec3 pos) {
     add_puffs(puffs, glm::dvec3(pos) + 0.5, 8, 0.4, 1.2, 0.25, rng);
+    play_sound(Sound::Fizz, glm::dvec3(pos) + 0.5, 2.6f + vary_pitch(sound_rng_, 0.8f) - 1.0f, 0.5f);
 }

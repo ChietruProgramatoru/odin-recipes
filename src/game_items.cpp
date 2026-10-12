@@ -159,6 +159,7 @@ void Game::use_fishing_rod() {
     dir += glm::dvec3(fishing_rng_.uniform(-1, 1), fishing_rng_.uniform(-1, 1), fishing_rng_.uniform(-1, 1)) * 0.0075;
     const glm::dvec3 from = glm::dvec3(eye()) + glm::normalize(dir) * 0.3 - glm::dvec3(0, 0.225, 0);
     bobber = std::make_unique<Bobber>(world, from, glm::normalize(dir) * CAST_SPEED);
+    play_sound(Sound::Bow, from, 0.4f / (static_cast<float>(sound_rng_.random()) * 0.4f + 0.8f), 0.5f);
 }
 
 void Game::tick_bobber() {
@@ -202,7 +203,10 @@ void Game::tick_bobber() {
             mobs.push_back(t);
         }
     const Bobber::Tick t = b.tick(fishing_rng_, rain_at({ifloor(p.x), ifloor(p.y) + 1, ifloor(p.z)}), mobs);
-    if (t.bite) add_puffs(puffs, b.pos() + glm::dvec3(0, 0.1, 0), 6, 0.2, 1.5, 0.12, fishing_rng_);  // the splash
+    if (t.bite) {
+        add_puffs(puffs, b.pos() + glm::dvec3(0, 0.1, 0), 6, 0.2, 1.5, 0.12, fishing_rng_);  // the splash
+        play_sound(Sound::Splash, b.pos(), vary_pitch(sound_rng_, 0.4f), 0.25f);
+    }
 }
 
 std::vector<ModelPart> Game::fishing_parts() {
@@ -225,4 +229,5 @@ void Game::throw_item(ItemId item) {
     thrown->item = item;
     arrows.push_back(std::move(thrown));
     hand.swing();
+    play_sound(Sound::Bow, glm::dvec3(eye()), 0.4f / (static_cast<float>(sound_rng_.random()) * 0.4f + 0.8f), 0.5f);
 }

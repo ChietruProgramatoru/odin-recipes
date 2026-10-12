@@ -13,6 +13,7 @@
 #include "mobs.h"
 #include "physics.h"
 #include "rng.h"
+#include "sound.h"
 #include "world.h"
 
 // Light a mob sees at a cell: sky light dimmed by the night (`sky_darkness` levels), or block
@@ -68,6 +69,7 @@ public:
     // counter (shoots at GHAST_SHOOT_TICKS; the face shows it charging above GHAST_CHARGE_TICKS).
     int anger = 0;
     int attack_counter = 0;
+    MobVoice voice;  // what the game's sounds remember of it
 
     bool alive() const { return health > 0; }
     MobInfo info() const { return mob_info(kind, size); }

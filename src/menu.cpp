@@ -115,9 +115,11 @@ void Screen::mouse_down(double gx, double gy) {
             for (Widget& o : widgets) o.focused = false;
             w.focused = true;
         } else if (w.kind == Widget::Kind::Slider) {
+            app.click_sound();
             dragging_ = id;
             mouse_move(gx, gy);
         } else {
+            app.click_sound();
             on_button(id);  // may relayout or close this screen: touch nothing after this
         }
         return;
@@ -488,15 +490,17 @@ protected:
 class OptionsScreen : public SettingsScreen {
 public:
     using SettingsScreen::SettingsScreen;
-    enum { INVERT, SENSITIVITY, DIFFICULTY, VIDEO = 10, CONTROLS };
+    enum { MUSIC, SOUND, INVERT, SENSITIVITY, DIFFICULTY, VIDEO = 10, CONTROLS };
 
     void layout(int gw, int gh) override {
         const Options& o = app.options;
-        // Music and Sound join this screen once the game has sound.
-        widgets.push_back(button(INVERT, column_x(gw, 0), row_y(gh, 0), 150, "Invert Mouse: " + on_off(o.invert_mouse)));
-        widgets.push_back(slider(SENSITIVITY, column_x(gw, 1), row_y(gh, 1), 150,
+        // Beta's order: Music, Sound, Invert Mouse, Sensitivity, Difficulty.
+        widgets.push_back(slider(MUSIC, column_x(gw, 0), row_y(gh, 0), 150, volume_label("Music", o.music_volume), o.music_volume));
+        widgets.push_back(slider(SOUND, column_x(gw, 1), row_y(gh, 1), 150, volume_label("Sound", o.sound_volume), o.sound_volume));
+        widgets.push_back(button(INVERT, column_x(gw, 2), row_y(gh, 2), 150, "Invert Mouse: " + on_off(o.invert_mouse)));
+        widgets.push_back(slider(SENSITIVITY, column_x(gw, 3), row_y(gh, 3), 150,
                                  "Sensitivity: " + percent(o.sensitivity * 2), o.sensitivity));
-        widgets.push_back(button(DIFFICULTY, column_x(gw, 2), row_y(gh, 2), 150, difficulty_label(o.difficulty)));
+        widgets.push_back(button(DIFFICULTY, column_x(gw, 4), row_y(gh, 4), 150, difficulty_label(o.difficulty)));
         widgets.push_back(button(VIDEO, gw / 2 - 100, gh / 6 + 96 + 12, 200, "Video Settings..."));
         widgets.push_back(button(CONTROLS, gw / 2 - 100, gh / 6 + 120 + 12, 200, "Controls..."));
         add_done(gw, gh);
@@ -504,6 +508,9 @@ public:
     void on_slider(int id, float v) override {
         Options& o = app.options;
         if (id == SENSITIVITY) o.sensitivity = v;
+        if (id == MUSIC) o.music_volume = v;
+        if (id == SOUND) o.sound_volume = v;
+        if (id == MUSIC || id == SOUND) app.apply_volumes();
         update_labels();
     }
     void on_button(int id) override {
@@ -533,10 +540,13 @@ private:
     void update_labels() {
         const Options& o = app.options;
         find(SENSITIVITY)->label = "Sensitivity: " + percent(o.sensitivity * 2);
+        find(MUSIC)->label = volume_label("Music", o.music_volume);
+        find(SOUND)->label = volume_label("Sound", o.sound_volume);
         find(INVERT)->label = "Invert Mouse: " + on_off(o.invert_mouse);
         find(DIFFICULTY)->label = difficulty_label(o.difficulty);
     }
     static std::string difficulty_label(int d) { return std::string("Difficulty: ") + difficulty_name(d); }
+    static std::string volume_label(const char* name, float v) { return std::string(name) + ": " + (v <= 0 ? "OFF" : percent(v)); }
 };
 
 class VideoSettingsScreen : public SettingsScreen {

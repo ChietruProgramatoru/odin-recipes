@@ -502,11 +502,15 @@ void Redstone::check(glm::ivec3 p, long now, RedstoneEvents& out, std::vector<Ch
                 const int cd = data_at(world_, c);
                 set_data(c, on ? (cd | DOOR_OPEN) : (cd & ~DOOR_OPEN), dirty);
             }
+            out.doors.push_back({lower, on});
             return;
         }
         case TRAPDOOR: {
             const bool on = is_powered(world_, p);
-            if (edge(p, on)) set_data(p, on ? (data | TRAPDOOR_OPEN) : (data & ~TRAPDOOR_OPEN), dirty);
+            if (edge(p, on)) {
+                set_data(p, on ? (data | TRAPDOOR_OPEN) : (data & ~TRAPDOOR_OPEN), dirty);
+                out.doors.push_back({p, on});
+            }
             return;
         }
         case TNT:

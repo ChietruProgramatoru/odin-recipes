@@ -61,6 +61,7 @@ void Game::apply_redstone(RedstoneEvents& ev) {
     for (glm::ivec3 p : ev.tnt) prime_tnt(p, TNT_FUSE_TICKS);
     for (glm::ivec3 p : ev.notes) play_note(p);
     for (glm::ivec3 p : ev.clicks) play_sound(Sound::Click, glm::dvec3(p) + 0.5, 0.6f);
+    for (const auto& [p, opened] : ev.doors) door_sound(p, opened);
     for (glm::ivec3 p : ev.dispense) dispense(p);
     for (const PistonMove& m : ev.pistons) {
         if (!m.dirty.empty()) renderer->rebuild(m.dirty);

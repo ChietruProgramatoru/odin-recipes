@@ -27,6 +27,7 @@ App::App(GLFWwindow* w, AppConfig cfg) : window(w), config(std::move(cfg)) {
     atlas = upload_texture(make_atlas(make_tiles()));
     painter = std::make_unique<Painter>(atlas);
     audio = std::make_unique<Audio>(config.autotest == nullptr);
+    apply_volumes();
     screen_ = title_screen(*this);
 }
 
@@ -92,9 +93,21 @@ void App::update(double dt) {
     if (dt > 0) fps_ += (1.0 / std::max(dt, 1e-4) - fps_) * 0.05;
     if (game) {
         game->update(dt);
-        for (const SoundEvent& e : game->sounds) audio->play(e, glm::dvec3(game->eye()), game->yaw);
+        for (const SoundEvent& e : game->sounds) {
+            if (e.key && !e.stop) {
+                audio->stop_music();  // a disc takes over from the music (Beta)
+                music_.rest();
+            }
+            audio->play(e, glm::dvec3(game->eye()), game->yaw);
+        }
         game->sounds.clear();
         audio->move_listener(glm::dvec3(game->eye()), game->yaw);
+    }
+    // Now and then a piece of music, in the menus and in the game alike.
+    if (auto piece = music_.update(dt, audio->music_busy())) {
+        SoundEvent e{*piece, {}};
+        e.channel = Channel::Music;
+        audio->play(e, {}, 0);
     }
     if (game && game->vitals.dead() && !screen_ && !has_pending_) open(death_screen(*this));
     if (game && game->sign_editing && !screen_ && !has_pending_) open(sign_screen(*this));
@@ -232,7 +245,16 @@ void App::save_and_quit_to_title() {
 
 void App::options_changed() {
     options.save(config.data_dir / "options.txt");
+    apply_volumes();
     if (game) game->apply_options();
+}
+
+void App::apply_volumes() { audio->set_volumes(options.sound_volume, options.music_volume); }
+
+void App::click_sound() {
+    SoundEvent e{Sound::UiClick, {}};
+    e.channel = Channel::Ui;
+    audio->play(e, {}, 0);
 }
 
 // --- input ---------------------------------------------------------------------------------------

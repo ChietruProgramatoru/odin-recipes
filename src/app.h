@@ -2,6 +2,7 @@
 #pragma once
 #include <cstdint>
 #include <filesystem>
+#include <ctime>
 #include <memory>
 #include <optional>
 #include <string>
@@ -9,6 +10,7 @@
 #include "achievements.h"
 #include "gl.h"
 #include "options.h"
+#include "soundboard.h"
 #include "ui.h"
 
 struct GLFWwindow;
@@ -57,6 +59,8 @@ public:
     void pause();                  // open the pause menu and autosave
     void save_and_quit_to_title();
     void options_changed();        // write options.txt and apply the new settings
+    void apply_volumes();          // the Music and Sound sliders moved
+    void click_sound();            // a menu button was pressed
 
     // Draw one frame: the game (if any), then the current menu.
     void draw();
@@ -86,4 +90,5 @@ private:
     bool want_screenshot_ = false;
     double cursor_x_ = 0, cursor_y_ = 0;
     double fps_ = 60;
+    MusicTimer music_{static_cast<uint64_t>(std::time(nullptr))};
 };

@@ -121,6 +121,8 @@ double Options::degrees_per_pixel() const {
 std::string Options::to_text() const {
     std::ostringstream out;
     auto b = [](bool v) { return v ? "true" : "false"; };
+    out << "music:" << format_float(music_volume) << "\n";
+    out << "sound:" << format_float(sound_volume) << "\n";
     out << "invertYMouse:" << b(invert_mouse) << "\n";
     out << "mouseSensitivity:" << format_float(sensitivity) << "\n";
     out << "viewDistance:" << view_distance << "\n";
@@ -143,7 +145,9 @@ Options Options::from_text(const std::string& text) {
         if (colon == std::string::npos) continue;
         std::string key = line.substr(0, colon), value = line.substr(colon + 1);
         int n;
-        if (key == "invertYMouse") parse_bool(value, o.invert_mouse);
+        if (key == "music") parse_unit(value, o.music_volume);
+        else if (key == "sound") parse_unit(value, o.sound_volume);
+        else if (key == "invertYMouse") parse_bool(value, o.invert_mouse);
         else if (key == "mouseSensitivity") parse_unit(value, o.sensitivity);
         else if (key == "viewDistance" && parse_int(value, n)) o.view_distance = std::clamp(n, 0, VIEW_COUNT - 1);
         else if (key == "fancyGraphics") parse_bool(value, o.fancy_graphics);
