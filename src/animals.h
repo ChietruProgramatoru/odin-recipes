@@ -13,6 +13,7 @@
 #include "mobs.h"
 #include "physics.h"
 #include "rng.h"
+#include "sound.h"
 #include "world.h"
 
 // Saved as EntityRecord::mob, so the order never changes (old saves only have cows, which are 0).
@@ -114,6 +115,7 @@ public:
     bool tamed = false, sitting = false, angry = false;
     const void* prey = nullptr;
     double bite_timer = 0;
+    MobVoice voice;  // what the game's sounds remember of it
 
     bool alive() const { return health > 0; }
     AnimalInfo info() const { return animal_info(kind); }

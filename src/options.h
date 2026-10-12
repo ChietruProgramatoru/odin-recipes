@@ -32,6 +32,8 @@ int view_distance_chunks(int view);  // 16, 8, 4, 2
 const char* view_distance_name(int view);
 
 struct Options {
+    float music_volume = 1.0f;  // 0..1, shown as 0..100% (Beta's "Music" and "Sound")
+    float sound_volume = 1.0f;
     bool invert_mouse = false;
     float sensitivity = 0.5f;  // 0..1, shown as 0..200%
     int view_distance = VIEW_NORMAL;

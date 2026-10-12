@@ -129,6 +129,7 @@ struct RedstoneEvents {
     std::vector<glm::ivec3> notes;      // note blocks that were just powered
     std::vector<glm::ivec3> dispense;   // dispensers firing
     std::vector<glm::ivec3> clicks;     // a lever, button or plate went on or off
+    std::vector<std::pair<glm::ivec3, bool>> doors;  // a door or trapdoor power opened (true) or shut
     std::vector<glm::ivec3> tnt;        // TNT powered (the block is already gone)
     std::vector<PistonMove> pistons;    // pistons that moved
     std::vector<std::pair<glm::ivec3, ItemId>> drops;  // dust, torches and the like whose block went

@@ -6,18 +6,11 @@
 #include <glm/geometric.hpp>
 
 #include "rng.h"
+#include "sound_synth.h"
 
 namespace {
 
-constexpr double PI = 3.14159265358979323846;
-
-// Scale so the loudest sample is `peak`.
-void normalize(std::vector<float>& s, float peak) {
-    float top = 0;
-    for (float v : s) top = std::max(top, std::abs(v));
-    if (top > 0)
-        for (float& v : s) v *= peak / top;
-}
+using namespace synth;
 
 std::vector<float> fuse() {
     const int n = static_cast<int>(SOUND_RATE * 1.5);
@@ -163,47 +156,6 @@ std::vector<float> piston(bool out) {
     return s;
 }
 
-// A tiny synthesiser for the discs: notes mixed into a buffer.
-struct Song {
-    std::vector<float> s;
-    explicit Song(double seconds) : s(static_cast<size_t>(SOUND_RATE * seconds)) {}
-    static double freq(int semitone) { return 440.0 * std::pow(2.0, semitone / 12.0); }  // semitones from A4
-    // shape: 0 soft sine, 1 bell, 2 square-ish lead, 3 bass, 4 pad
-    void note(double start, double length, int semitone, double volume, int shape) {
-        const int i0 = static_cast<int>(start * SOUND_RATE), n = static_cast<int>((length + 0.4) * SOUND_RATE);
-        const double f = freq(semitone);
-        for (int k = 0; k < n && i0 + k < static_cast<int>(s.size()); ++k) {
-            const double t = static_cast<double>(k) / SOUND_RATE;
-            const double held = t < length ? 1.0 : std::exp(-(t - length) * 12);
-            const double attack = std::min(1.0, t / (shape == 4 ? 0.6 : 0.008));
-            double v = 0;
-            switch (shape) {
-                case 0: v = std::sin(2 * PI * f * t) * std::exp(-t * 1.5); break;
-                case 1: v = (std::sin(2 * PI * f * t) + 0.5 * std::sin(2 * PI * f * 2.76 * t) * std::exp(-t * 4) +
-                             0.25 * std::sin(2 * PI * f * 5.4 * t) * std::exp(-t * 8)) * std::exp(-t * 2.2); break;
-                case 2: {
-                    const double ph = std::fmod(f * t, 1.0);
-                    v = ((ph < 0.3 ? 1.0 : -0.6) * 0.5 + std::sin(2 * PI * f * t) * 0.5) * std::exp(-t * 3.0);
-                    break;
-                }
-                case 3: v = (std::sin(2 * PI * f * t) + 0.3 * std::sin(4 * PI * f * t)) * std::exp(-t * 2.5); break;
-                case 4: v = (std::sin(2 * PI * f * t) + std::sin(2 * PI * f * 1.003 * t) + 0.4 * std::sin(2 * PI * f * 2.0 * t)) / 2.4; break;
-            }
-            s[i0 + k] += static_cast<float>(v * volume * attack * held);
-        }
-    }
-    void mix(const std::vector<float>& sample, double start, double volume) {
-        const int i0 = static_cast<int>(start * SOUND_RATE);
-        for (size_t k = 0; k < sample.size() && i0 + k < s.size(); ++k) s[i0 + k] += sample[k] * static_cast<float>(volume);
-    }
-    std::vector<float> done(double fade) {
-        const int n = static_cast<int>(s.size()), f = static_cast<int>(fade * SOUND_RATE);
-        for (int i = 0; i < f && i < n; ++i) s[n - 1 - i] *= static_cast<float>(i) / f;
-        normalize(s, 0.55f);
-        return std::move(s);
-    }
-};
-
 // "13": slow, dark and a little uneasy. A drone in A minor, a low pulse, and bell notes that drift
 // in and out of the scale, with a gust of filtered wind now and then.
 std::vector<float> record_13() {
@@ -279,7 +231,7 @@ std::vector<float> record_cat() {
 }  // namespace
 
 std::vector<float> make_sound(Sound sound) {
-    const double base = Song::freq(-3);  // F#4
+    const double base = synth::Song::freq(-3);  // F#4
     switch (sound) {
         case Sound::Fuse: return fuse();
         case Sound::Explosion: return explosion();
@@ -293,8 +245,14 @@ std::vector<float> make_sound(Sound sound) {
         case Sound::Click: return switch_click();
         case Sound::PistonOut: return piston(true);
         case Sound::PistonIn: return piston(false);
+        default: break;
     }
-    return {};
+    return is_music(sound) ? synth::make_music(sound) : synth::make_effect(sound);
+}
+
+bool is_music(Sound sound) {
+    const int i = static_cast<int>(sound) - static_cast<int>(FIRST_MUSIC);
+    return i >= 0 && i < MUSIC_COUNT;
 }
 
 float note_pitch(int note) { return static_cast<float>(std::pow(2.0, (note - 12) / 12.0)); }
@@ -304,22 +262,25 @@ double sound_range(Sound sound) {
         case Sound::Explosion: case Sound::Record13: case Sound::RecordCat: return 64.0;  // Beta: 4 times louder
         case Sound::NoteHarp: case Sound::NoteBass: case Sound::NoteBassDrum: case Sound::NoteSnare: case Sound::NoteClick:
             return 48.0;
+        case Sound::Thunder: return 1000.0;  // Beta: heard all over the world
         default: return 16.0;
     }
 }
 
-StereoGain sound_gain(Sound sound, glm::dvec3 listener, double yaw_degrees, glm::dvec3 source) {
+StereoGain sound_gain(Sound sound, glm::dvec3 listener, double yaw_degrees, glm::dvec3 source, float volume) {
     const glm::dvec3 d = source - listener;
     const double dist = glm::length(d);
-    const double gain = std::clamp(1.0 - dist / sound_range(sound), 0.0, 1.0);
+    // Beta: a louder sound carries further but is never louder than full.
+    const double range = sound_range(sound) * std::max(1.0f, volume);
+    const double gain = std::clamp(1.0 - dist / range, 0.0, 1.0) * std::min(1.0f, volume);
     if (gain <= 0) return {};
     // -1 all left, +1 all right. Right of the way you face (yaw 0 faces +z) is -x.
-    const double yaw = yaw_degrees * PI / 180.0;
+    const double yaw = yaw_degrees * synth::PI / 180.0;
     const glm::dvec3 right(-std::cos(yaw), 0, std::sin(yaw));
     const double flat = std::hypot(d.x, d.z);
     const double pan = flat > 1e-6 ? glm::dot(glm::dvec3(d.x, 0, d.z) / flat, right) * 0.7 : 0.0;
     // Constant power: the sound is as loud overall wherever it is panned.
-    const double angle = (pan + 1) * PI / 4;
+    const double angle = (pan + 1) * synth::PI / 4;
     return {static_cast<float>(gain * std::cos(angle) * std::sqrt(2.0)),
             static_cast<float>(gain * std::sin(angle) * std::sqrt(2.0))};
 }

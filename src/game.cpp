@@ -40,7 +40,8 @@ Game::Game(GLFWwindow* win, GLuint atlas, Painter& painter, const Options& opts,
       animal_rng_(setup.scripted ? 4 : std::random_device{}()),
       monster_rng_(setup.scripted ? 2 : std::random_device{}()),
       farm_rng_(setup.scripted ? 3 : std::random_device{}()),
-      fishing_rng_(setup.scripted ? 5 : std::random_device{}()) {
+      fishing_rng_(setup.scripted ? 5 : std::random_device{}()),
+      sound_rng_(setup.scripted ? 6 : std::random_device{}()) {
     weather = Weather(level.weather);
     // The player may have saved in the Nether.
     if (level.player && level.player->dimension == Dimension::Nether) world.reset(Dimension::Nether);
@@ -433,6 +434,8 @@ void Game::close_gui() {
     for (const Stack& s : gui->close()) throw_stack(s);
     gui.reset();
     furnace_open.reset();
+    if (!chest_open.empty())
+        play_sound(Sound::ChestClose, glm::dvec3(chest_open[0]) + 0.5, 0.9f + static_cast<float>(sound_rng_.random()) * 0.1f, 0.5f);
     for (glm::ivec3 c : chest_open) chest_slots(world, c);  // what was moved in or out gets saved
     chest_open.clear();
     chest_vehicle = nullptr;
@@ -580,6 +583,7 @@ void Game::update(double dt) {
         attack_cooldown -= dt;
         if (!creative && vitals.tick(dt)) {
             hud->flash_damage();
+            play_sound(Sound::Hurt, {player.x, player.y + 1, player.z}, vary_pitch(sound_rng_));
             if (sleeping_in) wake_up(false);
         }
     } else {
@@ -736,7 +740,7 @@ std::string Game::debug_text() {
     int dimmed = std::max(0, sky - static_cast<int>(current_sky().darkness));
     int minutes = clock_minutes(level.time);
     std::snprintf(buf, sizeof buf,
-                  "PetrutzCraft M14 (%.0f fps, %d chunk updates)\n"
+                  "PetrutzCraft M16 (%.0f fps, %d chunk updates)\n"
                   "x: %.3f (block %d)\ny: %.3f (feet, block %d)\nz: %.3f (block %d)\n"
                   "Chunk: %d %d (at %d %d in it)\n"
                   "Facing: %s (f: %d)\n"
@@ -799,7 +803,7 @@ void Game::draw(int w, int h) {
 
     if (hud_hidden && !vitals.dead()) return;
     const bool underwater = under_fluid(world, cam, WATER);
-    std::string info = debug_screen ? debug_text() : "PetrutzCraft M14";
+    std::string info = debug_screen ? debug_text() : "PetrutzCraft M16";
     if (!debug_screen && creative) info += flying ? "\nCreative (flying)" : "\nCreative";
     HudState hs{&active_inventory(), &vitals, armor_value(inventory), creative, info, help_text(), underwater, vitals.dead()};
     hs.burning = burn_ticks > 0 && !creative;
@@ -911,6 +915,7 @@ void Game::move(double dt) {
     if (flying && p.on_ground && down) flying = false;
 
     double moved = std::hypot(p.x - ox, p.z - oz);
+    step_sounds(moved);
     walk_phase += moved * 2.4;
     walk_amount += (std::min(1.0, moved / std::max(dt, 1e-4) / WALK_SPEED) - walk_amount) * std::min(1.0, dt * 10);
     if (!creative) {
@@ -1032,6 +1037,7 @@ void Game::mine(double dt) {
     if (pos != mining_pos) {
         mining_pos = pos;
         mining_progress = 0;
+        dig_wait_ = 0;
     }
     if (creative) {
         hud->set_mining(std::nullopt);
@@ -1046,6 +1052,12 @@ void Game::mine(double dt) {
     if (head_under_water()) slow *= 5;
     if (!player.on_ground && !flying) slow *= 5;
     mining_progress += *seconds <= 0 ? 1.0 : dt / (*seconds * slow);
+    // A hit sound every few ticks of digging (Beta).
+    dig_wait_ -= dt;
+    if (dig_wait_ <= 0) {
+        block_sound_at(pos, blk, DIG_VOLUME, DIG_PITCH);
+        dig_wait_ += DIG_SOUND_TICKS / 20.0;
+    }
     hud->set_mining(static_cast<float>(mining_progress));
     if (mining_progress >= 1.0) {
         break_block(pos, blk);
@@ -1056,6 +1068,7 @@ void Game::mine(double dt) {
 
 void Game::break_block(glm::ivec3 pos, BlockId blk) {
     const int data = world.get_data(pos.x, pos.y, pos.z);
+    block_sound_at(pos, blk, BUILD_VOLUME, BUILD_PITCH, true);
     // Both halves of a door and every cell of a painting go together.
     const std::vector<glm::ivec3> cells = joined_cells(world, pos);
     for (glm::ivec3 c : cells) renderer->rebuild(clear_cell(c));
@@ -1166,7 +1179,20 @@ int jukebox_key(glm::ivec3 p) { return ((p.x * 73856093) ^ (p.y * 19349663) ^ (p
 void Game::use_item_by_hand() {
     const long edits = renderer->edit_count();
     const bool had_gui = gui != nullptr, was_asleep = sleeping_in.has_value();
+    // The cells something could be placed in, and what they hold now (to hear a block being placed).
+    std::vector<std::pair<glm::ivec3, BlockId>> cells;
+    if (target && !targeting_mob()) {
+        cells.push_back({target->block, world.get_block(target->block.x, target->block.y, target->block.z)});
+        if (target->before) cells.push_back({*target->before, world.get_block(target->before->x, target->before->y, target->before->z)});
+    }
     use_item();
+    for (const auto& [c, was] : cells) {
+        const BlockId now = world.get_block(c.x, c.y, c.z);
+        if (now != was && now != AIR && now != FIRE && !is_fluid(now)) {
+            block_sound_at(c, now, BUILD_VOLUME, BUILD_PITCH);
+            break;
+        }
+    }
     if (renderer->edit_count() != edits || (gui && !had_gui) || (sleeping_in && !was_asleep)) hand.swing();
 }
 
@@ -1213,6 +1239,7 @@ void Game::use_item() {
             renderer->rebuild(eaten >= CAKE_SLICES ? world.set_block(c.x, c.y, c.z, AIR)
                                                    : world.set_block(c.x, c.y, c.z, CAKE_BLOCK, eaten));
             hud->show_message("Yum!", 1);
+            play_sound(Sound::Eat, glm::dvec3(eye()), vary_pitch(sound_rng_), 0.6f);
         }
         return;
     }
@@ -1259,6 +1286,7 @@ void Game::use_item() {
     if (*item == FLINT_AND_STEEL) {
         if (target && !targeting_mob() && world.get_block(target->block.x, target->block.y, target->block.z) == TNT) {
             prime_tnt(target->block, TNT_FUSE_TICKS);  // the flame lights the TNT
+            play_sound(Sound::Ignite, glm::dvec3(target->block) + 0.5, 0.8f + static_cast<float>(sound_rng_.random()) * 0.4f);
             wear_selected(1);
         } else if (target && !targeting_mob() && target->before && light_fire(*target->before)) {
             wear_selected(1);
@@ -1278,6 +1306,7 @@ void Game::use_item() {
             inv.take_selected();
             if (*item == MUSHROOM_STEW && !inv.slots[inv.selected]) inv.slots[inv.selected] = Stack{BOWL, 1};
             hud->show_message("Yum!", 1);
+            play_sound(Sound::Eat, glm::dvec3(eye()), vary_pitch(sound_rng_), 0.6f);
         }
         return;
     }
@@ -1343,6 +1372,7 @@ bool Game::hurt_player(int amount, bool ignore_cooldown) {
         return false;
     }
     hud->flash_damage();
+    play_sound(Sound::Hurt, {player.x, player.y + 1, player.z}, vary_pitch(sound_rng_));
     if (sleeping_in) wake_up(false);
     if (vitals.dead()) on_death();
     return true;
@@ -1369,7 +1399,10 @@ bool Game::hurt_player_by_monster(int amount, double from_x, double from_z) {
 void Game::wear_selected(int uses) {
     if (creative || uses <= 0) return;
     auto& slot = inventory.slots[inventory.selected];
-    if (slot && wear_out(*slot, uses)) slot.reset();
+    if (slot && wear_out(*slot, uses)) {
+        slot.reset();
+        play_sound(Sound::ToolBreak, glm::dvec3(eye()), 0.8f + static_cast<float>(sound_rng_.random()) * 0.4f, 0.8f);
+    }
 }
 
 void Game::swap_selected(ItemId item) {
@@ -1417,6 +1450,7 @@ bool Game::light_fire(glm::ivec3 pos) {
     // Fire needs an empty cell, and solid ground under it or something next to it that burns.
     if (world.get_block(pos.x, pos.y, pos.z) != AIR || !fire_can_stay(world, pos)) return false;
     renderer->rebuild(world.set_block(pos.x, pos.y, pos.z, FIRE));
+    play_sound(Sound::Ignite, glm::dvec3(pos) + 0.5, 0.8f + static_cast<float>(sound_rng_.random()) * 0.4f);
     try_light_portal(pos);
     return true;
 }
@@ -1530,6 +1564,7 @@ void Game::shoot_arrow() {
     dir = glm::normalize(dir);
     glm::dvec3 from = glm::dvec3(eye()) + dir * 0.3;
     arrows.push_back(std::make_unique<Arrow>(from, dir * Arrow::SPEED));
+    play_sound(Sound::Bow, from, 1.0f / (static_cast<float>(sound_rng_.random()) * 0.4f + 0.8f));
     wear_selected(1);
 }
 
@@ -1613,6 +1648,7 @@ void Game::tick_world() {
                     if (auto at = roll_lightning(world, cx, cz, weather_rng_)) {
                         bolts.emplace_back(*at, weather_rng_);
                         strike(*at);
+                        play_sound(Sound::Thunder, *at, 0.8f + static_cast<float>(sound_rng_.random()) * 0.2f);
                     }
     }
     spawn_monsters();
@@ -1624,6 +1660,7 @@ void Game::tick_world() {
     tick_navigation();
     tick_bobber();
     tick_portal();
+    tick_sounds();
     if (sleeping_in && !vitals.dead() && ++sleep_ticks >= SLEEP_TICKS) {
         // Asleep long enough: skip to the next morning and clear the sky, like Beta.
         level.time = next_morning(level.time);
@@ -1776,7 +1813,10 @@ void Game::apply_block_events(BlockEvents& events) {
     for (const auto& [p, item] : events.drops) spawn_drop(item, p.x + 0.5, p.y + 0.3, p.z + 0.5);
     for (const auto& [p, block] : events.falling) falling.push_back(std::make_unique<FallingBlock>(world, block, p));
     for (glm::ivec3 p : events.tnt) prime_tnt(p, TNT_FUSE_TICKS);
-    for (glm::ivec3 p : events.fizz) add_puffs(puffs, glm::dvec3(p) + 0.5, 6, 0.4, 1.0, 0.2, rng);
+    for (glm::ivec3 p : events.fizz) {
+        add_puffs(puffs, glm::dvec3(p) + 0.5, 6, 0.4, 1.0, 0.2, rng);
+        play_sound(Sound::Fizz, glm::dvec3(p) + 0.5, 2.6f + vary_pitch(sound_rng_, 0.8f) - 1.0f, 0.5f);
+    }
     apply_redstone(events.redstone);
 }
 
@@ -2007,7 +2047,9 @@ void Game::update_drops(double dt) {
         bool vert_ok = player.y - 1.2 < b.y && b.y < player.y + 2.2;
         if (drop.age > drop.pickup_delay && !vitals.dead() && vert_ok && horiz < 2.5) {
             if (horiz < 1.2) {
+                const int before = drop.stack.count;
                 drop.stack.count = inventory.add(drop.stack);
+                if (drop.stack.count < before) pickup_sound();
                 if (drop.stack.count == 0) {
                     it = drops.erase(it);
                     continue;
@@ -2050,6 +2092,7 @@ void Game::update_arrows(double dt) {
         Arrow& a = **it;
         bool remove = false;
         std::optional<ArrowTarget> hit;
+        const bool was_stuck = a.stuck;
         if (!world.find(chunk_of(ifloor(a.pos.x)), chunk_of(ifloor(a.pos.z)))) {
             remove = true;  // flew off the loaded world (arrows aren't saved)
         } else if ((hit = a.tick(dt, world, a.from_player ? mobs : with_player))) {
@@ -2086,7 +2129,10 @@ void Game::update_arrows(double dt) {
         } else if (a.stuck && a.from_player && !vitals.dead() && std::hypot(a.pos.x - player.x, a.pos.z - player.z) < 1.2 &&
                    a.pos.y > player.y - 1 && a.pos.y < player.y + 2.5) {
             remove = inventory.add(ARROW, 1) == 0;  // walk over a stuck arrow to pick it up
+            if (remove) pickup_sound();
         }
+        if (!remove && a.stuck && !was_stuck && a.item == ARROW)
+            play_sound(Sound::ArrowHit, a.pos, 1.2f / (static_cast<float>(sound_rng_.random()) * 0.2f + 0.9f));
         it = remove ? arrows.erase(it) : it + 1;
     }
 }
@@ -2300,9 +2346,13 @@ void Game::update_monsters(double dt) {
             arrow->shooter = &m;
             arrow->from_player = false;
             arrows.push_back(std::move(arrow));
+            play_sound(Sound::Bow, *act.arrow_from, 1.0f / (static_cast<float>(sound_rng_.random()) * 0.4f + 0.8f));
         }
         if (act.hiss) play_sound(Sound::Fuse, {m.body.x, m.body.y + 1, m.body.z});
-        if (act.fireball_from) fireballs.push_back(std::make_unique<Fireball>(*act.fireball_from, act.fireball_dir, &m));
+        if (act.fireball_from) {
+            fireballs.push_back(std::make_unique<Fireball>(*act.fireball_from, act.fireball_dir, &m));
+            play_sound(Sound::GhastFireball, *act.fireball_from, vary_pitch(sound_rng_), 10.0f);
+        }
         if (act.explode) {
             // The creeper is gone in its own blast.
             m.exploded = true;
@@ -2329,11 +2379,6 @@ void Game::prime_tnt(glm::ivec3 pos, int fuse_ticks) {
     if (world.get_block(pos.x, pos.y, pos.z) == TNT) renderer->rebuild(world.set_block(pos.x, pos.y, pos.z, AIR));
     tnts.push_back(std::make_unique<PrimedTnt>(world, pos.x + 0.5, pos.y, pos.z + 0.5, fuse_ticks, rng));
     play_sound(Sound::Fuse, glm::dvec3(pos) + 0.5);
-}
-
-void Game::play_sound(Sound sound, glm::dvec3 pos, float pitch) {
-    sounds.push_back({sound, pos, pitch});
-    ++sounds_started[static_cast<int>(sound)];
 }
 
 void Game::update_tnts(double dt) {
@@ -2524,6 +2569,7 @@ void Game::open_chest(glm::ivec3 pos) {
     if (!top || (pair.second && !bottom)) return;
     show_gui(std::make_unique<InventoryScreen>(active_inventory(), *top, bottom, bottom ? "Large chest" : "Chest"));
     chest_open = halves;
+    play_sound(Sound::ChestOpen, glm::dvec3(pos) + 0.5, 0.9f + static_cast<float>(sound_rng_.random()) * 0.1f, 0.5f);
 }
 
 bool Game::use_block(glm::ivec3 pos) {
@@ -2544,6 +2590,8 @@ bool Game::use_block(glm::ivec3 pos) {
     }
     if (auto cells = toggle_door(world, pos)) {
         for (const PlacedCell& c : *cells) renderer->rebuild(world.set_data(c.pos.x, c.pos.y, c.pos.z, c.data));
+        const int open_bit = b == TRAPDOOR ? TRAPDOOR_OPEN : DOOR_OPEN;
+        if (!cells->empty()) door_sound(pos, (cells->front().data & open_bit) != 0);
         return true;
     }
     return false;

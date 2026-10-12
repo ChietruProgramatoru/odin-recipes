@@ -55,7 +55,8 @@ private:
     void transport(App& app, Game& g); // rails, riding a minecart, the chest and furnace minecarts, a boat
     void redstone(App& app, Game& g);  // M13: levers, dust, torches, repeaters, doors, pistons, plates, a dispenser
     void finding_and_fishing(App& app, Game& g);  // M15: compass, clock, a map, fishing, snowballs
-    void nether(App& app, Game& g);    // M14: lighting a portal, the Nether, pigmen, a ghast's fireball, back again
+    void nether(App& app, Game& g);
+    void sounds(Game& g);  // M16: the sounds every scene before made along the way    // M14: lighting a portal, the Nether, pigmen, a ghast's fireball, back again
     void reload(App& app);      // quit to the title and load the world again
 
     std::string out_;

@@ -95,7 +95,12 @@ It runs on Windows (the main target) and Linux.
   ![Monsters](screenshots/monsters.png)
 - **Combat**: hits knock you and monsters back, a red flash shows the hurt, and for half a second after a hit only a harder hit does anything (just the difference). Dying monsters tip over, turn red and vanish in a puff of smoke, dropping their items.
 - **Explosions**: creepers and **TNT** blast holes in the ground, hurting and throwing everything nearby (less behind walls). Stone holds out better than dirt, and water, lava and bedrock stop a blast. Breaking TNT or using flint and steel on it lights it: it flashes for 4 seconds and blows up, and a blast lights other TNT nearby. 30% of the blocks a blast destroys drop.
-- **Sound effects**: the creeper's and lit TNT's hiss and the boom of a blast, made by the code (no sound files). They fade with distance (a blast carries 64 blocks, a hiss 16) and come from the side they are on. Without speakers or an audio device the game simply runs silent. The rest of the sounds and music come in M16.
+- **Sound and music**: every sound is made by the code (no sound files, nothing from Minecraft). They fade with distance (16 blocks for most, 64 for a blast, much further for a ghast or thunder) and come from the side they are on. Without speakers or an audio device the game simply runs silent.
+  - Blocks sound like what they are made of (stone, wood, gravel, grass, sand, wool and snow) when you walk on them, dig, break or place them; glass and ice shatter. Sneaking is silent.
+  - Hurt, picking things up, the bow, arrows thudding in, doors, trapdoors and chests, eating, a tool wearing out, flint and steel, splashing into water, the creeper's hiss and the blast.
+  - Every animal and monster speaks now and then and is heard getting hurt and dying: cows, pigs, sheep, chickens, wolves (barking, panting, whining when hurt, growling when angry), zombies, skeletons, spiders, creepers, slimes (squelching as they land), ghasts (moaning, and charging before they spit fire) and zombie pigmen.
+  - Rain patters around you, thunder rolls over the whole world, flowing water babbles, lava bubbles and pops, fire crackles, portals hum and going through one rushes.
+  - **Music**: four calm piano pieces of this game's own ("Dawn", "Meadow", "Lanterns" and "Drift") play now and then, in the menus too: the first a little while after starting, then one every 10 to 20 minutes. A jukebox's disc takes over from the music.
 
   ![A TNT crater](screenshots/tnt.png)
 - **Difficulty** (in Options): Peaceful (no monsters; health comes back by itself and hunger stays put), Easy (monsters do a third of their damage plus half a heart), Normal (the default) and Hard (half as much again).
@@ -227,7 +232,7 @@ Deleting the `build` folder deletes these too, so copy `saves/` somewhere safe f
 
 The **Options** button on the title screen (or in the pause menu) has:
 
-- **Invert Mouse**, mouse **Sensitivity** and **Difficulty** (Peaceful, Easy, Normal or Hard). Music and Sound volume come with the rest of the sounds (M16).
+- **Music** and **Sound** volume, **Invert Mouse**, mouse **Sensitivity** and **Difficulty** (Peaceful, Easy, Normal or Hard). Menu buttons click.
 - **Video Settings**: **Graphics** Fancy (see-through leaves, 3D clouds) or Fast (solid leaves, flat clouds), **Render Distance** Far (16 chunks), Normal (8, the default), Short (4) or Tiny (2), **Smooth Lighting** on or off, and **Clouds** on or off.
 - **Controls**: click a key, then press the new key for it. A key used twice turns red.
 
@@ -364,7 +369,12 @@ src/
   combat.cpp       Beta's rules for monsters: difficulty, being hurt, stats, drops, spawning, sunlight, spawners, explosions
   monsters.cpp     monster AI and models, lit TNT, smoke puffs
   sound.cpp        sound effects made by the code, and how loud each ear hears them
-  audio.cpp        plays the sounds on the audio device (miniaudio)
+  sound_effects.cpp  the M16 sounds: blocks, the player, weather, animals, monsters, menus
+  music.cpp        the background music (a small piano, pad and reverb)
+  sound_synth.h    the little synthesiser they are all made with
+  soundboard.cpp   which sound plays for what: block materials, mob voices, when music plays
+  game_sound.cpp   footsteps, mob voices, rain and the noises of nearby water, lava, fire, portals
+  audio.cpp        plays the sounds on the audio device (miniaudio), with Music and Sound volumes
   textures.cpp     procedurally generated pixel-art textures
   font.cpp         the 5x7 pixel font
   blocks.cpp       block definitions
@@ -379,7 +389,7 @@ tests/             doctest logic tests (no window needed)
 
 - Monsters have no pathfinding: they walk straight at you and hop up single blocks, so a wall or a ditch stops them.
 - Lit TNT isn't saved. The death screen has no score yet.
-- The only sounds so far are the hiss, the blast, note blocks, the jukebox, clicks and pistons; footsteps, hurt sounds, background music and volume settings come in M16.
+- Sounds are synthesised, so they are this game's own take on each noise rather than recordings. Mobs make no footstep sounds (only the player does), and minecarts and boats are silent, as in Beta.
 - The bobber isn't saved (it's gone when you load the world), like Beta. A map only fills in while you hold it. There's no copying or zooming maps (that came after Beta).
 - Flying arrows, and arrows stuck in blocks, aren't saved: they're gone when you load the world. Fires and flowing water go on after loading; a water source that was just about to spread when you saved waits until something next to it changes.
 - Lava, water and ice are see-through for the crosshair, and ice drops nothing (like Beta). Water and lava have no flowing animation yet. Water washes crops away without dropping seeds.
@@ -389,7 +399,7 @@ tests/             doctest logic tests (no window needed)
 - Mobs don't ride minecarts, explosions don't hurt vehicles and lava doesn't burn boats. Riding isn't saved: after loading you stand where your seat was.
 - Pistons move their blocks in one go, without Beta's sliding animation, and an extended piston's base is drawn as a whole block. Redstone torches never burn out from switching too fast, and pistons only feel power from their own sides (no Beta "quasi-connectivity"). Dispensers shoot arrows, snowballs and eggs and throw everything else out as items. Which doors and note blocks were powered isn't saved, so they look again when something next to them changes.
 - Animals have no pathfinding either, and monsters don't fight back against wolves.
-- Only the player goes through portals: animals, monsters, items and minecarts stay behind. Ghasts make no sound yet (M16). The Nether has no lava springs in its walls, and lava there flows as slowly as in the overworld.
+- Only the player goes through portals: animals, monsters, items and minecarts stay behind. The Nether has no lava springs in its walls, and lava there flows as slowly as in the overworld.
 - Iron and gold need smelting (M7), and string, feathers, bones and gunpowder now come from monsters.
 - Jack-o'-lanterns will give off light once they can be placed; lava, fire and lit furnaces already do.
 - Light levels are not stored in the save files: they are worked out again when a chunk is loaded.
