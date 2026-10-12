@@ -124,12 +124,23 @@ void Screen::mouse_down(double gx, double gy) {
         }
         return;
     }
+    pressed_ = true;
+    press_x_ = gx;
+    press_y_ = gy;
     on_click(gx, gy);
 }
 
-void Screen::mouse_up() { dragging_ = -1; }
+void Screen::mouse_up() {
+    dragging_ = -1;
+    pressed_ = false;
+}
 
 void Screen::mouse_move(double gx, double gy) {
+    if (pressed_ && dragging_ < 0) {
+        on_drag(gx - press_x_, gy - press_y_);
+        press_x_ = gx;
+        press_y_ = gy;
+    }
     if (dragging_ < 0) return;
     Widget* w = find(dragging_);
     if (!w) return;
@@ -181,15 +192,15 @@ void Screen::draw_all(Gui& gui, double mx, double my, long frame) {
     } else {
         gui.dirt(0, 0, static_cast<float>(gw), static_cast<float>(gh), 0.25f);
     }
+    mouse_x = mx;
+    mouse_y = my;
     draw(gui);
     for (const Widget& w : widgets) gui.widget(w, w.enabled && (w.contains(mx, my) || dragging_ == w.id), frame);
 }
 
 // --- Screens ---------------------------------------------------------------------------------
 
-namespace {
-
-Widget button(int id, int x, int y, int w, const std::string& label, bool enabled = true) {
+Widget button(int id, int x, int y, int w, const std::string& label, bool enabled) {
     Widget b;
     b.id = id;
     b.x = x;
@@ -199,6 +210,8 @@ Widget button(int id, int x, int y, int w, const std::string& label, bool enable
     b.enabled = enabled;
     return b;
 }
+
+namespace {
 
 Widget slider(int id, int x, int y, int w, const std::string& label, float value) {
     Widget s = button(id, x, y, w, label);
@@ -617,16 +630,21 @@ private:
 class PauseScreen : public Screen {
 public:
     using Screen::Screen;
-    enum { BACK, OPTIONS, QUIT };
+    enum { BACK, OPTIONS, QUIT, ACHIEVEMENTS, STATISTICS };
 
     void layout(int gw, int gh) override {
+        // Beta's game menu, with Achievements and Statistics side by side under Back to Game.
         widgets.push_back(button(BACK, gw / 2 - 100, gh / 4 + 8, 200, "Back to Game"));
-        widgets.push_back(button(OPTIONS, gw / 2 - 100, gh / 4 + 32, 200, "Options..."));
-        widgets.push_back(button(QUIT, gw / 2 - 100, gh / 4 + 80, 200, "Save and Quit to Title"));
+        widgets.push_back(button(ACHIEVEMENTS, gw / 2 - 100, gh / 4 + 32, 98, "Achievements"));
+        widgets.push_back(button(STATISTICS, gw / 2 + 2, gh / 4 + 32, 98, "Statistics"));
+        widgets.push_back(button(OPTIONS, gw / 2 - 100, gh / 4 + 80, 200, "Options..."));
+        widgets.push_back(button(QUIT, gw / 2 - 100, gh / 4 + 104, 200, "Save and Quit to Title"));
     }
     void on_button(int id) override {
         App& a = app;
         if (id == BACK) a.close_screen();
+        if (id == ACHIEVEMENTS) a.open(achievements_screen(a, [&a] { return pause_screen(a); }));
+        if (id == STATISTICS) a.open(statistics_screen(a, [&a] { return pause_screen(a); }));
         if (id == OPTIONS) a.open(options_screen(a, [&a] { return pause_screen(a); }));
         if (id == QUIT) a.save_and_quit_to_title();
     }

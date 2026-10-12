@@ -22,6 +22,8 @@ App::App(GLFWwindow* w, AppConfig cfg) : window(w), config(std::move(cfg)) {
     std::error_code ec;
     fs::create_directories(saves_dir, ec);
     options = Options::load(config.data_dir / "options.txt");
+    stats = load_stats(stats_file());
+    stats.add(STAT_GAMES_STARTED);
     atlas = upload_texture(make_atlas(make_tiles()));
     painter = std::make_unique<Painter>(atlas);
     audio = std::make_unique<Audio>(config.autotest == nullptr);
@@ -36,6 +38,7 @@ App::~App() {
     game.reset();
     painter.reset();
     glDeleteTextures(1, &atlas);
+    save_stats(stats_file(), stats);
 }
 
 int App::gui_scale() const {
@@ -201,7 +204,8 @@ bool App::play_world(const std::string& folder) {
     draw_saving("Loading world...");
     if (audio) audio->stop_all();
     game.reset();
-    GameSetup setup{dir, std::move(*level), config.autotest != nullptr};
+    GameSetup setup{dir, std::move(*level), config.autotest != nullptr, &stats, stats_file()};
+    stats.add(STAT_WORLDS_LOADED);
     game = std::make_unique<Game>(window, atlas, *painter, options, std::move(setup));
     game->save(false);  // so "last played" is right even if the game crashes later
     close_screen();
@@ -217,6 +221,7 @@ bool App::create_world(const std::string& name, const std::string& seed_text) {
         seed = (static_cast<uint64_t>(rd()) << 32) ^ rd() ^ static_cast<uint64_t>(std::time(nullptr));
     }
     auto folder = ::create_world(saves_dir, name, seed);
+    if (folder) stats.add(STAT_WORLDS_CREATED);
     return folder && play_world(*folder);
 }
 

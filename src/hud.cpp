@@ -3,11 +3,51 @@
 #include <algorithm>
 #include <cmath>
 
+#include "achievements.h"
+
 namespace {
 // Pyglet font size (points) -> integer pixel scale for the 7-pixel-tall font.
 int font_scale(int points) { return std::max(1, (points * 4 / 3 + 4) / 8); }
 int text_lines(const std::string& s) { return 1 + static_cast<int>(std::count(s.begin(), s.end(), '\n')); }
+constexpr float TOAST_SECONDS = 3;
+constexpr Color TEXT_YELLOW_HUD{1, 1, 0, 1};  // Beta's yellow for "Achievement get!"  // how long an achievement pop-up stays (Beta)
 }  // namespace
+
+void Hud::show_achievement(int achievement) {
+    // Like Beta, a new one takes the place of the one showing (keeping it down if it was).
+    if (toasts_.empty()) toast_time_ = 0;
+    else toast_time_ = std::min(toast_time_, 0.5f);
+    toasts_.assign(1, achievement);
+}
+
+void Hud::draw_toast(int achievement, float slide, const std::string& title, const std::string& text, Color title_color) {
+    // Beta's 160 x 32 panel in GUI units, at the top right, `slide` (0..1) of the way down.
+    const float w = static_cast<float>(p_.width()), h = static_cast<float>(p_.height());
+    int s = 1;
+    while (w / (s + 1) >= 320 && h / (s + 1) >= 240) ++s;
+    const float pw = 160.0f * s, ph = 32.0f * s;
+    const float x = w - pw, y = h - ph * slide;
+    p_.rect(x, y, pw, ph, 0, 0, 0, 1);
+    p_.rect(x + s, y + s, pw - 2 * s, ph - 2 * s, 0.55f, 0.55f, 0.55f, 1);
+    p_.rect(x + 2 * s, y + 2 * s, pw - 4 * s, ph - 4 * s, 0.13f, 0.13f, 0.13f, 1);
+    p_.item(achievement_info(achievement).icon, x + 8.0f * s, y + 8.0f * s, 16.0f * s);
+    const float tx = x + 30.0f * s;
+    p_.text(title, tx, y + ph - 7.0f * s, s, 0, 1, false, title_color);
+    // The second line, wrapped to the panel like Beta's description.
+    std::string line, rest = text;
+    float ly = y + ph - 18.0f * s;
+    while (!rest.empty() && ly > y) {
+        size_t cut = rest.size();
+        while (Painter::text_width(rest.substr(0, cut), 1) > 124) {
+            size_t space = rest.rfind(' ', cut - 1);
+            if (space == std::string::npos || space == 0) break;
+            cut = space;
+        }
+        p_.text(rest.substr(0, cut), tx, ly, s, 0, 1, false, {1, 1, 1, 1});
+        rest = cut < rest.size() ? rest.substr(cut + 1) : "";
+        ly -= 9.0f * s;
+    }
+}
 
 void Hud::show_message(const std::string& text, float seconds) {
     message_ = text;
@@ -22,6 +62,10 @@ void Hud::show_item_name(std::optional<ItemId> item) {
 void Hud::update(float dt) {
     item_name_timer_ -= dt;
     message_timer_ -= dt;
+    if (!toasts_.empty() && (toast_time_ += dt) >= TOAST_SECONDS) {
+        toasts_.pop_front();
+        toast_time_ = 0;
+    }
     damage_alpha_ = std::max(0.0f, damage_alpha_ - dt * 1.2f);
 }
 
@@ -81,5 +125,18 @@ void Hud::draw(int width, int height, const HudState& st) {
     p_.text(st.info, 10, h - 10, font_scale(12), 0, 1);
     if (show_help) p_.text(st.help, 10, h - 16 - text_lines(st.info) * 10 * font_scale(12), font_scale(11), 0, 1);
     // Dying shows the death screen (menu.cpp) over this.
+    p_.end();
+}
+
+void Hud::draw_achievements(int width, int height, const HudState& st) {
+    p_.begin(width, height);
+    if (!toasts_.empty()) {
+        // Down in the first half second, up in the last (Beta's smooth slide).
+        const float t = std::min({1.0f, toast_time_ * 2, (TOAST_SECONDS - toast_time_) * 2});
+        const float slide = 1 - (1 - t) * (1 - t);
+        draw_toast(toasts_.front(), slide, "Achievement get!", achievement_info(toasts_.front()).name, TEXT_YELLOW_HUD);
+    } else if (st.hint >= 0) {
+        draw_toast(st.hint, 1, achievement_info(st.hint).name, st.hint_text, TEXT_YELLOW_HUD);
+    }
     p_.end();
 }

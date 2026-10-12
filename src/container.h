@@ -41,6 +41,9 @@ public:
     ChestSlots* chest[2] = {nullptr, nullptr};  // the chest (two for a double chest) whose screen this is
     int chest_size = CHEST_SLOTS;  // a dispenser uses only the first 9 of its slots
     int chest_slots() const { return (chest[0] ? chest_size : 0) + (chest[1] ? CHEST_SLOTS : 0); }
+    // Crafted results and smelted items taken out since the game last looked (it counts them for
+    // the statistics and achievements, then clears these).
+    std::vector<Stack> crafted, smelted;
 
     std::optional<Stack>& at(Slot s);
     // Mouse button 0 (left) or 1 (right) on a slot, with or without Shift.

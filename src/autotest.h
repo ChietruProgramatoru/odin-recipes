@@ -3,6 +3,7 @@
 // cows, eating, fall damage, furnaces, tools, armor, the bow, fire and buckets, a tour of the biomes and caves, the F3 and F5 views,
 // monsters, explosions and dying, the first-person hand, flowing water and lava, falling sand and fire, farming, animals,
 // rails, minecarts and boats, redstone and pistons, the compass, clock, maps, fishing and snowballs, the Nether,
+// achievements and statistics,
 // the pause menu,
 // then saving, quitting to the
 // title and loading the world again. Saves screenshots to OUT_DIR and writes OUT_DIR/report.txt.
@@ -18,6 +19,7 @@
 #include <glm/vec3.hpp>
 
 #include "blocks.h"
+#include "furnace.h"
 #include "save.h"
 #include "weather.h"
 
@@ -55,8 +57,9 @@ private:
     void transport(App& app, Game& g); // rails, riding a minecart, the chest and furnace minecarts, a boat
     void redstone(App& app, Game& g);  // M13: levers, dust, torches, repeaters, doors, pistons, plates, a dispenser
     void finding_and_fishing(App& app, Game& g);  // M15: compass, clock, a map, fishing, snowballs
-    void nether(App& app, Game& g);
-    void sounds(Game& g);  // M16: the sounds every scene before made along the way    // M14: lighting a portal, the Nether, pigmen, a ghast's fireball, back again
+    void nether(App& app, Game& g);    // M14: lighting a portal, the Nether, pigmen, a ghast's fireball, back again
+    void achievements(App& app, Game& g);  // M17: earning all 16 achievements, the pop-ups, the map and statistics
+    void sounds(Game& g);  // M16: the sounds every scene before made along the way
     void reload(App& app);      // quit to the title and load the world again
 
     std::string out_;
@@ -151,4 +154,11 @@ private:
     long fireball_frame_ = 0;
     glm::dvec3 ghast_pin_{0};
     std::optional<Inventory> nether_inventory_;  // put back after the trip
+    // Achievements: where the player was, what they carried, the furnace whose screen is opened,
+    // and the pig flown off a height.
+    glm::dvec3 ach_return_{0};
+    bool ach_creative_ = false;
+    std::optional<Inventory> ach_inventory_;
+    Furnace ach_furnace_;
+    Animal* ach_pig_ = nullptr;
 };

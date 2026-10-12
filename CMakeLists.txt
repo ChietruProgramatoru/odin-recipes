@@ -67,6 +67,7 @@ endif()
 
 # --- Game logic: no window or OpenGL, shared by the game and the tests ------
 add_library(petrutz_core STATIC
+  src/achievements.cpp
   src/blocks.cpp
   src/items.cpp
   src/icons.cpp
@@ -137,6 +138,8 @@ add_executable(PetrutzCraft
   src/game_redstone.cpp
   src/game_nether.cpp
   src/game_sound.cpp
+  src/game_stats.cpp
+  src/achievement_screens.cpp
   src/audio.cpp
   src/autotest.cpp)
 target_link_libraries(PetrutzCraft PRIVATE petrutz_core glfw miniaudio_header ${CMAKE_DL_LIBS})
@@ -156,6 +159,7 @@ enable_testing()
 add_executable(petrutz_tests
   tests/test_main.cpp
   tests/test_world.cpp
+  tests/test_achievements.cpp
   tests/test_worldgen.cpp
   tests/test_survival.cpp
   tests/test_farming.cpp

@@ -43,6 +43,7 @@ bool CraftingMenu::take_result() {
         cursor->count += result->count;
     else
         cursor = result;
+    crafted.push_back(*result);
     consume_ingredients(grid);
     update_result();
     return true;
@@ -103,6 +104,7 @@ void CraftingMenu::click(Slot s, int button, bool shift) {
                     inv = before;
                     break;
                 }
+                crafted.push_back(*result);
                 consume_ingredients(grid);
                 update_result();
             }
@@ -131,6 +133,8 @@ void CraftingMenu::click(Slot s, int button, bool shift) {
             merge(moving, Inventory::HOTBAR, Inventory::SIZE, false);  // grid or armor -> storage, then hotbar
             if (moving.count) merge(moving, 0, Inventory::HOTBAR, false);
         }
+        if (s == Slot{Slot::Furnace, FURNACE_OUTPUT} && moving.count < slot->count)
+            smelted.push_back(Stack{slot->item, slot->count - moving.count});
         if (moving.count)
             slot->count = moving.count;
         else
@@ -145,6 +149,7 @@ void CraftingMenu::click(Slot s, int button, bool shift) {
         cursor = *slot;
         cursor->count = take;
         slot->count -= take;
+        if (s == Slot{Slot::Furnace, FURNACE_OUTPUT}) smelted.push_back(*cursor);
         if (slot->count == 0) slot.reset();
     } else if (cursor && accepts(s, *cursor)) {
         int lim = limit(s, *cursor);
@@ -166,6 +171,7 @@ void CraftingMenu::click(Slot s, int button, bool shift) {
                cursor->count + slot->count <= max_stack(cursor->item)) {
         // The output slot takes nothing, but its items join a matching stack on the mouse.
         cursor->count += slot->count;
+        smelted.push_back(*slot);
         slot.reset();
     }
     if (cursor && cursor->count == 0) cursor.reset();

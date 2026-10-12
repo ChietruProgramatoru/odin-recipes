@@ -42,6 +42,9 @@ Game::Game(GLFWwindow* win, GLuint atlas, Painter& painter, const Options& opts,
       farm_rng_(setup.scripted ? 3 : std::random_device{}()),
       fishing_rng_(setup.scripted ? 5 : std::random_device{}()),
       sound_rng_(setup.scripted ? 6 : std::random_device{}()) {
+    if (!setup.stats) own_stats_ = std::make_unique<Stats>();
+    stats_ = setup.stats ? setup.stats : own_stats_.get();
+    stats_file_ = setup.stats_file;
     weather = Weather(level.weather);
     // The player may have saved in the Nether.
     if (level.player && level.player->dimension == Dimension::Nether) world.reset(Dimension::Nether);
@@ -353,6 +356,7 @@ bool Game::save(bool wait) {
     data.player = player_data();
     level.last_played = data.last_played;
     saver->save(std::move(data), std::move(copies), world.dimension());
+    if (!stats_file_.empty()) save_stats(stats_file_, *stats_);  // small, so written right here
     autosave_timer = 0;
     return wait ? saver->wait() : true;
 }
@@ -431,6 +435,7 @@ void Game::open_furnace(glm::ivec3 pos) {
 
 void Game::close_gui() {
     if (!gui) return;
+    collect_crafting();
     for (const Stack& s : gui->close()) throw_stack(s);
     gui.reset();
     furnace_open.reset();
@@ -491,6 +496,7 @@ void Game::on_key(int key, int action, int mods) {
         drop_selected();
     } else if (key == options.keys[KEY_INVENTORY]) {
         open_gui(creative ? InventoryScreen::Kind::Creative : InventoryScreen::Kind::Inventory);
+        earn(ACH_OPEN_INVENTORY);
     } else if (key == GLFW_KEY_H) {
         hud->show_help = !hud->show_help;
     } else if (key == options.keys[KEY_JUMP] && creative) {
@@ -568,6 +574,7 @@ void Game::update(double dt) {
     const bool dead = vitals.dead();
 
     vitals.peaceful = difficulty() == PEACEFUL;
+    collect_crafting();
     if (!paused && !dead) {
         if (!sleeping_in && !in_vehicle) move(dt);
         if (gui || sleeping_in) {
@@ -618,8 +625,10 @@ void Game::update(double dt) {
         ticks_ -= whole;
         for (int i = 0; i < whole; ++i) {
             ++level.time;
+            count(STAT_PLAY_TIME);
             tick_world();
         }
+        track_movement();
         autosave_timer += dt;
         if (autosave_timer >= AUTOSAVE_INTERVAL) save(false);
     }
@@ -808,6 +817,10 @@ void Game::draw(int w, int h) {
     HudState hs{&active_inventory(), &vitals, armor_value(inventory), creative, info, help_text(), underwater, vitals.dead()};
     hs.burning = burn_ticks > 0 && !creative;
     if (head_under_water() && !creative) hs.bubbles = vitals.bubbles();
+    if (!creative && !gui && !stats_->earned[ACH_OPEN_INVENTORY]) {
+        hs.hint = ACH_OPEN_INVENTORY;
+        hs.hint_text = "Press '" + key_name(options.keys[KEY_INVENTORY]) + "' to open your inventory.";
+    }
     hud->draw(w, h, hs);
     if (gui && !vitals.dead()) {
         double mx, my;
@@ -817,6 +830,7 @@ void Game::draw(int w, int h) {
                   [this](int x, int y, int pw, int ph, float lx, float ly) { draw_player_preview(x, y, pw, ph, lx, ly); });
         painter_.end();
     }
+    hud->draw_achievements(w, h, hs);
 }
 
 void Game::draw_player_preview(int x, int y, int w, int h, float look_x, float look_y) {
@@ -869,6 +883,7 @@ void Game::move(double dt) {
     // Ladders: a body with its feet in a ladder's cell climbs (Beta).
     const BlockId feet = world.get_block(ifloor(p.x), ifloor(p.y), ifloor(p.z));
     const bool on_ladder = !flying && climbable(feet);
+    on_ladder_ = on_ladder;
 
     const bool down = action_down(KEY_SNEAK);
     sneaking = down && !flying;
@@ -897,6 +912,7 @@ void Game::move(double dt) {
             } else if (p.on_ground) {
                 p.vy = JUMP_SPEED;
                 jumped = true;
+                count(STAT_JUMPS);
             }
         }
         if (on_ladder) {
@@ -930,6 +946,7 @@ void Game::move(double dt) {
         fall_peak = std::max(fall_peak, p.y);
     } else {
         if (!was_on_ground) {
+            if (fall_peak - p.y >= 2) count(STAT_FALL, std::lround((fall_peak - p.y) * 100));  // Beta counts falls of 2 or more
             int dmg = fall_damage(fall_peak - p.y);
             if (dmg) hurt_player(dmg, true);
             FarmEvents ev;
@@ -998,7 +1015,10 @@ void Game::try_attack() {
     const int damage = creative ? 10 : attack_damage(held);
     if (target_animal) {
         Animal& a = *target_animal;
+        const bool was_alive = a.alive();
         a.hurt(damage, player.x, player.z);
+        count(STAT_DAMAGE_DEALT, damage);
+        if (was_alive && !a.alive()) killed(false);
         if (a.kind == AnimalKind::Wolf && !a.tamed) {
             // A wild wolf turns on you, and so does its pack (Beta).
             for (const auto& w : animals)
@@ -1008,7 +1028,10 @@ void Game::try_attack() {
         }
         if (!(a.kind == AnimalKind::Wolf && a.tamed)) alert_wolves(&a);
     } else {
+        const bool was_alive = target_monster->alive();
         target_monster->hurt(damage, player.x, player.z);
+        count(STAT_DAMAGE_DEALT, damage);
+        if (was_alive && !target_monster->alive()) killed(true);
         target_monster->targeting = true;  // monsters turn on whoever hits them
         if (target_monster->kind == MobKind::PigZombie) anger_pigmen(*target_monster);
         alert_wolves(target_monster);
@@ -1104,6 +1127,7 @@ void Game::break_block(glm::ivec3 pos, BlockId blk) {
         if (!creative) spawn_drop(BED, pos.x + 0.5, pos.y + 0.3, pos.z + 0.5);
     }
     if (creative) return;
+    ++stats_->mined[blk];
     vitals.exhaust(EXHAUST_BREAK);
     const ItemId held = inventory.selected_item().value_or(AIR);
     wear_selected(wear_from_breaking(held, blk));
@@ -1146,6 +1170,7 @@ void Game::drop_selected() {
     one.count = 1;
     if (!creative && --slot->count == 0) slot.reset();
     throw_stack(one);
+    count(STAT_DROPS);
 }
 
 void Game::throw_stack(const Stack& stack) {
@@ -1373,6 +1398,7 @@ bool Game::hurt_player(int amount, bool ignore_cooldown) {
     }
     hud->flash_damage();
     play_sound(Sound::Hurt, {player.x, player.y + 1, player.z}, vary_pitch(sound_rng_));
+    count(STAT_DAMAGE_TAKEN, amount);
     if (sleeping_in) wake_up(false);
     if (vitals.dead()) on_death();
     return true;
@@ -1400,6 +1426,7 @@ void Game::wear_selected(int uses) {
     if (creative || uses <= 0) return;
     auto& slot = inventory.slots[inventory.selected];
     if (slot && wear_out(*slot, uses)) {
+        ++stats_->depleted[slot->item];
         slot.reset();
         play_sound(Sound::ToolBreak, glm::dvec3(eye()), 0.8f + static_cast<float>(sound_rng_.random()) * 0.4f, 0.8f);
     }
@@ -1569,6 +1596,7 @@ void Game::shoot_arrow() {
 }
 
 void Game::on_death() {
+    count(STAT_DEATHS);
     close_gui();
     if (riding) dismount();
     get_out();
@@ -2047,9 +2075,12 @@ void Game::update_drops(double dt) {
         bool vert_ok = player.y - 1.2 < b.y && b.y < player.y + 2.2;
         if (drop.age > drop.pickup_delay && !vitals.dead() && vert_ok && horiz < 2.5) {
             if (horiz < 1.2) {
-                const int before = drop.stack.count;
+                const Stack before = drop.stack;
                 drop.stack.count = inventory.add(drop.stack);
-                if (drop.stack.count < before) pickup_sound();
+                if (drop.stack.count < before.count) {
+                    picked_up(Stack{before.item, before.count - drop.stack.count});
+                    pickup_sound();
+                }
                 if (drop.stack.count == 0) {
                     it = drops.erase(it);
                     continue;
@@ -2103,12 +2134,20 @@ void Game::update_arrows(double dt) {
                 add_puffs(puffs, a.pos, 4, 0.1, 1.0, 0.1, animal_rng_);  // breaks: no harm done (Beta)
             } else if (hit->kind == 0) {
                 Animal& hit_animal = *animals[hit->index];
+                const bool was_alive = hit_animal.alive();
                 hit_animal.hurt(ARROW_DAMAGE, fx, fz);
+                if (a.from_player) {
+                    count(STAT_DAMAGE_DEALT, ARROW_DAMAGE);
+                    if (was_alive && !hit_animal.alive()) killed(false);
+                }
                 if (hit_animal.kind == AnimalKind::Wolf && !hit_animal.tamed) hit_animal.angry = true;
             } else if (hit->kind == 1) {
                 Monster& m = *monsters[hit->index];
+                const bool was_alive = m.alive();
                 m.hurt(ARROW_DAMAGE, fx, fz);
                 if (a.from_player) {
+                    count(STAT_DAMAGE_DEALT, ARROW_DAMAGE);
+                    if (was_alive && !m.alive()) killed(true);
                     m.targeting = true;
                     if (m.kind == MobKind::PigZombie) anger_pigmen(m);
                     alert_wolves(&m);

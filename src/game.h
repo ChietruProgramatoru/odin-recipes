@@ -11,6 +11,7 @@
 
 #include <glm/vec3.hpp>
 
+#include "achievements.h"
 #include "animals.h"
 #include "hand.h"
 #include "blockupdate.h"
@@ -56,6 +57,8 @@ struct GameSetup {
     std::filesystem::path world_dir;  // the world's folder in saves/
     LevelData level;                  // from level.json (no player yet for a new world)
     bool scripted = false;            // the autotest drives this game: fixed random numbers, mouse left alone
+    Stats* stats = nullptr;           // the player's statistics and achievements (the game keeps its own without)
+    std::filesystem::path stats_file; // where save() writes them (nowhere if empty)
 };
 
 class Game {
@@ -140,6 +143,19 @@ public:
     void step_sounds(double distance);
     void door_sound(glm::ivec3 pos, bool opened);
     void pickup_sound();  // Beta's pop, high and varied
+    // Achievements and statistics (M17, game_stats.cpp). They are the player's, across worlds.
+    Stats& stats() { return *stats_; }
+    // Earn an achievement (not with the creative cheat on, and only once its parent is earned):
+    // it pops up in the top right corner.
+    void earn(Achievement a);
+    void count(Stat s, int64_t amount = 1) { stats_->add(s, amount); }
+    // Items picked up off the ground, and the crafting and smelting done in the open screen.
+    void picked_up(const Stack& stack);
+    void collect_crafting();
+    // The player killed an animal or a monster.
+    void killed(bool monster);
+    // Each frame: the distances travelled, the minecart ride for On A Rail and the pig's flight.
+    void track_movement();
     // Mob spawners in the chunks shown so far, and ticks until each one's next try.
     struct Spawner {
         glm::ivec3 pos;
@@ -427,6 +443,14 @@ private:
     bool was_in_water_ = false;
     int rain_sound_counter_ = 0;
     void voice_tick(MobVoice& voice, const MobSounds& sounds, const Body& body, int health);
+    // Statistics: the game's own when no one gave it any, where the player was last frame, where
+    // the minecart ride began, and the highest point of the ridden pig's fall.
+    std::unique_ptr<Stats> own_stats_;
+    Stats* stats_ = nullptr;
+    std::filesystem::path stats_file_;
+    std::optional<glm::dvec3> last_pos_, ride_start_;
+    double pig_peak_ = 0;
+    bool on_ladder_ = false;
     int shown_map_ = -1;          // the map whose picture is in the atlas now
     long shown_map_version_ = -1;
 };

@@ -11,6 +11,7 @@
 #include <GLFW/glfw3.h>
 #include <glm/vec2.hpp>
 
+#include "achievements.h"
 #include "app.h"
 #include "farming.h"
 #include "nature.h"
@@ -45,6 +46,7 @@ AutoTest::AutoTest(std::string out_dir, uint64_t seed) : out_(std::move(out_dir)
     std::filesystem::create_directories(out_);
     std::filesystem::remove_all(std::filesystem::path(out_) / "saves");
     std::filesystem::remove(std::filesystem::path(out_) / "options.txt");
+    std::filesystem::remove(std::filesystem::path(out_) / "stats.json");
 }
 
 void AutoTest::log(const std::string& msg) {
@@ -313,13 +315,14 @@ void AutoTest::play(App& app, Game& g) {
     if (f >= 1770 && f < 1820) redstone(app, g);
     if (f >= 1820 && f < 1950) finding_and_fishing(app, g);
     if (f >= 1950 && f < 2110) nether(app, g);
-    if (f == 2110) {
+    if (f >= 2110 && f < 2210) achievements(app, g);
+    if (f == 2210) {
         sounds(g);
         app.pause();
         check("Escape menu pauses the game", g.paused && app.screen());
         shot(app, "7_pause.png");
     }
-    if (f == 2120) {
+    if (f == 2220) {
         // Change something, then save and quit to the title.
         marker_ = {static_cast<int>(std::floor(p.x)) + 2, static_cast<int>(std::floor(p.y)) + 1, static_cast<int>(std::floor(p.z))};
         g.renderer->rebuild(g.world.set_block(marker_.x, marker_.y, marker_.z, BRICK));
@@ -2199,6 +2202,9 @@ void AutoTest::reload(App& app) {
         Chunk* jc = g.world.chunk_at(jukebox_pos_);
         check("a jukebox keeps its disc", jc && jc->records.count(cell_index(jukebox_pos_)) &&
                                               jc->records[cell_index(jukebox_pos_)] == RECORD_CAT);
+        check("achievements and statistics are kept in stats.json",
+              load_stats(app.stats_file()).earned_count() == ACHIEVEMENT_COUNT &&
+                  load_stats(app.stats_file()).general[STAT_WORLDS_LOADED] == 2);
         check("the map is saved with the world and loads again",
               std::filesystem::exists(map_path(g.saver->dir(), map_id_)) && g.level.next_map == map_id_ + 1 &&
                   std::count_if(g.map_data(map_id_).colors.begin(), g.map_data(map_id_).colors.end(),
@@ -3269,5 +3275,235 @@ void AutoTest::nether(App& app, Game& g) {
         g.portal_ticks = 0;
         g.vitals.reset();
         g.renderer->load_all(p.x, p.z, 2);
+    }
+}
+
+void AutoTest::achievements(App& app, Game& g) {
+    const long f = g.frame - 2110;  // runs after the Nether
+    Body& p = g.player;
+    Inventory& inv = g.inventory;
+    Stats& st = g.stats();
+    auto stand = [&](glm::dvec3 q) {
+        p.x = q.x;
+        p.y = q.y;
+        p.z = q.z;
+        p.vx = p.vy = p.vz = 0;
+        g.fall_peak = p.y;
+    };
+    // An item lying at the player's feet, ready to be picked up.
+    auto drop_here = [&](ItemId item) {
+        auto d = std::make_unique<ItemDrop>(g.world, Stack{item, 1}, p.x, p.y + 0.3, p.z, g.rng);
+        d->pickup_delay = 0;
+        d->body.vx = d->body.vz = 0;
+        g.drops.push_back(std::move(d));
+    };
+    // Lay a recipe out on the open crafting table's grid and take what it makes.
+    auto craft = [&](std::vector<std::string> rows, std::map<char, ItemId> key) -> std::optional<ItemId> {
+        CraftingMenu& m = *g.gui->crafting;
+        for (auto& cell : m.grid) cell.reset();
+        int last = 0;
+        for (size_t r = 0; r < rows.size(); ++r)
+            for (size_t c = 0; c < rows[r].size(); ++c)
+                if (rows[r][c] != ' ') {
+                    last = static_cast<int>(r * 3 + c);
+                    m.grid[last] = Stack{key[rows[r][c]], 1};
+                }
+        m.click({Slot::Grid, last}, 1, false);  // pick the item up and put it back: the result updates
+        m.click({Slot::Grid, last}, 0, false);
+        if (!m.result) return std::nullopt;
+        const ItemId made = m.result->item;
+        m.click({Slot::Result, 0}, 0, false);
+        m.cursor.reset();
+        return made;
+    };
+    auto screen_button = [&](const std::string& label) {
+        if (Screen* sc = app.screen()) {
+            sc->ensure_layout(app.painter->width() / app.gui_scale(), app.painter->height() / app.gui_scale());
+            for (const Widget& w : sc->widgets)
+                if (w.label == label) {
+                    sc->on_button(w.id);
+                    return true;
+                }
+        }
+        return false;
+    };
+
+    if (f == 0) {
+        ach_return_ = {p.x, p.y, p.z};
+        ach_creative_ = g.creative;
+        ach_inventory_ = inv;
+        g.creative = g.flying = false;
+        g.vitals.reset();
+        g.monsters.clear();
+        g.target_monster = nullptr;
+        inv = Inventory{};
+        st.earned = {};  // start the tree again
+        check("statistics count walking, play time, mining and dying (" + format_stat(StatUnit::Distance, st.general[STAT_WALK]) +
+                  " walked)",
+              st.general[STAT_WALK] > 0 && st.general[STAT_PLAY_TIME] > 600 && !st.mined.empty() && st.general[STAT_DEATHS] >= 1 &&
+                  st.general[STAT_DAMAGE_TAKEN] > 0 && st.general[STAT_FISH] >= 1 && st.general[STAT_MINECART] > 0);
+        check("nothing is earned with the creative cheat on", [&] {
+            g.creative = true;
+            g.earn(ACH_OPEN_INVENTORY);
+            g.creative = false;
+            return !st.earned[ACH_OPEN_INVENTORY];
+        }());
+        shot(app, "m17_hint.png");
+        g.on_key(app.options.keys[KEY_INVENTORY], GLFW_PRESS, 0);
+        check("opening the inventory earns Taking Inventory and pops it up",
+              g.gui && st.earned[ACH_OPEN_INVENTORY] && g.hud->showing_achievement() == ACH_OPEN_INVENTORY);
+        g.close_gui();
+        // Getting Wood comes before Cow Tipper's leather is any use.
+        drop_here(LEATHER);
+    }
+    if (f == 2) {
+        check("an achievement needs the one before it (leather before Getting Wood)", !st.earned[ACH_KILL_COW]);
+        drop_here(BIRCH_LOG);
+    }
+    if (f == 4) {
+        check("picking up wood earns Getting Wood", st.earned[ACH_MINE_WOOD]);
+        g.open_gui(InventoryScreen::Kind::CraftingTable);
+        const std::pair<std::optional<ItemId>, ItemId> made[] = {
+            {craft({"##", "##"}, {{'#', PLANKS}}), CRAFTING_TABLE},
+            {craft({"XXX", " # ", " # "}, {{'X', PLANKS}, {'#', STICK}}), WOOD_PICKAXE},
+            {craft({"###", "# #", "###"}, {{'#', COBBLE}}), FURNACE},
+            {craft({"XX", " #", " #"}, {{'X', PLANKS}, {'#', STICK}}), WOOD_HOE},
+            {craft({"###"}, {{'#', WHEAT}}), BREAD},
+            {craft({"AAA", "BEB", "CCC"}, {{'A', MILK_BUCKET}, {'B', SUGAR}, {'E', EGG}, {'C', WHEAT}}), CAKE},
+            {craft({"XXX", " # ", " # "}, {{'X', COBBLE}, {'#', STICK}}), STONE_PICKAXE},
+            {craft({"X", "X", "#"}, {{'X', PLANKS}, {'#', STICK}}), WOOD_SWORD},
+        };
+        bool all = true;
+        for (const auto& [got, want] : made) all = all && got == want;
+        check("the crafting table makes the eight achievement items", all);
+    }
+    if (f == 6) {
+        bool all = true;
+        for (Achievement a : {ACH_WORKBENCH, ACH_PICKAXE, ACH_FURNACE, ACH_HOE, ACH_BREAD, ACH_CAKE, ACH_BETTER_PICKAXE, ACH_SWORD})
+            all = all && st.earned[a];
+        check("crafting earns Benchmarking, Time to Mine!, Hot Topic, Time to Farm!, Bake Bread, The Lie, Getting an Upgrade "
+              "and Time to Strike!",
+              all);
+        check("crafted items are counted", st.crafted[WOOD_PICKAXE] >= 1 && st.crafted[CAKE] >= 1);
+        g.close_gui();
+        // Take an iron ingot and a cooked fish out of a furnace.
+        ach_furnace_ = Furnace{};
+        ach_furnace_.output = Stack{IRON_INGOT, 3};
+        g.gui = std::make_unique<InventoryScreen>(inv, ach_furnace_);
+        g.gui->crafting->click({Slot::Furnace, FURNACE_OUTPUT}, 0, true);
+        ach_furnace_.output = Stack{COOKED_FISH, 1};
+        g.gui->crafting->click({Slot::Furnace, FURNACE_OUTPUT}, 0, false);
+    }
+    if (f == 8) {
+        check("taking smelted iron and fish earns Acquire Hardware and Delicious Fish",
+              st.earned[ACH_IRON] && st.earned[ACH_COOK_FISH] && st.crafted[IRON_INGOT] >= 3);
+        g.close_gui();
+        // A zombie on its last legs in front of the player, and a sword in hand.
+        inv.slots[inv.selected] = Stack{WOOD_SWORD, 1};
+        g.yaw = 0;
+        g.pitch = 0;
+        Monster* z = g.spawn_monster(MobKind::Zombie, p.x, p.y, p.z + 1.5);
+        if (!z) z = g.spawn_monster(MobKind::Zombie, p.x, p.y + 1, p.z + 1.5);
+        const int64_t kills = st.general[STAT_MOB_KILLS];
+        if (z) {
+            z->health = 1;
+            g.target_monster = z;
+            g.target_animal = nullptr;
+            g.target_vehicle = nullptr;
+            g.attack_cooldown = 0;
+            g.try_attack();
+        }
+        check("killing a monster earns Monster Hunter and counts the kill",
+              z && st.earned[ACH_KILL_ENEMY] && st.general[STAT_MOB_KILLS] == kills + 1);
+        drop_here(LEATHER);
+    }
+    if (f == 10) {
+        check("picking up leather earns Cow Tipper", st.earned[ACH_KILL_COW]);
+        g.monsters.clear();
+        g.target_monster = nullptr;
+        // A saddled pig in the air: ride it down.
+        inv.slots[inv.selected].reset();
+        const int ground = g.world.surface_y(static_cast<int>(std::floor(p.x)), static_cast<int>(std::floor(p.z)));
+        ach_pig_ = g.spawn_animal(AnimalKind::Pig, p.x, ground + 9, p.z);
+        ach_pig_->saddled = true;
+        ach_pig_->body.vy = 0;
+        check("climbing onto a saddled pig", g.interact(*ach_pig_) && g.riding == ach_pig_);
+    }
+    if (f == 70) {
+        check("a pig ridden off a height earns When Pigs Fly", st.earned[ACH_FLY_PIG] && st.general[STAT_PIG] >= 0);
+        g.dismount();
+        for (size_t i = 0; i < g.animals.size(); ++i)
+            if (g.animals[i].get() == ach_pig_) {
+                g.animals.erase(g.animals.begin() + static_cast<long>(i));
+                break;
+            }
+        ach_pig_ = nullptr;
+        stand(ach_return_);
+        // Into a minecart.
+        g.vehicles.push_back(std::make_unique<Vehicle>(g.world, VehicleKind::Minecart, p.x, p.y + 0.1, p.z));
+        g.get_in(*g.vehicles.back());
+    }
+    if (f == 72 && g.in_vehicle) {
+        // A long ride, all at once: the cart (and the player in it) 1001 blocks further east.
+        g.renderer->load_all(g.in_vehicle->body.x + 1001, g.in_vehicle->body.z, 1);
+        g.in_vehicle->body.x += 1001;
+        p.x += 1001;
+    }
+    if (f == 74) {
+        check("a minecart 1 km from where the ride began earns On A Rail", st.earned[ACH_ON_A_RAIL]);
+        check("every achievement is earned", st.earned_count() == ACHIEVEMENT_COUNT);
+        Vehicle* cart = g.in_vehicle;
+        g.get_out();
+        for (size_t i = 0; i < g.vehicles.size(); ++i)
+            if (g.vehicles[i].get() == cart) {
+                g.vehicles.erase(g.vehicles.begin() + static_cast<long>(i));
+                break;
+            }
+        stand(ach_return_);
+        g.renderer->load_all(p.x, p.z, 2);
+        g.yaw = 0;
+        g.pitch = 10;
+    }
+    if (f == 76) shot(app, "m17_achievement_get.png");  // a pop-up, fully down
+    if (f == 78) app.open(achievements_screen(app, [&app] { return pause_screen(app); }));
+    if (f == 80) {
+        // Hover over Taking Inventory (where the map opens) to see its tooltip.
+        const int s = app.gui_scale(), gw = app.painter->width() / s, gh = app.painter->height() / s;
+        const double x = (gw - 256) / 2 + 16 + 83 + 11, y = (gh - 202) / 2 + 17 + 71 + 11;
+        app.on_cursor(x * s, y * s);
+        shot(app, "m17_achievements.png");
+        // Drag the map to the right.
+        app.on_mouse_button(GLFW_MOUSE_BUTTON_LEFT, GLFW_PRESS);
+        app.on_cursor(x * s - 120 * s, y * s - 40 * s);
+        app.on_mouse_button(GLFW_MOUSE_BUTTON_LEFT, GLFW_RELEASE);
+    }
+    if (f == 82) {
+        shot(app, "m17_achievements_dragged.png");
+        app.on_cursor(0, 0);
+        app.open(statistics_screen(app, [&app] { return pause_screen(app); }));
+    }
+    if (f == 84) {
+        shot(app, "m17_statistics.png");
+        check("the statistics screen has General, Blocks and Items lists", screen_button("Blocks"));
+    }
+    if (f == 86) {
+        shot(app, "m17_statistics_blocks.png");
+        screen_button("Items");
+    }
+    if (f == 88) {
+        shot(app, "m17_statistics_items.png");
+        app.close_screen();
+    }
+    if (f == 90) {
+        app.pause();
+        check("the game menu has Achievements and Statistics buttons", screen_button("Achievements"));
+    }
+    if (f == 92) {
+        check("the Achievements button opens the map", app.screen() && !g.gui);
+        app.close_screen();
+        if (ach_inventory_) inv = *ach_inventory_;
+        g.creative = ach_creative_;
+        g.vitals.reset();
+        stand(ach_return_);
     }
 }
