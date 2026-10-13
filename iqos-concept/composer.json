@@ -1,0 +1,9 @@
+{
+    "name": "chietruprogramatoru/iqos-concept",
+    "description": "iqos.ro restilizat în stilul paginii Apple iPad Pro (PHP + Smarty).",
+    "type": "project",
+    "require": {
+        "php": ">=8.1",
+        "smarty/smarty": "^5"
+    }
+}
